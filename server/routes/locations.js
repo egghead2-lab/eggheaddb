@@ -6,7 +6,7 @@ const { authenticate } = require('../middleware/auth');
 // GET /api/locations
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const { search, active, area, client_manager, contractor, page = 1, limit = 50 } = req.query;
+    const { search, active, area, client_manager, contractor, sort, dir, page = 1, limit = 50 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClauses = [];
@@ -14,7 +14,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
     if (active !== undefined && active !== '') {
       whereClauses.push(`loc.active = ?`);
-      params.push(parseInt(active));
+      params.push(active === 'true' ? 1 : 0);
     } else {
       whereClauses.push(`loc.active = 1`);
     }
@@ -25,7 +25,7 @@ router.get('/', authenticate, async (req, res, next) => {
       params.push(s, s, s);
     }
     if (area) {
-      whereClauses.push(`loc.geographic_area_id_online = ?`);
+      whereClauses.push(`ga.geographic_area_name = ?`);
       params.push(area);
     }
     if (client_manager) {
@@ -33,11 +33,17 @@ router.get('/', authenticate, async (req, res, next) => {
       params.push(client_manager);
     }
     if (contractor) {
-      whereClauses.push(`loc.contractor_id = ?`);
+      whereClauses.push(`con.contractor_name = ?`);
       params.push(contractor);
     }
 
     const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const sortMap = {
+      nickname: 'loc.nickname', school_name: 'loc.school_name',
+      area: 'ga.geographic_area_name', contractor: 'con.contractor_name',
+    };
+    const sortCol = sortMap[sort] || 'loc.nickname';
+    const sortDir = dir === 'desc' ? 'DESC' : 'ASC';
 
     const [rows] = await pool.query(
       `SELECT loc.id, loc.nickname, loc.school_name, loc.address, loc.active,
@@ -57,7 +63,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        LEFT JOIN location_type lt ON lt.id = loc.location_type_id AND lt.active = 1
        ${where}
-       ORDER BY loc.nickname
+       ORDER BY ${sortCol} ${sortDir}
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );
@@ -67,6 +73,7 @@ router.get('/', authenticate, async (req, res, next) => {
        FROM location loc
        LEFT JOIN city c ON c.id = loc.city_id
        LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online AND ga.active = 1
+       LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        ${where}`,
       params
     );

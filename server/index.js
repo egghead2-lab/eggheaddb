@@ -31,11 +31,11 @@ app.get('/api/health', (req, res) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api', referenceRoutes);
 app.use('/api/professors', professorsRoutes);
 app.use('/api/locations', locationsRoutes);
 app.use('/api/programs', programsRoutes);
 app.use('/api/parties', partiesRoutes);
+app.use('/api', referenceRoutes);
 
 // Error handler
 app.use(errorHandler);

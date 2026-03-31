@@ -12,7 +12,7 @@ import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { TRAINING_FIELDS } from '../lib/constants';
-import { formatDate } from '../lib/utils';
+import { formatDate, toFormData } from '../lib/utils';
 
 export default function ProfessorDetailPage() {
   const { id } = useParams();
@@ -31,7 +31,7 @@ export default function ProfessorDetailPage() {
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm();
 
   useEffect(() => {
-    if (profData?.data) reset(profData.data);
+    if (profData?.data) reset(toFormData(profData.data));
   }, [profData]);
 
   const mutation = useMutation({
@@ -67,15 +67,15 @@ export default function ProfessorDetailPage() {
           {/* Section 1: General Info */}
           <Section title="General Info" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Nickname" {...register('professor_nickname')} />
-              <Select label="Status" {...register('professor_status_id')}>
+              <Input label="Nickname" required {...register('professor_nickname', { required: 'Required' })} error={errors.professor_nickname?.message} />
+              <Select label="Status" required {...register('professor_status_id', { required: 'Required' })} error={errors.professor_status_id?.message}>
                 <option value="">Select status…</option>
                 {(ref.professorStatuses || []).map(s => (
                   <option key={s.id} value={s.id}>{s.professor_status_name}</option>
                 ))}
               </Select>
-              <Input label="First Name" {...register('first_name')} error={errors.first_name?.message} />
-              <Input label="Last Name" {...register('last_name')} error={errors.last_name?.message} />
+              <Input label="First Name" required {...register('first_name', { required: 'Required' })} error={errors.first_name?.message} />
+              <Input label="Last Name" required {...register('last_name', { required: 'Required' })} error={errors.last_name?.message} />
               <Input label="Email" type="email" {...register('email')} />
               <Input label="Phone Number" {...register('phone_number')} />
               <div className="col-span-2">

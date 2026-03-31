@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getLocation, createLocation, updateLocation } from '../api/locations';
 import { useGeneralData } from '../hooks/useReferenceData';
+import { toFormData } from '../lib/utils';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
@@ -30,7 +31,7 @@ export default function LocationDetailPage() {
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm();
 
   useEffect(() => {
-    if (locData?.data) reset(locData.data);
+    if (locData?.data) reset(toFormData(locData.data));
   }, [locData]);
 
   const mutation = useMutation({

@@ -6,7 +6,7 @@ const { authenticate } = require('../middleware/auth');
 // GET /api/programs (exclude party program types)
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const { search, status, location, professor, page = 1, limit = 50 } = req.query;
+    const { search, status, area, program_type, date_from, date_to, sort, dir, page = 1, limit = 50 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClauses = [
@@ -21,19 +21,35 @@ router.get('/', authenticate, async (req, res, next) => {
       params.push(s, s, s);
     }
     if (status) {
-      whereClauses.push(`prog.class_status_id = ?`);
+      whereClauses.push(`cs.class_status_name = ?`);
       params.push(status);
     }
-    if (location) {
-      whereClauses.push(`prog.location_id = ?`);
-      params.push(location);
+    if (area) {
+      whereClauses.push(`ga.geographic_area_name = ?`);
+      params.push(area);
     }
-    if (professor) {
-      whereClauses.push(`(prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)`);
-      params.push(professor, professor);
+    if (program_type) {
+      whereClauses.push(`pt.program_type_name = ?`);
+      params.push(program_type);
+    }
+    if (date_from) {
+      whereClauses.push(`prog.last_session_date >= ?`);
+      params.push(date_from);
+    }
+    if (date_to) {
+      whereClauses.push(`prog.first_session_date <= ?`);
+      params.push(date_to);
     }
 
     const where = `WHERE ${whereClauses.join(' AND ')}`;
+    const sortMap = {
+      nickname: 'prog.program_nickname', status: 'cs.class_status_name',
+      location: 'loc.nickname', type: 'pt.program_type_name',
+      start_date: 'prog.first_session_date', end_date: 'prog.last_session_date',
+      professor: 'lp.professor_nickname',
+    };
+    const sortCol = sortMap[sort] || 'prog.first_session_date';
+    const sortDir = dir === 'desc' ? 'DESC' : dir === 'asc' ? 'ASC' : 'DESC';
 
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.live, prog.start_time, prog.class_length_minutes,
@@ -55,8 +71,10 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id AND lp.active = 1
        LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id AND ap.active = 1
+       LEFT JOIN city c ON c.id = loc.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        ${where}
-       ORDER BY prog.first_session_date DESC, prog.program_nickname
+       ORDER BY ${sortCol} ${sortDir}, prog.program_nickname ASC
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );
@@ -66,7 +84,10 @@ router.get('/', authenticate, async (req, res, next) => {
        FROM program prog
        LEFT JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
+       LEFT JOIN city c ON c.id = loc.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        ${where}`,
       params
     );

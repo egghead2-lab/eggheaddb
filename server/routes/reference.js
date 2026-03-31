@@ -51,6 +51,10 @@ router.get('/general-data', authenticate, async (req, res, next) => {
       pool.query(`SELECT id, geographic_area_name FROM geographic_area WHERE active = 1 ORDER BY geographic_area_name`),
       pool.query(`SELECT id, city_name, zip_code, state_id, geographic_area_id FROM city ORDER BY city_name`),
       pool.query(`SELECT id, state_name, state_code FROM state ORDER BY state_name`),
+      pool.query(`SELECT id, party_format_name FROM party_format WHERE active = 1 ORDER BY party_format_name`),
+      pool.query(`SELECT id, class_name FROM class WHERE active = 1 AND program_type_id = 4 AND class_name NOT LIKE 'Party / %' ORDER BY class_name`),
+      pool.query(`SELECT p.id, p.professor_nickname FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND p.show_party_trained_id = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
+      pool.query(`SELECT p.id, p.professor_nickname FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
     ];
 
     const results = await Promise.all(queries);
@@ -77,6 +81,10 @@ router.get('/general-data', authenticate, async (req, res, next) => {
         areas: results[16][0],
         cities: results[17][0],
         states: results[18][0],
+        partyFormats: results[19][0],
+        partyThemes: results[20][0],
+        partyLeadProfessors: results[21][0],
+        partyAssistProfessors: results[22][0],
       },
     });
   } catch (err) {

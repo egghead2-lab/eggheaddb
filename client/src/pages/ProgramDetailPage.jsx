@@ -12,7 +12,7 @@ import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
-import { formatDate, formatTime } from '../lib/utils';
+import { formatDate, formatTime, toFormData } from '../lib/utils';
 import { WEEKDAY_KEYS, WEEKDAYS } from '../lib/constants';
 
 export default function ProgramDetailPage() {
@@ -37,7 +37,7 @@ export default function ProgramDetailPage() {
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm();
 
   useEffect(() => {
-    if (progData?.data) reset(progData.data);
+    if (progData?.data) reset(toFormData(progData.data));
   }, [progData]);
 
   const mutation = useMutation({
