@@ -1,0 +1,228 @@
+const express = require('express');
+const router = express.Router();
+const pool = require('../db/pool');
+const { authenticate } = require('../middleware/auth');
+
+// GET /api/professors
+router.get('/', authenticate, async (req, res, next) => {
+  try {
+    const { search, status, area, training, page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereClauses = ['p.active = 1'];
+    let params = [];
+
+    if (search) {
+      whereClauses.push(`(p.professor_nickname LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? OR p.email LIKE ?)`);
+      const s = `%${search}%`;
+      params.push(s, s, s, s);
+    }
+    if (status) {
+      whereClauses.push(`p.professor_status_id = ?`);
+      params.push(status);
+    }
+    if (area) {
+      whereClauses.push(`ga.id = ?`);
+      params.push(area);
+    }
+    if (training) {
+      const trainingMap = {
+        science: 'p.science_trained_id IS NOT NULL',
+        engineering: 'p.engineering_trained_id IS NOT NULL',
+        show_party: 'p.show_party_trained_id IS NOT NULL',
+        slime_party: 'p.slime_party_trained_id IS NOT NULL',
+        demo: 'p.demo_trained_id IS NOT NULL',
+        studysmart: 'p.studysmart_trained_id IS NOT NULL',
+        camp: 'p.camp_trained_id IS NOT NULL',
+      };
+      if (trainingMap[training]) {
+        whereClauses.push(trainingMap[training]);
+      }
+    }
+
+    const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, p.phone_number,
+              p.base_pay, p.rating, p.virtus, p.tb_test,
+              p.science_trained_id, p.engineering_trained_id, p.show_party_trained_id,
+              p.slime_party_trained_id, p.demo_trained_id, p.studysmart_trained_id, p.camp_trained_id,
+              ps.professor_status_name,
+              c.city_name,
+              ga.geographic_area_name,
+              CONCAT(sc_user.first_name, ' ', sc_user.last_name) AS scheduling_coordinator,
+              (SELECT COUNT(*) FROM livescan l WHERE l.professor_id = p.id AND l.active = 1) AS livescan_count,
+              (SELECT COUNT(*) FROM availability a WHERE a.professor_id = p.id AND a.active = 1) AS availability_count
+       FROM professor p
+       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id AND ps.active = 1
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id AND ga.active = 1
+       LEFT JOIN user sc_user ON sc_user.id = p.scheduling_coordinator_owner_id
+       ${where}
+       ORDER BY p.professor_nickname
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM professor p
+       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id AND ps.active = 1
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id AND ga.active = 1
+       ${where}`,
+      params
+    );
+
+    res.json({ success: true, data: rows, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/professors/:id
+router.get('/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const [[professor]] = await pool.query(
+      `SELECT p.*,
+              ps.professor_status_name,
+              c.city_name, c.zip_code, c.state_id,
+              ga.geographic_area_name,
+              os.onboard_status_name
+       FROM professor p
+       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN onboard_status os ON os.id = p.onboard_status_id
+       WHERE p.id = ? AND p.active = 1`,
+      [id]
+    );
+
+    if (!professor) {
+      return res.status(404).json({ success: false, error: 'Professor not found' });
+    }
+
+    const [availability] = await pool.query(
+      `SELECT a.*, w.weekday_name
+       FROM availability a
+       LEFT JOIN weekday w ON w.id = a.weekday_id
+       WHERE a.professor_id = ? AND a.active = 1
+       ORDER BY a.weekday_id`,
+      [id]
+    );
+
+    const [livescans] = await pool.query(
+      `SELECT l.*, loc.nickname AS location_nickname
+       FROM livescan l
+       LEFT JOIN location loc ON loc.id = l.location_id
+       WHERE l.professor_id = ? AND l.active = 1
+       ORDER BY l.livescan_date DESC`,
+      [id]
+    );
+
+    const [bins] = await pool.query(
+      `SELECT hb.*, b.bin_name
+       FROM has_bin hb
+       LEFT JOIN bin b ON b.id = hb.bin_id
+       WHERE hb.professor_id = ? AND hb.active = 1
+       ORDER BY b.bin_name`,
+      [id]
+    );
+
+    const [daysOff] = await pool.query(
+      `SELECT * FROM day_off WHERE professor_id = ? ORDER BY date_requested DESC`,
+      [id]
+    );
+
+    const [incidents] = await pool.query(
+      `SELECT * FROM incident WHERE professor_id = ? AND active = 1 ORDER BY incident_date DESC`,
+      [id]
+    );
+
+    const [reviews] = await pool.query(
+      `SELECT * FROM review WHERE professor_id = ? AND active = 1 ORDER BY review_date DESC`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: { ...professor, availability, livescans, bins, daysOff, incidents, reviews },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/professors
+router.post('/', authenticate, async (req, res, next) => {
+  try {
+    const { userId } = req.user;
+    const data = req.body;
+
+    const fields = [
+      'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email',
+      'phone_number', 'address', 'city_id', 'general_notes', 'emergency_contact',
+      'emergency_contact_number', 'birthday', 'hire_date', 'termination_date',
+      'termination_rason', 'schedule_link', 'base_pay', 'assist_pay', 'pickup_pay',
+      'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
+      'show_party_trained_id', 'slime_party_trained_id', 'demo_trained_id',
+      'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
+      'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
+    ];
+
+    const insertFields = fields.filter(f => data[f] !== undefined);
+    const values = insertFields.map(f => data[f] === '' ? null : data[f]);
+
+    const [result] = await pool.query(
+      `INSERT INTO professor (${insertFields.join(', ')}, active, ts_inserted, ts_updated)
+       VALUES (${insertFields.map(() => '?').join(', ')}, 1, NOW(), NOW())`,
+      values
+    );
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/professors/:id
+router.put('/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.user;
+    const data = req.body;
+
+    const fields = [
+      'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email',
+      'phone_number', 'address', 'city_id', 'general_notes', 'emergency_contact',
+      'emergency_contact_number', 'birthday', 'hire_date', 'termination_date',
+      'termination_rason', 'schedule_link', 'base_pay', 'assist_pay', 'pickup_pay',
+      'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
+      'show_party_trained_id', 'slime_party_trained_id', 'demo_trained_id',
+      'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
+      'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
+      'active',
+    ];
+
+    const updateFields = fields.filter(f => data[f] !== undefined);
+    const values = updateFields.map(f => data[f] === '' ? null : data[f]);
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No fields to update' });
+    }
+
+    await pool.query(
+      `UPDATE professor SET ${updateFields.map(f => `${f} = ?`).join(', ')}, ts_updated = NOW()
+       WHERE id = ?`,
+      [...values, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

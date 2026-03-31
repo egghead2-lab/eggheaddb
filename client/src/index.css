@@ -1,0 +1,24 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
+
+@theme {
+  --color-navy: #1e3a5f;
+  --color-navy-light: #2d5a8e;
+  --color-navy-dark: #152a47;
+  --font-family-sans: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  color: #1f2937;
+  background-color: #f9fafb;
+  font-size: 14px;
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
