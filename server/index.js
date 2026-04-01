@@ -12,6 +12,8 @@ const partiesRoutes = require('./routes/parties');
 const usersRoutes = require('./routes/users');
 const holidaysRoutes = require('./routes/holidays');
 const studentsRoutes = require('./routes/students');
+const lessonsRoutes = require('./routes/lessons');
+const classesRoutes = require('./routes/classes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -35,6 +37,8 @@ app.get('/api/health', (req, res) => {
 // Routes — reference routes first so /api/professors/list and /api/locations/list
 // don't get caught by /:id params in entity routers
 app.use('/api/auth', authRoutes);
+app.use('/api/lessons', lessonsRoutes);
+app.use('/api/classes', classesRoutes);
 app.use('/api', referenceRoutes);
 app.use('/api/professors', professorsRoutes);
 app.use('/api/locations', locationsRoutes);

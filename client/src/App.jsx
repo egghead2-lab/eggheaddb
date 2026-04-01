@@ -13,6 +13,9 @@ import UsersPage from './pages/UsersPage';
 import UserDetailPage from './pages/UserDetailPage';
 import StudentsPage from './pages/StudentsPage';
 import StudentDetailPage from './pages/StudentDetailPage';
+import LessonsPage from './pages/LessonsPage';
+import LessonDetailPage from './pages/LessonDetailPage';
+import ModuleDetailPage from './pages/ModuleDetailPage';
 import HolidaysPage from './pages/HolidaysPage';
 import HolidayDetailPage from './pages/HolidayDetailPage';
 
@@ -39,6 +42,10 @@ export default function App() {
       <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
       <Route path="/students/new" element={<ProtectedRoute><StudentDetailPage /></ProtectedRoute>} />
       <Route path="/students/:id" element={<ProtectedRoute><StudentDetailPage /></ProtectedRoute>} />
+      <Route path="/lessons" element={<ProtectedRoute><LessonsPage /></ProtectedRoute>} />
+      <Route path="/lessons/new" element={<ProtectedRoute><LessonDetailPage /></ProtectedRoute>} />
+      <Route path="/lessons/:id" element={<ProtectedRoute><LessonDetailPage /></ProtectedRoute>} />
+      <Route path="/modules/:id" element={<ProtectedRoute><ModuleDetailPage /></ProtectedRoute>} />
       <Route path="/holidays" element={<ProtectedRoute><HolidaysPage /></ProtectedRoute>} />
       <Route path="/holidays/new" element={<ProtectedRoute><HolidayDetailPage /></ProtectedRoute>} />
       <Route path="/holidays/:id" element={<ProtectedRoute><HolidayDetailPage /></ProtectedRoute>} />
