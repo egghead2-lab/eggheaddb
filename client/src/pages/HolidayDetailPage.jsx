@@ -9,6 +9,7 @@ import { Input } from '../components/ui/Input';
 
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { toFormData } from '../lib/utils';
 
 export default function HolidayDetailPage() {
@@ -23,7 +24,7 @@ export default function HolidayDetailPage() {
     enabled: !isNew,
   });
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm();
 
   useEffect(() => {
     if (holidayData?.data) reset(toFormData(holidayData.data));
@@ -59,6 +60,7 @@ export default function HolidayDetailPage() {
 
   return (
     <AppShell>
+      <UnsavedChangesModal when={isDirty} />
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>

@@ -137,6 +137,18 @@ router.put('/roles/:id', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/lessons
+router.get('/lessons', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, lesson_name, class_id FROM lesson WHERE active = 1 ORDER BY lesson_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/professors/list
 router.get('/professors/list', authenticate, async (req, res, next) => {
   try {

@@ -12,6 +12,7 @@ import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 
 export default function LocationDetailPage() {
   const { id } = useParams();
@@ -28,7 +29,7 @@ export default function LocationDetailPage() {
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
 
   useEffect(() => {
     if (locData?.data) reset(toFormData(locData.data));
@@ -52,6 +53,7 @@ export default function LocationDetailPage() {
 
   return (
     <AppShell>
+      <UnsavedChangesModal when={isDirty} />
       <form onSubmit={handleSubmit(onSubmit)}>
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">

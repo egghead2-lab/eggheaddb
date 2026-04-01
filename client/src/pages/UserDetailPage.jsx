@@ -10,6 +10,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { toFormData } from '../lib/utils';
 
 export default function UserDetailPage() {
@@ -32,7 +33,7 @@ export default function UserDetailPage() {
   });
   const roles = rolesData?.data || [];
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, setValue, formState: { errors, isDirty } } = useForm();
 
   useEffect(() => {
     if (userData?.data) reset(toFormData(userData.data));
@@ -76,6 +77,7 @@ export default function UserDetailPage() {
 
   return (
     <AppShell>
+      <UnsavedChangesModal when={isDirty} />
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>

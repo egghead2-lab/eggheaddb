@@ -128,6 +128,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
       `SELECT prog.*,
               cs.class_status_name,
               loc.nickname AS location_nickname,
+              loc.retained AS location_retained,
               cl.class_name, cl.class_code, cl.formal_class_name,
               pt.program_type_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
@@ -193,7 +194,7 @@ router.post('/', authenticate, async (req, res, next) => {
     const fields = [
       'program_nickname', 'class_status_id', 'location_id', 'live', 'class_id',
       'start_time', 'class_length_minutes', 'monday', 'tuesday', 'wednesday', 'thursday',
-      'friday', 'saturday', 'sunday', 'general_notes', 'parent_cost', 'lab_fee',
+      'friday', 'saturday', 'sunday', 'general_notes', 'parent_cost', 'our_cut', 'lab_fee',
       'number_enrolled', 'minimum_students', 'maximum_students', 'roster_received',
       'roster_confirmed', 'roster_notes', 'degrees_printed', 'payment_through_us',
       'lead_professor_id', 'lead_professor_pay', 'tb_required', 'livescan_required',
@@ -236,7 +237,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
     const fields = [
       'program_nickname', 'class_status_id', 'location_id', 'live', 'class_id',
       'start_time', 'class_length_minutes', 'monday', 'tuesday', 'wednesday', 'thursday',
-      'friday', 'saturday', 'sunday', 'general_notes', 'parent_cost', 'lab_fee',
+      'friday', 'saturday', 'sunday', 'general_notes', 'parent_cost', 'our_cut', 'lab_fee',
       'number_enrolled', 'minimum_students', 'maximum_students', 'roster_received',
       'roster_confirmed', 'roster_notes', 'degrees_printed', 'payment_through_us',
       'lead_professor_id', 'lead_professor_pay', 'tb_required', 'livescan_required',
@@ -346,6 +347,103 @@ router.put('/:id/sessions', authenticate, async (req, res, next) => {
     } finally {
       conn.release();
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/programs/:id/sessions/add — add a single session
+router.post('/:id/sessions/add', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, lesson_id, specific_notes, not_billed } = req.body;
+
+    if (!session_date) return res.status(400).json({ success: false, error: 'Date is required' });
+
+    const [result] = await pool.query(
+      `INSERT INTO session (program_id, session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, lesson_id, specific_notes, not_billed, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [id, session_date, session_time || null, professor_id || null, professor_pay || null, assistant_id || null, assistant_pay || null, lesson_id || null, specific_notes || null, not_billed ? 1 : 0]
+    );
+
+    // Auto-update first/last session dates on the program
+    await pool.query(
+      `UPDATE program SET
+         first_session_date = (SELECT MIN(session_date) FROM session WHERE program_id = ? AND active = 1),
+         last_session_date = (SELECT MAX(session_date) FROM session WHERE program_id = ? AND active = 1),
+         ts_updated = NOW()
+       WHERE id = ?`,
+      [id, id, id]
+    );
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/programs/:id/sessions/:sessionId — update a single session
+router.put('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
+  try {
+    const { id, sessionId } = req.params;
+    const { session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, lesson_id, specific_notes, not_billed } = req.body;
+
+    const fields = [];
+    const values = [];
+    if (session_date !== undefined) { fields.push('session_date = ?'); values.push(session_date || null); }
+    if (session_time !== undefined) { fields.push('session_time = ?'); values.push(session_time || null); }
+    if (professor_id !== undefined) { fields.push('professor_id = ?'); values.push(professor_id || null); }
+    if (professor_pay !== undefined) { fields.push('professor_pay = ?'); values.push(professor_pay || null); }
+    if (assistant_id !== undefined) { fields.push('assistant_id = ?'); values.push(assistant_id || null); }
+    if (assistant_pay !== undefined) { fields.push('assistant_pay = ?'); values.push(assistant_pay || null); }
+    if (lesson_id !== undefined) { fields.push('lesson_id = ?'); values.push(lesson_id || null); }
+    if (specific_notes !== undefined) { fields.push('specific_notes = ?'); values.push(specific_notes || null); }
+    if (not_billed !== undefined) { fields.push('not_billed = ?'); values.push(not_billed ? 1 : 0); }
+
+    if (fields.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+
+    await pool.query(
+      `UPDATE session SET ${fields.join(', ')}, ts_updated = NOW() WHERE id = ? AND program_id = ?`,
+      [...values, sessionId, id]
+    );
+
+    // Auto-update first/last session dates
+    await pool.query(
+      `UPDATE program SET
+         first_session_date = (SELECT MIN(session_date) FROM session WHERE program_id = ? AND active = 1),
+         last_session_date = (SELECT MAX(session_date) FROM session WHERE program_id = ? AND active = 1),
+         ts_updated = NOW()
+       WHERE id = ?`,
+      [id, id, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/programs/:id/sessions/:sessionId — soft delete a session
+router.delete('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
+  try {
+    const { id, sessionId } = req.params;
+
+    await pool.query(
+      `UPDATE session SET active = 0, ts_updated = NOW() WHERE id = ? AND program_id = ?`,
+      [sessionId, id]
+    );
+
+    // Auto-update first/last session dates
+    await pool.query(
+      `UPDATE program SET
+         first_session_date = (SELECT MIN(session_date) FROM session WHERE program_id = ? AND active = 1),
+         last_session_date = (SELECT MAX(session_date) FROM session WHERE program_id = ? AND active = 1),
+         ts_updated = NOW()
+       WHERE id = ?`,
+      [id, id, id]
+    );
+
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

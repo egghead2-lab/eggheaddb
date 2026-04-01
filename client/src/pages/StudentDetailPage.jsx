@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { SearchSelect } from '../components/ui/SearchSelect';
+import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { formatDate, toFormData } from '../lib/utils';
 
 export default function StudentDetailPage() {
@@ -28,7 +29,7 @@ export default function StudentDetailPage() {
   const { data: locationListData } = useLocationList();
   const locations = locationListData?.data || [];
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
 
   useEffect(() => {
     if (studentData?.data) reset(toFormData(studentData.data));
@@ -51,6 +52,7 @@ export default function StudentDetailPage() {
 
   return (
     <AppShell>
+      <UnsavedChangesModal when={isDirty} />
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="bg-white border-b border-gray-200 px-6 py-4">
           <Link to="/students" className="text-sm text-gray-500 hover:text-[#1e3a5f]">← Students</Link>

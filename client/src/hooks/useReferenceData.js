@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getGeneralData, getAreas, getProfessorList, getLocationList } from '../api/reference';
+import { getGeneralData, getAreas, getProfessorList, getLocationList, getLessons } from '../api/reference';
 
 export function useGeneralData() {
   return useQuery({ queryKey: ['general-data'], queryFn: getGeneralData, staleTime: 10 * 60 * 1000 });
@@ -12,4 +12,7 @@ export function useProfessorList() {
 }
 export function useLocationList() {
   return useQuery({ queryKey: ['locations', 'list'], queryFn: getLocationList, staleTime: 5 * 60 * 1000 });
+}
+export function useLessons() {
+  return useQuery({ queryKey: ['lessons'], queryFn: getLessons, staleTime: 10 * 60 * 1000 });
 }

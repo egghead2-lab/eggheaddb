@@ -5,4 +5,7 @@ export const createProgram = (data) => api.post('/programs', data).then(r => r.d
 export const updateProgram = (id, data) => api.put(`/programs/${id}`, data).then(r => r.data);
 export const getSessions = (id) => api.get(`/programs/${id}/sessions`).then(r => r.data);
 export const updateSessions = (id, sessions) => api.put(`/programs/${id}/sessions`, { sessions }).then(r => r.data);
+export const addSession = (id, data) => api.post(`/programs/${id}/sessions/add`, data).then(r => r.data);
+export const updateSession = (id, sessionId, data) => api.put(`/programs/${id}/sessions/${sessionId}`, data).then(r => r.data);
+export const deleteSession = (id, sessionId) => api.delete(`/programs/${id}/sessions/${sessionId}`).then(r => r.data);
 export const getRoster = (id) => api.get(`/programs/${id}/roster`).then(r => r.data);
