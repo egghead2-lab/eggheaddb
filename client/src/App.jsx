@@ -18,6 +18,8 @@ import LessonDetailPage from './pages/LessonDetailPage';
 import ModuleDetailPage from './pages/ModuleDetailPage';
 import HolidaysPage from './pages/HolidaysPage';
 import HolidayDetailPage from './pages/HolidayDetailPage';
+import ParentsPage from './pages/ParentsPage';
+import ParentDetailPage from './pages/ParentDetailPage';
 
 export default function App() {
   return (
@@ -49,6 +51,9 @@ export default function App() {
       <Route path="/holidays" element={<ProtectedRoute><HolidaysPage /></ProtectedRoute>} />
       <Route path="/holidays/new" element={<ProtectedRoute><HolidayDetailPage /></ProtectedRoute>} />
       <Route path="/holidays/:id" element={<ProtectedRoute><HolidayDetailPage /></ProtectedRoute>} />
+      <Route path="/parents" element={<ProtectedRoute><ParentsPage /></ProtectedRoute>} />
+      <Route path="/parents/new" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
+      <Route path="/parents/:id" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/programs" replace />} />
     </Routes>
   );

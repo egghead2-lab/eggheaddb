@@ -12,6 +12,7 @@ const partiesRoutes = require('./routes/parties');
 const usersRoutes = require('./routes/users');
 const holidaysRoutes = require('./routes/holidays');
 const studentsRoutes = require('./routes/students');
+const parentsRoutes = require('./routes/parents');
 const lessonsRoutes = require('./routes/lessons');
 const classesRoutes = require('./routes/classes');
 const errorHandler = require('./middleware/errorHandler');
@@ -47,6 +48,7 @@ app.use('/api/parties', partiesRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/holidays', holidaysRoutes);
 app.use('/api/students', studentsRoutes);
+app.use('/api/parents', parentsRoutes);
 
 // Error handler
 app.use(errorHandler);

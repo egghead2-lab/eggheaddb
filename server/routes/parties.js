@@ -122,7 +122,9 @@ router.get('/:id', authenticate, async (req, res, next) => {
               cl.class_name, cl.class_code,
               pt.program_type_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
-              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname,
+              CONCAT(par.first_name, ' ', par.last_name) AS contact_name,
+              par.email AS contact_email
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
@@ -132,6 +134,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
        LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id
        LEFT JOIN party_format pf ON pf.id = prog.party_format_id
        LEFT JOIN class cl2 ON cl2.id = prog.class_id AND cl2.program_type_id = 4
+       LEFT JOIN parent par ON par.id = prog.parent_id
        WHERE prog.id = ? AND prog.active = 1 AND pt.program_type_name = 'Party'`,
       [id]
     );

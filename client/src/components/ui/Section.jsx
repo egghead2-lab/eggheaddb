@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
-export function Section({ title, children, defaultOpen = false, className = '' }) {
+export function Section({ title, children, defaultOpen = false, className = '', overflow = 'hidden' }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className={`border border-gray-200 rounded-lg overflow-hidden ${className}`}>
+    <div className={`border border-gray-200 rounded-lg overflow-${overflow} ${className}`}>
       <button
         type="button"
         onClick={() => setOpen(!open)}

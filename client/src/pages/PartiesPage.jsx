@@ -147,7 +147,11 @@ export default function PartiesPage() {
                           <div className="text-xs text-gray-400">{[p.city_name, p.zip_code].filter(Boolean).join(' ')}</div>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.contact_name?.trim() || '—'}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {p.contact_id
+                          ? <Link to={`/parents/${p.contact_id}`} className="text-[#1e3a5f] hover:underline">{p.contact_name?.trim()}</Link>
+                          : <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.contact_email || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_format_name || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_theme || p.class_name || '—'}</td>

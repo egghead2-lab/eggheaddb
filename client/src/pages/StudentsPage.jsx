@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { calcAge } from '../lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { getStudents } from '../api/students';
 import { AppShell } from '../components/layout/AppShell';
@@ -64,6 +65,7 @@ export default function StudentsPage() {
                   <tr>
                     <SortTh col="name" sort={sort} dir={dir} onSort={handleSort}>Student Name</SortTh>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Age</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-700">Grade</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Parent</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Parent Email</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Location</th>
@@ -71,7 +73,7 @@ export default function StudentsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {students.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-12 text-gray-400">No students found</td></tr>
+                    <tr><td colSpan={6} className="text-center py-12 text-gray-400">No students found</td></tr>
                   ) : students.map((s, i) => (
                     <tr key={s.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className="px-4 py-2.5">
@@ -79,9 +81,12 @@ export default function StudentsPage() {
                           {s.first_name} {s.last_name}
                         </Link>
                       </td>
-                      <td className="px-4 py-2.5 text-gray-600">{s.last_age || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{calcAge(s.birthday) ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{s.current_grade_name || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600">
-                        {s.parent_first_name ? `${s.parent_first_name} ${s.parent_last_name}` : '—'}
+                        {s.parent_id
+                          ? <Link to={`/parents/${s.parent_id}`} className="text-[#1e3a5f] hover:underline">{s.parent_first_name} {s.parent_last_name}</Link>
+                          : '—'}
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{s.parent_email || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600">{s.location_nickname || '—'}</td>

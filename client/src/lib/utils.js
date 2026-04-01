@@ -30,6 +30,16 @@ export function formatTimeRange(startTime, lengthMinutes) {
   return `${fmt(startMins)} – ${fmt(endMins)} ${ampm}`;
 }
 
+export function calcAge(birthday) {
+  if (!birthday) return null;
+  const dob = new Date(birthday);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 export function formatCurrency(val) {
   if (val == null || val === '') return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);

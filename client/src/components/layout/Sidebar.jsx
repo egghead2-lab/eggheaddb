@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { to: '/parties', label: 'Parties' },
   { to: '/users', label: 'Users' },
   { to: '/students', label: 'Students' },
+  { to: '/parents', label: 'Parents' },
   { to: '/lessons', label: 'Lessons' },
   { to: '/holidays', label: 'Holidays' },
 ];

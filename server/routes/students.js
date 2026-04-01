@@ -26,13 +26,15 @@ router.get('/', authenticate, async (req, res, next) => {
     const sortDir = dir === 'desc' ? 'DESC' : 'ASC';
 
     const [rows] = await pool.query(
-      `SELECT s.id, s.first_name, s.last_name, s.birthday, s.location_id,
+      `SELECT s.id, s.first_name, s.last_name, s.birthday, s.location_id, s.current_grade_id,
               p.id AS parent_id, p.first_name AS parent_first_name, p.last_name AS parent_last_name, p.email AS parent_email, p.phone AS parent_phone,
-              loc.nickname AS location_nickname
+              loc.nickname AS location_nickname,
+              g.grade_name AS current_grade_name
        FROM student s
        LEFT JOIN student_parent sp ON sp.student_id = s.id AND sp.active = 1
        LEFT JOIN parent p ON p.id = sp.parent_id AND p.active = 1
        LEFT JOIN location loc ON loc.id = s.location_id AND loc.active = 1
+       LEFT JOIN grade g ON g.id = s.current_grade_id AND g.active = 1
        ${where}
        ORDER BY ${sortCol} ${sortDir}, s.first_name ASC
        LIMIT ? OFFSET ?`,
@@ -150,7 +152,7 @@ router.post('/', authenticate, async (req, res, next) => {
 router.put('/:id', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { first_name, last_name, birthday, address, city_id, active } = req.body;
+    const { first_name, last_name, birthday, address, city_id, active, current_grade_id } = req.body;
 
     const fields = [];
     const values = [];
@@ -161,6 +163,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
     if (address !== undefined) { fields.push('address = ?'); values.push(address || null); }
     if (city_id !== undefined) { fields.push('city_id = ?'); values.push(city_id || null); }
     if (req.body.location_id !== undefined) { fields.push('location_id = ?'); values.push(req.body.location_id || null); }
+    if (current_grade_id !== undefined) { fields.push('current_grade_id = ?'); values.push(current_grade_id || null); }
     if (active !== undefined) { fields.push('active = ?'); values.push(active); }
 
     if (fields.length === 0) {

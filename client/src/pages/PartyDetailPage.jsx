@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getParty, createParty, updateParty } from '../api/parties';
+import { searchParents } from '../api/parents';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
@@ -48,6 +49,39 @@ export default function PartyDetailPage() {
 
   const party = partyData?.data || {};
   const onSubmit = (data) => mutation.mutate(data);
+
+  // Contact search
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactResults, setContactResults] = useState([]);
+  const [selectedContact, setSelectedContact] = useState(null);
+
+  useEffect(() => {
+    if (partyData?.data) {
+      const d = partyData.data;
+      if (d.parent_id && d.contact_name) {
+        setSelectedContact({ id: d.parent_id, name: d.contact_name, email: d.contact_email });
+      }
+    }
+  }, [partyData]);
+
+  const handleContactSearch = async (q) => {
+    setContactSearch(q);
+    if (q.length < 2) { setContactResults([]); return; }
+    const res = await searchParents(q);
+    setContactResults(res.data || []);
+  };
+
+  const handleContactSelect = (c) => {
+    setSelectedContact({ id: c.id, name: `${c.first_name} ${c.last_name}`, email: c.email });
+    setValue('parent_id', c.id, { shouldDirty: true });
+    setContactSearch('');
+    setContactResults([]);
+  };
+
+  const handleContactClear = () => {
+    setSelectedContact(null);
+    setValue('parent_id', '', { shouldDirty: true });
+  };
 
   if (!isNew && isLoading) {
     return <AppShell><div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div></AppShell>;
@@ -111,7 +145,57 @@ export default function PartyDetailPage() {
             </div>
           </Section>
 
-          {/* Section 2: Professors */}
+          {/* Section 2: Contact */}
+          <Section title="Contact" defaultOpen={true}>
+            <input type="hidden" {...register('parent_id')} />
+            <div className="grid grid-cols-5 gap-3 items-end">
+              <div className="col-span-2">
+                {selectedContact ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-700">Contact</label>
+                    <div className="flex items-center gap-2 rounded border border-gray-300 px-3 py-1.5 text-sm bg-white">
+                      <Link to={`/parents/${selectedContact.id}`} className="text-[#1e3a5f] hover:underline font-medium flex-1">
+                        {selectedContact.name}
+                      </Link>
+                      <button type="button" onClick={() => { setContactSearch(''); setSelectedContact(null); setValue('parent_id', '', { shouldDirty: true }); setContactResults([]); }} className="text-gray-400 hover:text-gray-600 text-xs">change</button>
+                      <button type="button" onClick={handleContactClear} className="text-gray-400 hover:text-red-500 text-xs">clear</button>
+                    </div>
+                    {selectedContact.email && <span className="text-xs text-gray-500">{selectedContact.email}</span>}
+                  </div>
+                ) : (
+                  <div className="relative flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-700">Contact</label>
+                    <input
+                      type="text"
+                      placeholder="Search parents…"
+                      value={contactSearch}
+                      onChange={e => handleContactSearch(e.target.value)}
+                      className="block w-full rounded border border-gray-300 text-sm shadow-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+                    />
+                    {contactResults.length > 0 && (
+                      <ul className="absolute top-full z-20 mt-1 w-full bg-white border border-gray-200 rounded shadow max-h-48 overflow-y-auto">
+                        {contactResults.map(c => (
+                          <li key={c.id} onClick={() => handleContactSelect(c)} className="px-3 py-2 text-sm cursor-pointer hover:bg-[#1e3a5f]/10">
+                            <span className="font-medium">{c.first_name} {c.last_name}</span>
+                            {c.email && <span className="text-gray-400 ml-2 text-xs">{c.email}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+              <Link
+                to="/parents/new"
+                target="_blank"
+                className="text-xs text-[#1e3a5f] hover:underline pb-1.5"
+              >
+                + New Parent
+              </Link>
+            </div>
+          </Section>
+
+          {/* Section 3: Professors */}
           <Section title="Professors" defaultOpen={true}>
             <div className="grid grid-cols-5 gap-3">
               <Select label="Lead Professor" {...register('lead_professor_id')}>
