@@ -12,6 +12,8 @@ import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
+import { SearchSelect } from '../components/ui/SearchSelect';
+import { RosterPanel } from '../components/RosterPanel';
 import { formatDate, formatTime, toFormData } from '../lib/utils';
 import { WEEKDAY_KEYS, WEEKDAYS } from '../lib/constants';
 
@@ -83,22 +85,25 @@ export default function ProgramDetailPage() {
                   <option key={s.id} value={s.id}>{s.class_status_name}</option>
                 ))}
               </Select>
-              <Select label="Location" {...register('location_id')}>
-                <option value="">Select location…</option>
-                {locations.map(l => (
-                  <option key={l.id} value={l.id}>{l.nickname}</option>
-                ))}
-              </Select>
+              <SearchSelect
+                label="Location"
+                value={watch('location_id')}
+                onChange={v => setValue('location_id', v, { shouldDirty: true })}
+                options={locations}
+                displayKey="nickname"
+                valueKey="id"
+                placeholder="Search locations…"
+              />
               <Select label="Lead Professor" {...register('lead_professor_id')}>
                 <option value="">None</option>
                 {professors.map(p => (
-                  <option key={p.id} value={p.id}>{p.professor_nickname}</option>
+                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
                 ))}
               </Select>
               <Select label="Assistant Professor" {...register('assistant_professor_id')}>
                 <option value="">None</option>
                 {professors.map(p => (
-                  <option key={p.id} value={p.id}>{p.professor_nickname}</option>
+                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
                 ))}
               </Select>
               <div className="col-span-2">
@@ -129,6 +134,17 @@ export default function ProgramDetailPage() {
               </div>
             </div>
           </Section>
+
+          {/* Roster */}
+          {!isNew && (
+            <Section title={`Roster (${(prog.roster || []).length}${prog.maximum_students ? ' / ' + prog.maximum_students : ''} students)`} defaultOpen={true}>
+              <RosterPanel
+                programId={id}
+                roster={prog.roster || []}
+                maxStudents={prog.maximum_students}
+              />
+            </Section>
+          )}
 
           {/* Section 3: Enrollment */}
           <Section title="Enrollment & Pricing">
@@ -203,7 +219,7 @@ export default function ProgramDetailPage() {
               <Select label="Demo Professor" {...register('demo_professor_id')}>
                 <option value="">None</option>
                 {professors.map(p => (
-                  <option key={p.id} value={p.id}>{p.professor_nickname}</option>
+                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
                 ))}
               </Select>
               <div className="col-span-2">
@@ -242,36 +258,6 @@ export default function ProgramDetailPage() {
               />
             </div>
           </Section>
-
-          {/* Section 8: Roster */}
-          {prog.roster && prog.roster.length > 0 && (
-            <Section title={`Roster (${prog.roster.length} students)`}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Name</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Grade</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {prog.roster.map(r => (
-                      <tr key={r.id}>
-                        <td className="px-3 py-2">{r.last_name}, {r.first_name}</td>
-                        <td className="px-3 py-2 text-gray-500">{r.grade_name || '—'}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${r.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {r.active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Section>
-          )}
 
           {/* Section 9: Sessions */}
           {prog.sessions && prog.sessions.length > 0 && (

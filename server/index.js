@@ -9,6 +9,9 @@ const professorsRoutes = require('./routes/professors');
 const locationsRoutes = require('./routes/locations');
 const programsRoutes = require('./routes/programs');
 const partiesRoutes = require('./routes/parties');
+const usersRoutes = require('./routes/users');
+const holidaysRoutes = require('./routes/holidays');
+const studentsRoutes = require('./routes/students');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -29,13 +32,17 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Routes
+// Routes — reference routes first so /api/professors/list and /api/locations/list
+// don't get caught by /:id params in entity routers
 app.use('/api/auth', authRoutes);
+app.use('/api', referenceRoutes);
 app.use('/api/professors', professorsRoutes);
 app.use('/api/locations', locationsRoutes);
 app.use('/api/programs', programsRoutes);
 app.use('/api/parties', partiesRoutes);
-app.use('/api', referenceRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/holidays', holidaysRoutes);
+app.use('/api/students', studentsRoutes);
 
 // Error handler
 app.use(errorHandler);

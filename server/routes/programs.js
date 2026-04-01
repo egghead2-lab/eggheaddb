@@ -23,15 +23,34 @@ router.get('/', authenticate, async (req, res, next) => {
     if (status) {
       whereClauses.push(`cs.class_status_name = ?`);
       params.push(status);
+    } else {
+      whereClauses.push(`cs.class_status_name NOT LIKE 'Cancelled%'`);
     }
     if (area) {
       whereClauses.push(`ga.geographic_area_name = ?`);
       params.push(area);
     }
+    if (req.query.location) {
+      whereClauses.push(`prog.location_id = ?`);
+      params.push(req.query.location);
+    }
     if (program_type) {
       whereClauses.push(`pt.program_type_name = ?`);
       params.push(program_type);
     }
+    if (req.query.contractor) {
+      whereClauses.push(`loc.contractor_id = ?`);
+      params.push(req.query.contractor);
+    }
+    // Timeframe filter: 'current' (default), 'past', 'all'
+    const timeframe = req.query.timeframe || 'current';
+    if (timeframe === 'current') {
+      whereClauses.push(`(prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)`);
+    } else if (timeframe === 'past') {
+      whereClauses.push(`prog.last_session_date < CURDATE()`);
+    }
+    // 'all' = no date restriction
+
     if (date_from) {
       whereClauses.push(`prog.last_session_date >= ?`);
       params.push(date_from);
@@ -62,7 +81,7 @@ router.get('/', authenticate, async (req, res, next) => {
               cl.class_name, cl.class_code,
               pt.program_type_name,
               CONCAT(lp.first_name, ' ', lp.last_name) AS lead_professor_name,
-              lp.professor_nickname AS lead_professor_nickname,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
               CONCAT(ap.first_name, ' ', ap.last_name) AS assistant_professor_name
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
@@ -71,6 +90,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id AND lp.active = 1
        LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id AND ap.active = 1
+       LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        LEFT JOIN city c ON c.id = loc.city_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        ${where}
@@ -86,6 +106,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
+       LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        LEFT JOIN city c ON c.id = loc.city_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        ${where}`,
@@ -109,9 +130,9 @@ router.get('/:id', authenticate, async (req, res, next) => {
               loc.nickname AS location_nickname,
               cl.class_name, cl.class_code, cl.formal_class_name,
               pt.program_type_name,
-              lp.professor_nickname AS lead_professor_nickname,
-              ap.professor_nickname AS assistant_professor_nickname,
-              dp.professor_nickname AS demo_professor_nickname
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname,
+              CONCAT(dp.professor_nickname, ' ', dp.last_name) AS demo_professor_nickname
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
@@ -130,8 +151,8 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
     const [sessions] = await pool.query(
       `SELECT s.*,
-              p.professor_nickname AS professor_nickname,
-              ap.professor_nickname AS assistant_nickname,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_nickname,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_nickname,
               l.lesson_name
        FROM session s
        LEFT JOIN professor p ON p.id = s.professor_id
@@ -145,12 +166,16 @@ router.get('/:id', authenticate, async (req, res, next) => {
     const [roster] = await pool.query(
       `SELECT pr.*,
               st.first_name, st.last_name, st.birthday,
-              g.grade_name
+              g.grade_name,
+              p.first_name AS parent_first_name, p.last_name AS parent_last_name,
+              p.email AS parent_email, p.phone AS parent_phone
        FROM program_roster pr
        LEFT JOIN student st ON st.id = pr.student_id AND st.active = 1
        LEFT JOIN grade g ON g.id = pr.grade_id AND g.active = 1
+       LEFT JOIN student_parent sp ON sp.student_id = st.id AND sp.active = 1
+       LEFT JOIN parent p ON p.id = sp.parent_id AND p.active = 1
        WHERE pr.program_id = ? AND pr.active = 1
-       ORDER BY st.last_name, st.first_name`,
+       ORDER BY pr.date_dropped IS NOT NULL, st.last_name, st.first_name`,
       [id]
     );
 
@@ -255,8 +280,8 @@ router.get('/:id/sessions', authenticate, async (req, res, next) => {
     const { id } = req.params;
     const [sessions] = await pool.query(
       `SELECT s.*,
-              p.professor_nickname,
-              ap.professor_nickname AS assistant_nickname,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_nickname,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_nickname,
               l.lesson_name
        FROM session s
        LEFT JOIN professor p ON p.id = s.professor_id
@@ -333,12 +358,16 @@ router.get('/:id/roster', authenticate, async (req, res, next) => {
     const [roster] = await pool.query(
       `SELECT pr.*,
               st.first_name, st.last_name, st.birthday,
-              g.grade_name
+              g.grade_name,
+              p.first_name AS parent_first_name, p.last_name AS parent_last_name,
+              p.email AS parent_email, p.phone AS parent_phone
        FROM program_roster pr
        LEFT JOIN student st ON st.id = pr.student_id AND st.active = 1
        LEFT JOIN grade g ON g.id = pr.grade_id AND g.active = 1
+       LEFT JOIN student_parent sp ON sp.student_id = st.id AND sp.active = 1
+       LEFT JOIN parent p ON p.id = sp.parent_id AND p.active = 1
        WHERE pr.program_id = ? AND pr.active = 1
-       ORDER BY st.last_name, st.first_name`,
+       ORDER BY pr.date_dropped IS NOT NULL, st.last_name, st.first_name`,
       [id]
     );
     res.json({ success: true, data: roster });
@@ -395,6 +424,101 @@ router.put('/:id/roster', authenticate, async (req, res, next) => {
     } finally {
       conn.release();
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/programs/:id/roster/add — add a student to roster (enforces max)
+router.post('/:id/roster/add', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { student_id, age, notes } = req.body;
+
+    if (!student_id) return res.status(400).json({ success: false, error: 'Student is required' });
+
+    // Check max enrollment
+    const [[program]] = await pool.query(
+      `SELECT maximum_students FROM program WHERE id = ? AND active = 1`, [id]
+    );
+    if (!program) return res.status(404).json({ success: false, error: 'Program not found' });
+
+    const [[{ count }]] = await pool.query(
+      `SELECT COUNT(*) AS count FROM program_roster WHERE program_id = ? AND active = 1 AND date_dropped IS NULL`, [id]
+    );
+
+    if (program.maximum_students && count >= program.maximum_students) {
+      return res.status(400).json({ success: false, error: `Cannot add — roster is full (${count}/${program.maximum_students} active students)` });
+    }
+
+    // Check if already on roster
+    const [[existing]] = await pool.query(
+      `SELECT id FROM program_roster WHERE program_id = ? AND student_id = ? AND active = 1`, [id, student_id]
+    );
+    if (existing) return res.status(400).json({ success: false, error: 'Student is already on this roster' });
+
+    const [result] = await pool.query(
+      `INSERT INTO program_roster (program_id, student_id, age, notes, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, 1, NOW(), NOW())`,
+      [id, student_id, age || null, notes || null]
+    );
+
+    // Update enrolled count
+    await pool.query(
+      `UPDATE program SET number_enrolled = (SELECT COUNT(*) FROM program_roster WHERE program_id = ? AND active = 1), ts_updated = NOW() WHERE id = ?`,
+      [id, id]
+    );
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/programs/:id/roster/:rosterId — remove student from roster
+router.delete('/:id/roster/:rosterId', authenticate, async (req, res, next) => {
+  try {
+    const { id, rosterId } = req.params;
+
+    await pool.query(
+      `UPDATE program_roster SET active = 0, ts_updated = NOW() WHERE id = ? AND program_id = ?`,
+      [rosterId, id]
+    );
+
+    // Update enrolled count
+    await pool.query(
+      `UPDATE program SET number_enrolled = (SELECT COUNT(*) FROM program_roster WHERE program_id = ? AND active = 1), ts_updated = NOW() WHERE id = ?`,
+      [id, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/programs/:id/roster/:rosterId — update roster entry (age, notes)
+router.put('/:id/roster/:rosterId', authenticate, async (req, res, next) => {
+  try {
+    const { id, rosterId } = req.params;
+    const { age, notes, grade_id, date_dropped, weeks_attended } = req.body;
+
+    const fields = [];
+    const values = [];
+    if (age !== undefined) { fields.push('age = ?'); values.push(age || null); }
+    if (notes !== undefined) { fields.push('notes = ?'); values.push(notes || null); }
+    if (grade_id !== undefined) { fields.push('grade_id = ?'); values.push(grade_id || null); }
+    if (date_dropped !== undefined) { fields.push('date_dropped = ?'); values.push(date_dropped || null); }
+    if (weeks_attended !== undefined) { fields.push('weeks_attended = ?'); values.push(weeks_attended || null); }
+
+    if (fields.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+
+    await pool.query(
+      `UPDATE program_roster SET ${fields.join(', ')}, ts_updated = NOW() WHERE id = ? AND program_id = ?`,
+      [...values, rosterId, id]
+    );
+
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

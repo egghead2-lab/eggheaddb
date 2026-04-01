@@ -18,6 +18,7 @@ router.get('/', authenticate, async (req, res, next) => {
     } else {
       whereClauses.push(`loc.active = 1`);
     }
+    whereClauses.push(`(loc.location_type_id IS NULL OR loc.location_type_id != 5)`);
 
     if (search) {
       whereClauses.push(`(loc.nickname LIKE ? OR loc.school_name LIKE ? OR loc.address LIKE ?)`);

@@ -20,6 +20,8 @@ router.get('/', authenticate, async (req, res, next) => {
     if (status) {
       whereClauses.push(`ps.professor_status_name = ?`);
       params.push(status);
+    } else {
+      whereClauses.push(`ps.professor_status_name != 'Terminated'`);
     }
     if (area) {
       whereClauses.push(`ga.geographic_area_name = ?`);
@@ -65,7 +67,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id AND ga.active = 1
        LEFT JOIN user sc_user ON sc_user.id = p.scheduling_coordinator_owner_id
        ${where}
-       ORDER BY ${sortCol} ${sortDir}
+       ORDER BY ${sortCol} ${sortDir}, p.last_name ASC
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );

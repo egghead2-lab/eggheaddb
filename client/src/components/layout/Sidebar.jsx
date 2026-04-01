@@ -6,6 +6,9 @@ const NAV_ITEMS = [
   { to: '/professors', label: 'Professors' },
   { to: '/locations', label: 'Locations' },
   { to: '/parties', label: 'Parties' },
+  { to: '/users', label: 'Users' },
+  { to: '/students', label: 'Students' },
+  { to: '/holidays', label: 'Holidays' },
 ];
 
 export function Sidebar() {

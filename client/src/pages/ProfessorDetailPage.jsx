@@ -67,7 +67,7 @@ export default function ProfessorDetailPage() {
           {/* Section 1: General Info */}
           <Section title="General Info" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Nickname" required {...register('professor_nickname', { required: 'Required' })} error={errors.professor_nickname?.message} />
+              <Input label="Preferred Name" required {...register('professor_nickname', { required: 'Required' })} error={errors.professor_nickname?.message} />
               <Select label="Status" required {...register('professor_status_id', { required: 'Required' })} error={errors.professor_status_id?.message}>
                 <option value="">Select status…</option>
                 {(ref.professorStatuses || []).map(s => (

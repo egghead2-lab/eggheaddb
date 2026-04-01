@@ -9,6 +9,12 @@ import ProgramsPage from './pages/ProgramsPage';
 import ProgramDetailPage from './pages/ProgramDetailPage';
 import PartiesPage from './pages/PartiesPage';
 import PartyDetailPage from './pages/PartyDetailPage';
+import UsersPage from './pages/UsersPage';
+import UserDetailPage from './pages/UserDetailPage';
+import StudentsPage from './pages/StudentsPage';
+import StudentDetailPage from './pages/StudentDetailPage';
+import HolidaysPage from './pages/HolidaysPage';
+import HolidayDetailPage from './pages/HolidayDetailPage';
 
 export default function App() {
   return (
@@ -27,6 +33,15 @@ export default function App() {
       <Route path="/parties" element={<ProtectedRoute><PartiesPage /></ProtectedRoute>} />
       <Route path="/parties/new" element={<ProtectedRoute><PartyDetailPage /></ProtectedRoute>} />
       <Route path="/parties/:id" element={<ProtectedRoute><PartyDetailPage /></ProtectedRoute>} />
+      <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
+      <Route path="/users/new" element={<ProtectedRoute><UserDetailPage /></ProtectedRoute>} />
+      <Route path="/users/:id" element={<ProtectedRoute><UserDetailPage /></ProtectedRoute>} />
+      <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
+      <Route path="/students/new" element={<ProtectedRoute><StudentDetailPage /></ProtectedRoute>} />
+      <Route path="/students/:id" element={<ProtectedRoute><StudentDetailPage /></ProtectedRoute>} />
+      <Route path="/holidays" element={<ProtectedRoute><HolidaysPage /></ProtectedRoute>} />
+      <Route path="/holidays/new" element={<ProtectedRoute><HolidayDetailPage /></ProtectedRoute>} />
+      <Route path="/holidays/:id" element={<ProtectedRoute><HolidayDetailPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/programs" replace />} />
     </Routes>
   );

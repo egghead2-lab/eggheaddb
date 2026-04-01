@@ -115,7 +115,7 @@ export default function PartyDetailPage() {
               <Select label="Lead Professor" {...register('lead_professor_id')}>
                 <option value="">None</option>
                 {partyLeadProfessors.map(p => (
-                  <option key={p.id} value={p.id}>{p.professor_nickname}</option>
+                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
                 ))}
               </Select>
               <Input label="Lead Pay" prefix="$" type="number" step="0.01" {...register('lead_professor_pay')} />
@@ -125,7 +125,7 @@ export default function PartyDetailPage() {
               <Select label="Assistant Professor" {...register('assistant_professor_id')}>
                 <option value="">None</option>
                 {partyAssistProfessors.map(p => (
-                  <option key={p.id} value={p.id}>{p.professor_nickname}</option>
+                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
                 ))}
               </Select>
               <Input label="Assist Pay" prefix="$" type="number" step="0.01" {...register('assistant_professor_pay')} />

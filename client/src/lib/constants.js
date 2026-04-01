@@ -22,5 +22,16 @@ export const STATUS_COLORS = {
   'Inactive': 'bg-gray-100 text-gray-600',
   'Terminated': 'bg-red-100 text-red-800',
   'In Training': 'bg-purple-100 text-purple-800',
+  'Training': 'bg-purple-100 text-purple-800',
   'Pending': 'bg-amber-100 text-amber-800',
+  'Substitute': 'bg-sky-100 text-sky-800',
+  'Inactive - Items Pending': 'bg-amber-100 text-amber-800',
+  // Roles
+  'Admin': 'bg-red-100 text-red-800',
+  'Scheduling Coordinator': 'bg-blue-100 text-blue-800',
+  'Field Manager': 'bg-emerald-100 text-emerald-800',
+  'Client Manager': 'bg-violet-100 text-violet-800',
+  'Sales': 'bg-amber-100 text-amber-800',
+  'Hiring': 'bg-teal-100 text-teal-800',
+  'Warehouse': 'bg-orange-100 text-orange-800',
 };

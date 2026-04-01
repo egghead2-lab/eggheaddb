@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getPrograms } from '../api/programs';
-import { useGeneralData } from '../hooks/useReferenceData';
+import { useGeneralData, useLocationList } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -17,7 +17,10 @@ export default function ProgramsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [area, setArea] = useState('');
+  const [location, setLocation] = useState('');
+  const [contractor, setContractor] = useState('');
   const [programType, setProgramType] = useState('');
+  const [timeframe, setTimeframe] = useState('current');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
@@ -26,12 +29,17 @@ export default function ProgramsPage() {
 
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
+  const { data: locationListData } = useLocationList();
+  const locations = locationListData?.data || [];
 
   const filters = {
     search: search || undefined,
     status: status || undefined,
     area: area || undefined,
+    location: location || undefined,
+    contractor: contractor || undefined,
     program_type: programType || undefined,
+    timeframe,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
     sort: sort || undefined,
@@ -55,16 +63,21 @@ export default function ProgramsPage() {
   };
 
   const reset = () => {
-    setSearch(''); setStatus(''); setArea('');
-    setProgramType(''); setDateFrom(''); setDateTo(''); setPage(1);
+    setSearch(''); setStatus(''); setArea(''); setLocation(''); setContractor('');
+    setProgramType(''); setTimeframe('current'); setDateFrom(''); setDateTo(''); setPage(1);
   };
-  const hasFilters = search || status || area || programType || dateFrom || dateTo;
+  const hasFilters = search || status || area || location || contractor || programType || timeframe !== 'current' || dateFrom || dateTo;
 
   return (
     <AppShell>
       <PageHeader title="Programs" action={
         <Link to="/programs/new"><Button>+ New Program</Button></Link>
       }>
+        <Select value={timeframe} onChange={e => { setTimeframe(e.target.value); setPage(1); }} className="w-44">
+          <option value="current">Current & Future</option>
+          <option value="past">Past</option>
+          <option value="all">All Programs</option>
+        </Select>
         <Input
           placeholder="Search nickname or location…"
           value={search}
@@ -83,14 +96,32 @@ export default function ProgramsPage() {
             <option key={a.id} value={a.geographic_area_name}>{a.geographic_area_name}</option>
           ))}
         </Select>
+        <Select value={location} onChange={e => { setLocation(e.target.value); setPage(1); }} className="w-44">
+          <option value="">All Locations</option>
+          {locations.map(l => (
+            <option key={l.id} value={l.id}>{l.nickname}</option>
+          ))}
+        </Select>
+        <Select value={contractor} onChange={e => { setContractor(e.target.value); setPage(1); }} className="w-40">
+          <option value="">All Contractors</option>
+          {(ref.contractors || []).map(c => (
+            <option key={c.id} value={c.id}>{c.contractor_name}</option>
+          ))}
+        </Select>
         <Select value={programType} onChange={e => { setProgramType(e.target.value); setPage(1); }} className="w-40">
           <option value="">All Types</option>
           {(ref.programTypes || []).map(t => (
             <option key={t.id} value={t.program_type_name}>{t.program_type_name}</option>
           ))}
         </Select>
-        <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-36" title="Date from" />
-        <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-36" title="Date to" />
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs text-gray-500">Start From</label>
+          <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-36" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs text-gray-500">Start To</label>
+          <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-36" />
+        </div>
         {hasFilters && (
           <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-700 underline">Clear</button>
         )}

@@ -23,11 +23,21 @@ router.get('/', authenticate, async (req, res, next) => {
     if (status) {
       whereClauses.push(`cs.class_status_name = ?`);
       params.push(status);
+    } else {
+      whereClauses.push(`cs.class_status_name NOT LIKE 'Cancelled%'`);
     }
     if (professor) {
       whereClauses.push(`prog.lead_professor_id = ?`);
       params.push(professor);
     }
+    // Timeframe filter: 'current' (default), 'past', 'all'
+    const timeframe = req.query.timeframe || 'current';
+    if (timeframe === 'current') {
+      whereClauses.push(`(prog.first_session_date >= CURDATE() OR prog.first_session_date IS NULL)`);
+    } else if (timeframe === 'past') {
+      whereClauses.push(`prog.first_session_date < CURDATE()`);
+    }
+
     if (date_from) {
       whereClauses.push(`prog.first_session_date >= ?`);
       params.push(date_from);
@@ -60,9 +70,9 @@ router.get('/', authenticate, async (req, res, next) => {
               pf.party_format_name,
               cl.class_name AS party_theme,
               lp.id AS lead_professor_id,
-              lp.professor_nickname AS lead_professor_nickname,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
               ap.id AS assistant_professor_id,
-              ap.professor_nickname AS assistant_professor_nickname,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname,
               par.id AS contact_id,
               CONCAT(par.first_name, ' ', par.last_name) AS contact_name,
               par.email AS contact_email
@@ -111,8 +121,8 @@ router.get('/:id', authenticate, async (req, res, next) => {
               loc.nickname AS location_nickname,
               cl.class_name, cl.class_code,
               pt.program_type_name,
-              lp.professor_nickname AS lead_professor_nickname,
-              ap.professor_nickname AS assistant_professor_nickname
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
@@ -152,6 +162,7 @@ router.post('/', authenticate, async (req, res, next) => {
       'extra_kids_fee', 'extra_time_fee', 'deposit_date', 'deposit_amount',
       'total_party_cost', 'emailed_follow_up', 'charge_confirmed', 'final_charge_date',
       'final_charge_type', 'shirt_size', 'glow_slime_amount_needed',
+      'first_session_date', 'start_time', 'class_length_minutes',
       'party_format_id', 'party_location_text', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
       'demo_professor_id', 'demo_notes', 'parent_id',
     ];
@@ -188,6 +199,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'extra_kids_fee', 'extra_time_fee', 'deposit_date', 'deposit_amount',
       'total_party_cost', 'emailed_follow_up', 'charge_confirmed', 'final_charge_date',
       'final_charge_type', 'shirt_size', 'glow_slime_amount_needed',
+      'first_session_date', 'start_time', 'class_length_minutes',
       'party_format_id', 'party_location_text', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
       'demo_professor_id', 'demo_notes', 'parent_id', 'active',
     ];

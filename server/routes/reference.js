@@ -53,8 +53,8 @@ router.get('/general-data', authenticate, async (req, res, next) => {
       pool.query(`SELECT id, state_name, state_code FROM state ORDER BY state_name`),
       pool.query(`SELECT id, party_format_name FROM party_format WHERE active = 1 ORDER BY party_format_name`),
       pool.query(`SELECT id, class_name FROM class WHERE active = 1 AND program_type_id = 4 AND class_name NOT LIKE 'Party / %' ORDER BY class_name`),
-      pool.query(`SELECT p.id, p.professor_nickname FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND p.show_party_trained_id = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
-      pool.query(`SELECT p.id, p.professor_nickname FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
+      pool.query(`SELECT p.id, p.professor_nickname, p.last_name, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND p.show_party_trained_id = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
+      pool.query(`SELECT p.id, p.professor_nickname, p.last_name, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
     ];
 
     const results = await Promise.all(queries);
@@ -92,11 +92,56 @@ router.get('/general-data', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/roles
+router.get('/roles', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, role_name FROM role WHERE active = 1 ORDER BY role_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/roles
+router.post('/roles', authenticate, async (req, res, next) => {
+  try {
+    const { role_name } = req.body;
+    if (!role_name) return res.status(400).json({ success: false, error: 'Role name is required' });
+    const [result] = await pool.query(
+      `INSERT INTO role (role_name, active) VALUES (?, 1)`,
+      [role_name]
+    );
+    res.json({ success: true, id: result.insertId, role_name });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, error: 'Role already exists' });
+    }
+    next(err);
+  }
+});
+
+// PUT /api/roles/:id
+router.put('/roles/:id', authenticate, async (req, res, next) => {
+  try {
+    const { role_name } = req.body;
+    if (!role_name) return res.status(400).json({ success: false, error: 'Role name is required' });
+    await pool.query(`UPDATE role SET role_name = ? WHERE id = ?`, [role_name, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, error: 'Role name already exists' });
+    }
+    next(err);
+  }
+});
+
 // GET /api/professors/list
 router.get('/professors/list', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, professor_nickname FROM professor WHERE active = 1 ORDER BY professor_nickname`
+      `SELECT id, professor_nickname, first_name, last_name, CONCAT(professor_nickname, ' ', last_name) AS display_name FROM professor WHERE active = 1 ORDER BY professor_nickname`
     );
     res.json({ success: true, data: rows });
   } catch (err) {
@@ -108,7 +153,7 @@ router.get('/professors/list', authenticate, async (req, res, next) => {
 router.get('/locations/list', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, nickname FROM location WHERE active = 1 ORDER BY nickname`
+      `SELECT id, nickname FROM location WHERE active = 1 AND (location_type_id IS NULL OR location_type_id != 5) ORDER BY nickname`
     );
     res.json({ success: true, data: rows });
   } catch (err) {

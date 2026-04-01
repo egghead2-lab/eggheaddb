@@ -97,7 +97,7 @@ export default function ProfessorsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
-                    <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Nickname</SortTh>
+                    <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Preferred Name</SortTh>
                     <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>
                     <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">SC Owner</th>
@@ -122,7 +122,7 @@ export default function ProfessorsPage() {
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {TRAINING_FIELDS.filter(t => p[t.key]).map(t => (
-                            <span key={t.key} className="inline-block px-1.5 py-0.5 text-xs bg-[#1e3a5f]/10 text-[#1e3a5f] rounded font-medium">{t.short}</span>
+                            <span key={t.key} title={t.label} className="inline-block px-1.5 py-0.5 text-xs bg-[#1e3a5f]/10 text-[#1e3a5f] rounded font-medium cursor-help">{t.short}</span>
                           ))}
                         </div>
                       </td>

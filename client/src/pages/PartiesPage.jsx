@@ -17,6 +17,7 @@ export default function PartiesPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [professor, setProfessor] = useState('');
+  const [timeframe, setTimeframe] = useState('current');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
@@ -38,6 +39,7 @@ export default function PartiesPage() {
     search: search || undefined,
     status: status || undefined,
     professor: professor || undefined,
+    timeframe,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
     sort: sort || undefined,
@@ -54,14 +56,19 @@ export default function PartiesPage() {
   const total = data?.total || 0;
   const limit = data?.limit || 50;
 
-  const reset = () => { setSearch(''); setStatus(''); setProfessor(''); setDateFrom(''); setDateTo(''); setPage(1); };
-  const hasFilters = search || status || professor || dateFrom || dateTo;
+  const reset = () => { setSearch(''); setStatus(''); setProfessor(''); setTimeframe('current'); setDateFrom(''); setDateTo(''); setPage(1); };
+  const hasFilters = search || status || professor || timeframe !== 'current' || dateFrom || dateTo;
 
   return (
     <AppShell>
       <PageHeader title="Parties" action={
         <Link to="/parties/new"><Button>+ New Party</Button></Link>
       }>
+        <Select value={timeframe} onChange={e => { setTimeframe(e.target.value); setPage(1); }} className="w-44">
+          <option value="current">Current & Future</option>
+          <option value="past">Past</option>
+          <option value="all">All Parties</option>
+        </Select>
         <Input
           placeholder="Search by type or professor…"
           value={search}
@@ -77,7 +84,7 @@ export default function PartiesPage() {
         <Select value={professor} onChange={e => { setProfessor(e.target.value); setPage(1); }} className="w-44">
           <option value="">All Professors</option>
           {professorList.map(p => (
-            <option key={p.id} value={p.id}>{p.professor_nickname}</option>
+            <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
           ))}
         </Select>
         <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-36" title="Date from" />
