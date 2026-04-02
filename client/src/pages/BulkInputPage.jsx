@@ -113,6 +113,16 @@ export default function BulkInputPage() {
   const [costRows, setCostRows] = useState([]);
   const [bulkCost, setBulkCost] = useState('');
 
+  // Step 1: Fill-down header values
+  const [fill, setFill] = useState({ location_id: '', class_id: '', grades: '', start_time: '', class_length: '', day: '', notes: '' });
+
+  // Step 2: Fill-down for enrollment
+  const [fillMin, setFillMin] = useState('');
+  const [fillMax, setFillMax] = useState('');
+
+  // Step 3: Fill-down for sessions
+  const [fillSessions, setFillSessions] = useState('');
+
   // Derived
   const filteredLocations = useMemo(() => {
     if (!setup.locations) return [];
@@ -298,6 +308,95 @@ export default function BulkInputPage() {
                     <th className="px-2 py-2 text-left font-medium text-gray-600">Notes</th>
                     <th className="w-16"></th>
                   </tr>
+                  {/* Fill-down row */}
+                  <tr className="bg-blue-50 border-t border-blue-100">
+                    <td className="px-2 py-1.5 text-center">
+                      <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide">Fill</span>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <select value={fill.location_id} onChange={e => setFill(f => ({ ...f, location_id: e.target.value }))}
+                          className="flex-1 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400">
+                          <option value="">—</option>
+                          {filteredLocations.map(l => <option key={l.id} value={l.id}>{l.nickname}</option>)}
+                        </select>
+                        <button type="button" onClick={() => fill.location_id && applyAllRows('location_id', fill.location_id)}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fill.location_id}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <select value={fill.class_id} onChange={e => setFill(f => ({ ...f, class_id: e.target.value }))}
+                          className="flex-1 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400">
+                          <option value="">—</option>
+                          {(setup.classes || []).map(c => <option key={c.id} value={c.id}>{c.class_name}</option>)}
+                        </select>
+                        <button type="button" onClick={() => fill.class_id && applyAllRows('class_id', fill.class_id)}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fill.class_id}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input value={fill.grades} onChange={e => setFill(f => ({ ...f, grades: e.target.value }))}
+                          placeholder="K-5"
+                          className="flex-1 min-w-0 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => fill.grades && applyAllRows('grades', fill.grades)}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fill.grades}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input type="time" value={fill.start_time} onChange={e => setFill(f => ({ ...f, start_time: e.target.value }))}
+                          className="flex-1 min-w-0 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => fill.start_time && applyAllRows('start_time', fill.start_time)}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fill.start_time}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input type="number" value={fill.class_length} onChange={e => setFill(f => ({ ...f, class_length: e.target.value }))}
+                          placeholder="60"
+                          className="flex-1 min-w-0 w-12 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => fill.class_length && applyAllRows('class_length', fill.class_length)}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fill.class_length}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <select value={fill.day} onChange={e => setFill(f => ({ ...f, day: e.target.value }))}
+                          className="flex-1 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400">
+                          <option value="">—</option>
+                          {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                        <button type="button" onClick={() => fill.day && applyAllRows('day', fill.day)}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fill.day}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input value={fill.notes} onChange={e => setFill(f => ({ ...f, notes: e.target.value }))}
+                          placeholder="Notes"
+                          className="flex-1 min-w-0 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => fill.notes && applyAllRows('notes', fill.notes)}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fill.notes}>⇩</button>
+                      </div>
+                    </td>
+                    <td></td>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {rows.map((row, i) => (
@@ -372,6 +471,34 @@ export default function BulkInputPage() {
                     <th className="px-3 py-2 text-left font-medium text-gray-600 w-24">Min Students</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-600 w-24">Max Students</th>
                   </tr>
+                  <tr className="bg-blue-50 border-t border-blue-100">
+                    <td className="px-3 py-1.5 text-center">
+                      <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide">Fill</span>
+                    </td>
+                    <td colSpan={2}></td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input type="number" value={fillMin} onChange={e => setFillMin(e.target.value)}
+                          placeholder="Min"
+                          className="flex-1 min-w-0 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => fillMin && setEnrollRows(prev => prev.map(r => ({ ...r, min: fillMin })))}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fillMin}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input type="number" value={fillMax} onChange={e => setFillMax(e.target.value)}
+                          placeholder="Max"
+                          className="flex-1 min-w-0 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => fillMax && setEnrollRows(prev => prev.map(r => ({ ...r, max: fillMax })))}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fillMax}>⇩</button>
+                      </div>
+                    </td>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {rows.map((row, i) => {
@@ -419,16 +546,6 @@ export default function BulkInputPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Bulk Start Date</label>
-                  <div className="flex gap-2">
-                    <input type="date" value={bulkStartDate} onChange={e => setBulkStartDate(e.target.value)}
-                      className="rounded border border-gray-300 px-2 py-1 text-sm" />
-                    <button type="button" onClick={() => {
-                      if (bulkStartDate) setDateRows(prev => prev.map(r => ({ ...r, startDate: bulkStartDate })));
-                    }} className="text-xs text-[#1e3a5f] hover:underline">Apply to all</button>
-                  </div>
-                </div>
-                <div>
                   <label className="text-xs font-medium text-gray-700 block mb-1">Skip Dates (holidays)</label>
                   <div className="flex gap-2 items-center">
                     <input type="date" id="skipDateInput" className="rounded border border-gray-300 px-2 py-1 text-sm" />
@@ -463,6 +580,34 @@ export default function BulkInputPage() {
                     <th className="px-3 py-2 text-left font-medium text-gray-600 w-32">Start Date</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-600 w-20">Sessions</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-600">Generated Dates</th>
+                  </tr>
+                  <tr className="bg-blue-50 border-t border-blue-100">
+                    <td className="px-3 py-1.5 text-center">
+                      <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide">Fill</span>
+                    </td>
+                    <td colSpan={2}></td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input type="date" value={bulkStartDate} onChange={e => setBulkStartDate(e.target.value)}
+                          className="flex-1 min-w-0 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => bulkStartDate && setDateRows(prev => prev.map(r => ({ ...r, startDate: bulkStartDate })))}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!bulkStartDate}>⇩</button>
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <input type="number" value={fillSessions} onChange={e => setFillSessions(e.target.value)}
+                          placeholder="e.g. 10" min="1" max="40"
+                          className="flex-1 min-w-0 w-12 rounded border border-blue-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button type="button" onClick={() => fillSessions && setDateRows(prev => prev.map(r => ({ ...r, sessions: fillSessions })))}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!fillSessions}>⇩</button>
+                      </div>
+                    </td>
+                    <td></td>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -511,16 +656,6 @@ export default function BulkInputPage() {
         {/* ===== STEP 4: Costs ===== */}
         {step === 4 && (
           <div className="space-y-4">
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex gap-3 items-end">
-                <Input label="Bulk Per-Session Cost" type="number" step="0.01" prefix="$" value={bulkCost}
-                  onChange={e => setBulkCost(e.target.value)} className="w-40" />
-                <button type="button" onClick={() => {
-                  if (bulkCost) setCostRows(prev => prev.map(() => ({ perCost: bulkCost })));
-                }} className="text-xs text-[#1e3a5f] hover:underline mb-1">Apply to all</button>
-              </div>
-            </div>
-
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
@@ -531,6 +666,27 @@ export default function BulkInputPage() {
                     <th className="px-3 py-2 text-left font-medium text-gray-600 w-16">Sessions</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-600 w-28">Per-Session Cost</th>
                     <th className="px-3 py-2 text-right font-medium text-gray-600 w-24">Total</th>
+                  </tr>
+                  <tr className="bg-blue-50 border-t border-blue-100">
+                    <td className="px-3 py-1.5 text-center">
+                      <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide">Fill</span>
+                    </td>
+                    <td colSpan={3}></td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1 items-center">
+                        <div className="flex flex-1 min-w-0 items-center rounded border border-blue-200 bg-white overflow-hidden">
+                          <span className="px-1.5 text-xs text-gray-500 border-r border-blue-200 bg-blue-50">$</span>
+                          <input type="number" step="0.01" value={bulkCost} onChange={e => setBulkCost(e.target.value)}
+                            placeholder="0.00"
+                            className="flex-1 min-w-0 px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white" />
+                        </div>
+                        <button type="button" onClick={() => bulkCost && setCostRows(prev => prev.map(() => ({ perCost: bulkCost })))}
+                          title="Fill all rows"
+                          className="shrink-0 px-2 py-1 text-xs font-bold rounded bg-[#1e3a5f] text-white hover:bg-[#2a4f7f] disabled:opacity-40 transition-colors"
+                          disabled={!bulkCost}>⇩</button>
+                      </div>
+                    </td>
+                    <td></td>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
