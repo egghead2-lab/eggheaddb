@@ -17,6 +17,99 @@ function getDayString(prog) {
   return DAYS.map((d, i) => prog[d] ? DAY_LABELS[i] : null).filter(Boolean).join(', ');
 }
 
+function ProgramTable({ programs, profId, isLead }) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Class</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Day</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
+            <th className="text-right px-3 py-2 font-medium text-gray-600">Per Session</th>
+            <th className="text-center px-3 py-2 font-medium text-gray-600 w-16">Role</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {programs.map((p, i) => (
+            <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+              <td className="px-3 py-2">
+                <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>
+                <div className="text-xs text-gray-400">{p.class_status_name}</div>
+              </td>
+              <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
+              <td className="px-3 py-2 text-gray-600">{p.class_name || '—'}</td>
+              <td className="px-3 py-2 text-gray-600">{getDayString(p)}</td>
+              <td className="px-3 py-2 text-gray-600">{p.start_time ? formatTime(p.start_time) : '—'}</td>
+              <td className="px-3 py-2 text-xs text-gray-500">
+                {p.first_session_date ? formatDate(p.first_session_date) : '—'}
+                {p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}
+              </td>
+              <td className="px-3 py-2 text-right font-medium text-green-700">
+                {formatCurrency(isLead(p) ? p.lead_professor_pay : p.assistant_professor_pay)}
+              </td>
+              <td className="px-3 py-2 text-center">
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                  isLead(p) ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
+                }`}>{isLead(p) ? 'Lead' : 'Assist'}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SessionTable({ sessions, profId }) {
+  const today = new Date().toISOString().split('T')[0];
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Day</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Lesson</th>
+            <th className="text-right px-3 py-2 font-medium text-gray-600">Your Pay</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {sessions.map((s, i) => {
+            const dateStr = (s.session_date || '').split('T')[0];
+            const dow = dateStr ? new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }) : '—';
+            const isToday = dateStr === today;
+            const lead = String(s.lead_professor_id) === String(profId);
+            const pay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
+            return (
+              <tr key={s.id} className={`${isToday ? 'bg-blue-50 font-medium' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                <td className="px-3 py-2">{formatDate(dateStr)}</td>
+                <td className="px-3 py-2 text-gray-500">{dow}</td>
+                <td className="px-3 py-2 text-gray-600">{s.session_time ? formatTime(s.session_time) : '—'}</td>
+                <td className="px-3 py-2">
+                  <Link to={`/programs/${s.program_id || ''}`} className="text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>
+                </td>
+                <td className="px-3 py-2 text-gray-600">{s.location_nickname || '—'}</td>
+                <td className="px-3 py-2 text-gray-500">{s.lesson_name || '—'}</td>
+                <td className="px-3 py-2 text-right font-medium text-green-700">
+                  {pay > 0 ? formatCurrency(pay) : <span className="text-gray-300">—</span>}
+                  {s.not_billed ? <span className="text-xs text-red-400 ml-1">(unbilled)</span> : ''}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function ProfessorSchedulePage() {
   const { id: paramId } = useParams();
   const [selectedId, setSelectedId] = useState(paramId || '');
@@ -38,20 +131,29 @@ export default function ProfessorSchedulePage() {
   const parties = sched.parties || [];
   const availability = sched.availability || [];
 
-  // Group sessions by week
-  const sessionsByWeek = {};
-  sessions.forEach(s => {
-    const d = new Date(s.session_date);
-    const weekStart = new Date(d);
-    weekStart.setDate(d.getDate() - d.getDay());
-    const key = weekStart.toISOString().split('T')[0];
-    if (!sessionsByWeek[key]) sessionsByWeek[key] = [];
-    sessionsByWeek[key].push(s);
-  });
+  const today = new Date().toISOString().split('T')[0];
 
-  // Unique locations from programs
+  // Split programs into current and past
+  const currentPrograms = programs.filter(p => !p.last_session_date || p.last_session_date.split('T')[0] >= today);
+  const pastPrograms = programs.filter(p => p.last_session_date && p.last_session_date.split('T')[0] < today);
+
+  // Split sessions
+  const upcomingSessions = sessions.filter(s => (s.session_date || '').split('T')[0] >= today);
+  const pastSessions = sessions.filter(s => (s.session_date || '').split('T')[0] < today).reverse();
+
+  // Pay totals
+  const totalUpcomingPay = upcomingSessions.reduce((sum, s) => {
+    const lead = String(s.lead_professor_id) === String(profId);
+    return sum + (parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0);
+  }, 0);
+  const totalPastPay = pastSessions.reduce((sum, s) => {
+    const lead = String(s.lead_professor_id) === String(profId);
+    return sum + (parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0);
+  }, 0);
+
+  // Unique locations from current programs
   const locationMap = {};
-  programs.forEach(p => {
+  currentPrograms.forEach(p => {
     if (p.location_nickname && !locationMap[p.location_nickname]) {
       locationMap[p.location_nickname] = { nickname: p.location_nickname, school_name: p.school_name, address: p.address, contact: p.location_contact };
     }
@@ -158,106 +260,37 @@ export default function ProfessorSchedulePage() {
             </Section>
           </div>
 
-          {/* Classes Table */}
-          <Section title={`Classes (${programs.length})`} defaultOpen={true}>
-            {programs.length === 0 ? (
+          {/* Current Classes */}
+          <Section title={`Current Classes (${currentPrograms.length})`} defaultOpen={true}>
+            {currentPrograms.length === 0 ? (
               <p className="text-sm text-gray-400">No active classes assigned</p>
             ) : (
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Class</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Day</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-600">Pay</th>
-                      <th className="text-center px-3 py-2 font-medium text-gray-600 w-16">Role</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {programs.map((p, i) => (
-                      <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                        <td className="px-3 py-2">
-                          <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>
-                          <div className="text-xs text-gray-400">{p.class_status_name}</div>
-                        </td>
-                        <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600">{p.class_name || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600">{getDayString(p)}</td>
-                        <td className="px-3 py-2 text-gray-600">{p.start_time ? formatTime(p.start_time) : '—'}</td>
-                        <td className="px-3 py-2 text-xs text-gray-500">
-                          {p.first_session_date ? formatDate(p.first_session_date) : '—'}
-                          {p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium">
-                          {formatCurrency(isLead(p) ? p.lead_professor_pay : p.assistant_professor_pay)}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                            isLead(p) ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {isLead(p) ? 'Lead' : 'Assist'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ProgramTable programs={currentPrograms} profId={profId} isLead={isLead} />
             )}
           </Section>
 
           {/* Upcoming Sessions */}
-          <Section title={`Upcoming Sessions (${sessions.length})`} defaultOpen={true}>
-            {sessions.length === 0 ? (
-              <p className="text-sm text-gray-400">No upcoming sessions in the next 60 days</p>
+          <Section title={`Upcoming Sessions (${upcomingSessions.length})${totalUpcomingPay > 0 ? ' — ' + formatCurrency(totalUpcomingPay) + ' total' : ''}`} defaultOpen={true}>
+            {upcomingSessions.length === 0 ? (
+              <p className="text-sm text-gray-400">No upcoming sessions</p>
             ) : (
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Day</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Lesson</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-600">Pay</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {sessions.map((s, i) => {
-                      const dateStr = (s.session_date || '').split('T')[0];
-                      const dow = dateStr ? new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }) : '—';
-                      const isToday = dateStr === new Date().toISOString().split('T')[0];
-                      const isPast = dateStr < new Date().toISOString().split('T')[0];
-                      const lead = String(s.lead_professor_id) === String(profId);
-                      return (
-                        <tr key={s.id} className={`${isToday ? 'bg-blue-50 font-medium' : isPast ? 'text-gray-400' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                          <td className="px-3 py-2">{formatDate(dateStr)}</td>
-                          <td className="px-3 py-2 text-gray-500">{dow}</td>
-                          <td className="px-3 py-2 text-gray-600">{s.session_time ? formatTime(s.session_time) : '—'}</td>
-                          <td className="px-3 py-2">
-                            <Link to={`/programs/${s.program_id || ''}`} className="text-[#1e3a5f] hover:underline">
-                              {s.program_nickname}
-                            </Link>
-                          </td>
-                          <td className="px-3 py-2 text-gray-600">{s.location_nickname || '—'}</td>
-                          <td className="px-3 py-2 text-gray-500">{s.lesson_name || '—'}</td>
-                          <td className="px-3 py-2 text-right">
-                            {formatCurrency(lead ? s.professor_pay : s.assistant_pay)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <SessionTable sessions={upcomingSessions} profId={profId} />
             )}
           </Section>
+
+          {/* Past Sessions */}
+          {pastSessions.length > 0 && (
+            <Section title={`Past Sessions (${pastSessions.length})${totalPastPay > 0 ? ' — ' + formatCurrency(totalPastPay) + ' earned' : ''}`} defaultOpen={false}>
+              <SessionTable sessions={pastSessions} profId={profId} />
+            </Section>
+          )}
+
+          {/* Past Programs */}
+          {pastPrograms.length > 0 && (
+            <Section title={`Past Programs (${pastPrograms.length})`} defaultOpen={false}>
+              <ProgramTable programs={pastPrograms} profId={profId} isLead={isLead} />
+            </Section>
+          )}
 
           {/* Upcoming Parties */}
           {parties.length > 0 && (

@@ -50,8 +50,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
        WHERE prog.active = 1
          AND cs.class_status_name NOT LIKE 'Cancelled%'
          AND (prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
-         AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
-       ORDER BY prog.first_session_date ASC`,
+       ORDER BY prog.first_session_date DESC`,
       [professorId, professorId]
     );
 
@@ -70,8 +69,6 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
        LEFT JOIN lesson l ON l.id = s.lesson_id
        WHERE s.active = 1
          AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
-         AND s.session_date >= CURDATE()
-         AND s.session_date <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)
        ORDER BY s.session_date ASC, s.session_time ASC`,
       [professorId, professorId, professorId, professorId]
     );
