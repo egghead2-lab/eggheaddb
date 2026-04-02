@@ -17,7 +17,8 @@ export default function LoginPage() {
   }, [isAuthenticated]);
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://localhost:3002/api/auth/google';
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+    window.location.href = `${base}/api/auth/google`;
   };
 
   const handlePasswordLogin = async (e) => {

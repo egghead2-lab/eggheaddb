@@ -60,7 +60,7 @@ export default function LessonsPage() {
 
   const { data: classListData } = useQuery({
     queryKey: ['classes'],
-    queryFn: () => fetch('http://localhost:3002/api/classes', { credentials: 'include' }).then(r => r.json()),
+    queryFn: () => fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/classes`, { credentials: 'include' }).then(r => r.json()),
     staleTime: 10 * 60 * 1000,
   });
   const classList = classListData?.data || [];
