@@ -19,7 +19,7 @@ router.get('/google', (req, res) => {
   const oauth2Client = makeOAuthClient();
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: 'select_account',
     scope: [
       'openid',
       'email',
