@@ -6,6 +6,7 @@ import { Section } from '../components/ui/Section';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
 import { SearchSelect } from '../components/ui/SearchSelect';
+import { useAuth } from '../hooks/useAuth';
 import { useProfessorList } from '../hooks/useReferenceData';
 import { formatDate, formatTime, formatCurrency } from '../lib/utils';
 import api from '../api/client';
@@ -17,7 +18,7 @@ function getDayString(prog) {
   return DAYS.map((d, i) => prog[d] ? DAY_LABELS[i] : null).filter(Boolean).join(', ');
 }
 
-function ProgramTable({ programs, profId, isLead }) {
+function ProgramTable({ programs, profId, isLead, viewOnly }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <table className="w-full text-sm">
@@ -37,7 +38,7 @@ function ProgramTable({ programs, profId, isLead }) {
           {programs.map((p, i) => (
             <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
               <td className="px-3 py-2">
-                <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>
+                {viewOnly ? <span className="font-medium text-gray-900">{p.program_nickname}</span> : <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>}
                 <div className="text-xs text-gray-400">{p.class_status_name}</div>
               </td>
               <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
@@ -64,7 +65,7 @@ function ProgramTable({ programs, profId, isLead }) {
   );
 }
 
-function SessionTable({ sessions, profId }) {
+function SessionTable({ sessions, profId, viewOnly }) {
   const today = new Date().toISOString().split('T')[0];
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -93,7 +94,7 @@ function SessionTable({ sessions, profId }) {
                 <td className="px-3 py-2 text-gray-500">{dow}</td>
                 <td className="px-3 py-2 text-gray-600">{s.session_time ? formatTime(s.session_time) : '—'}</td>
                 <td className="px-3 py-2">
-                  <Link to={`/programs/${s.program_id || ''}`} className="text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>
+                  {viewOnly ? <span>{s.program_nickname}</span> : <Link to={`/programs/${s.program_id || ''}`} className="text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>}
                 </td>
                 <td className="px-3 py-2 text-gray-600">{s.location_nickname || '—'}</td>
                 <td className="px-3 py-2 text-gray-500">{s.lesson_name || '—'}</td>
@@ -114,6 +115,12 @@ export default function ProfessorSchedulePage() {
   const { id: paramId } = useParams();
   const [selectedId, setSelectedId] = useState(paramId || '');
   const profId = paramId || selectedId;
+  const { user } = useAuth();
+  const role = user?.role || '';
+
+  // Professors see view-only, schedulers/admins can click through
+  const ADMIN_ROLES = ['Admin', 'CEO', 'Scheduling Coordinator', 'Field Manager', 'Client Manager'];
+  const viewOnly = !ADMIN_ROLES.includes(role);
 
   const { data: profListData } = useProfessorList();
   const professors = profListData?.data || [];
@@ -167,7 +174,7 @@ export default function ProfessorSchedulePage() {
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <Link to="/professors" className="text-sm text-gray-500 hover:text-[#1e3a5f]">← Professors</Link>
+            {!viewOnly && <Link to="/professors" className="text-sm text-gray-500 hover:text-[#1e3a5f]">← Professors</Link>}
             {prof.id ? (
               <div className="flex items-center gap-3 mt-0.5">
                 <h1 className="text-xl font-bold text-gray-900">
@@ -180,7 +187,7 @@ export default function ProfessorSchedulePage() {
             )}
           </div>
           {/* Professor picker for schedulers */}
-          {!paramId && (
+          {!paramId && !viewOnly && (
             <div className="w-64">
               <SearchSelect
                 placeholder="Search professor…"
@@ -265,7 +272,7 @@ export default function ProfessorSchedulePage() {
             {currentPrograms.length === 0 ? (
               <p className="text-sm text-gray-400">No active classes assigned</p>
             ) : (
-              <ProgramTable programs={currentPrograms} profId={profId} isLead={isLead} />
+              <ProgramTable programs={currentPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} />
             )}
           </Section>
 
@@ -274,21 +281,21 @@ export default function ProfessorSchedulePage() {
             {upcomingSessions.length === 0 ? (
               <p className="text-sm text-gray-400">No upcoming sessions</p>
             ) : (
-              <SessionTable sessions={upcomingSessions} profId={profId} />
+              <SessionTable sessions={upcomingSessions} profId={profId} viewOnly={viewOnly} />
             )}
           </Section>
 
           {/* Past Sessions */}
           {pastSessions.length > 0 && (
             <Section title={`Past Sessions (${pastSessions.length})${totalPastPay > 0 ? ' — ' + formatCurrency(totalPastPay) + ' earned' : ''}`} defaultOpen={false}>
-              <SessionTable sessions={pastSessions} profId={profId} />
+              <SessionTable sessions={pastSessions} profId={profId} viewOnly={viewOnly} />
             </Section>
           )}
 
           {/* Past Programs */}
           {pastPrograms.length > 0 && (
             <Section title={`Past Programs (${pastPrograms.length})`} defaultOpen={false}>
-              <ProgramTable programs={pastPrograms} profId={profId} isLead={isLead} />
+              <ProgramTable programs={pastPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} />
             </Section>
           )}
 
