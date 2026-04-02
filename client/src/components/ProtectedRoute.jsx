@@ -6,22 +6,27 @@ import api from '../api/client';
 const ADMIN_ROLES = ['Admin', 'CEO'];
 
 export function ProtectedRoute({ children }) {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const location = useLocation();
-  const role = user?.role || 'Admin'; // Default while auth bypassed
+
+  // Always call hooks unconditionally
+  const { data: permData, isLoading: permLoading } = useQuery({
+    queryKey: ['my-permissions'],
+    queryFn: () => api.get('/tools/my-permissions').then(r => r.data),
+    staleTime: 2 * 60 * 1000,
+    enabled: !!user,
+  });
+
+  // While auth is resolving, render children to avoid flash
+  if (authLoading || !user) return children;
+
+  const role = user.role;
 
   // Admin/CEO always pass
   if (ADMIN_ROLES.includes(role)) return children;
 
-  // Fetch permissions from DB
-  const { data: permData, isLoading } = useQuery({
-    queryKey: ['my-permissions'],
-    queryFn: () => api.get('/tools/my-permissions').then(r => r.data),
-    staleTime: 2 * 60 * 1000,
-  });
-
-  // While loading, allow (avoid flash of redirect)
-  if (isLoading) return children;
+  // While loading permissions, allow
+  if (permLoading) return children;
 
   const allowedPaths = (permData?.data || []).map(t => t.path);
 

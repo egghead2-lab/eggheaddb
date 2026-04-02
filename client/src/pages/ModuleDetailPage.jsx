@@ -3,9 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getClass, updateClass } from '../api/classes';
+import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
@@ -22,7 +24,10 @@ export default function ModuleDetailPage() {
     queryFn: () => getClass(id),
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm();
+  const { data: refData } = useGeneralData();
+  const programTypes = refData?.data?.programTypes || [];
+
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isDirty } } = useForm();
 
   useEffect(() => {
     if (classData?.data) reset(toFormData(classData.data));
@@ -64,10 +69,26 @@ export default function ModuleDetailPage() {
         </div>
 
         <div className="p-6 space-y-4 pb-32">
-          <Section title="Module Info" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
+          <Section title="Module Info" defaultOpen={true} overflow="visible">
+            <div className="grid grid-cols-4 gap-4">
               <Input label="Module Name" {...register('class_name')} />
               <Input label="Formal Name" {...register('formal_class_name')} />
+              <Input
+                label="Code (3 letters)"
+                {...register('class_code')}
+                onChange={e => setValue('class_code', e.target.value.toUpperCase().slice(0, 3), { shouldDirty: true })}
+                placeholder="e.g. AST"
+              />
+              <Select
+                label="Type"
+                value={watch('program_type_id') || ''}
+                onChange={e => setValue('program_type_id', e.target.value, { shouldDirty: true })}
+              >
+                <option value="">No type</option>
+                {programTypes.map(pt => (
+                  <option key={pt.id} value={pt.id}>{pt.program_type_name}</option>
+                ))}
+              </Select>
             </div>
             <div className="mt-4">
               <div className="flex items-center justify-between mb-1">
