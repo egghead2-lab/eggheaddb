@@ -27,6 +27,7 @@ import HolidaysPage from './pages/HolidaysPage';
 import HolidayDetailPage from './pages/HolidayDetailPage';
 import ParentsPage from './pages/ParentsPage';
 import ParentDetailPage from './pages/ParentDetailPage';
+import AreasPage from './pages/AreasPage';
 
 export default function App() {
   return (
@@ -67,6 +68,7 @@ export default function App() {
       <Route path="/assignment-board" element={<ProtectedRoute><AssignmentBoardPage /></ProtectedRoute>} />
       <Route path="/schedule" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/schedule/:id" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
+      <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

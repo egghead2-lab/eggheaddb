@@ -83,8 +83,9 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { first_name, last_name, email, user_name, password, role_id } = req.body;
+    console.log('[POST /users] body:', JSON.stringify(req.body));
 
-    if (!first_name || !last_name || !email || !user_name || !password || !role_id) {
+    if (!first_name || !last_name || !email || !user_name || !password || !role_id || role_id === 'undefined') {
       return res.status(400).json({ success: false, error: 'All fields are required' });
     }
 
@@ -93,7 +94,7 @@ router.post('/', async (req, res, next) => {
     const [result] = await pool.query(
       `INSERT INTO user (first_name, last_name, email, user_name, password, role_id, active, ts_inserted, ts_updated)
        VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-      [first_name, last_name, email, user_name, hashedPassword, role_id]
+      [first_name, last_name, email, user_name, hashedPassword, parseInt(role_id)]
     );
 
     res.json({ success: true, id: result.insertId });
@@ -110,6 +111,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { first_name, last_name, email, user_name, password, role_id, active } = req.body;
+    console.log('[PUT /users/' + id + '] body:', JSON.stringify(req.body));
 
     const fields = [];
     const values = [];
@@ -118,8 +120,8 @@ router.put('/:id', async (req, res, next) => {
     if (last_name !== undefined) { fields.push('last_name = ?'); values.push(last_name); }
     if (email !== undefined) { fields.push('email = ?'); values.push(email); }
     if (user_name !== undefined) { fields.push('user_name = ?'); values.push(user_name); }
-    if (role_id !== undefined) { fields.push('role_id = ?'); values.push(role_id); }
-    if (active !== undefined) { fields.push('active = ?'); values.push(active); }
+    if (role_id !== undefined && role_id !== '') { fields.push('role_id = ?'); values.push(role_id); }
+    if (active !== undefined && active !== '') { fields.push('active = ?'); values.push(active); }
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
       fields.push('password = ?');

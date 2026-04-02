@@ -3,26 +3,138 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/regions
+router.get('/regions', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT r.*, (SELECT COUNT(*) FROM geographic_area ga WHERE ga.region_id = r.id AND ga.active = 1) AS area_count
+       FROM region r WHERE r.active = 1 ORDER BY r.sort_order, r.region_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/regions
+router.post('/regions', authenticate, async (req, res, next) => {
+  try {
+    const { region_name, sort_order } = req.body;
+    if (!region_name) return res.status(400).json({ success: false, error: 'Name is required' });
+    const [result] = await pool.query(
+      'INSERT INTO region (region_name, sort_order, active) VALUES (?, ?, 1)',
+      [region_name, sort_order || 0]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/regions/:id
+router.put('/regions/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const fields = ['region_name', 'sort_order'];
+    const updates = fields.filter(f => req.body[f] !== undefined);
+    if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
+    const setClauses = updates.map(f => `${f} = ?`).join(', ');
+    const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
+    await pool.query(`UPDATE region SET ${setClauses} WHERE id = ?`, [...values, id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/regions/:id
+router.delete('/regions/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE region SET active = 0 WHERE id = ?', [id]);
+    await pool.query('UPDATE geographic_area SET region_id = NULL WHERE region_id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/areas
 router.get('/areas', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT ga.id, ga.geographic_area_name,
-              CONCAT(sc.first_name, ' ', sc.last_name) AS scheduling_coordinator,
-              CONCAT(fm.first_name, ' ', fm.last_name) AS field_manager,
-              CONCAT(cm.first_name, ' ', cm.last_name) AS client_manager,
-              ga.scheduling_coordinator_user_id,
-              ga.field_manager_user_id,
-              ga.client_manager_user_id,
-              ga.active
+      `SELECT ga.*,
+              r.region_name, s.state_name, s.state_code,
+              CONCAT(u_sc.first_name, ' ', u_sc.last_name) AS scheduling_coordinator_name,
+              CONCAT(u_fm.first_name, ' ', u_fm.last_name) AS field_manager_name,
+              CONCAT(u_cm.first_name, ' ', u_cm.last_name) AS client_manager_name,
+              CONCAT(u_sales.first_name, ' ', u_sales.last_name) AS sales_name,
+              CONCAT(u_rec.first_name, ' ', u_rec.last_name) AS recruiter_name,
+              CONCAT(u_onb.first_name, ' ', u_onb.last_name) AS onboarder_name,
+              CONCAT(u_cs.first_name, ' ', u_cs.last_name) AS client_specialist_name,
+              CONCAT(u_ss.first_name, ' ', u_ss.last_name) AS scheduling_specialist_name,
+              CONCAT(u_tr.first_name, ' ', u_tr.last_name) AS trainer_name,
+              (SELECT COUNT(*) FROM location l WHERE l.geographic_area_id_online = ga.id AND l.active = 1) AS location_count
        FROM geographic_area ga
-       LEFT JOIN user sc ON sc.id = ga.scheduling_coordinator_user_id
-       LEFT JOIN user fm ON fm.id = ga.field_manager_user_id
-       LEFT JOIN user cm ON cm.id = ga.client_manager_user_id
+       LEFT JOIN region r ON r.id = ga.region_id
+       LEFT JOIN state s ON s.id = ga.state_id
+       LEFT JOIN user u_sc ON u_sc.id = ga.scheduling_coordinator_user_id
+       LEFT JOIN user u_fm ON u_fm.id = ga.field_manager_user_id
+       LEFT JOIN user u_cm ON u_cm.id = ga.client_manager_user_id
+       LEFT JOIN user u_sales ON u_sales.id = ga.sales_user_id
+       LEFT JOIN user u_rec ON u_rec.id = ga.recruiter_user_id
+       LEFT JOIN user u_onb ON u_onb.id = ga.onboarder_user_id
+       LEFT JOIN user u_cs ON u_cs.id = ga.client_specialist_user_id
+       LEFT JOIN user u_ss ON u_ss.id = ga.scheduling_specialist_user_id
+       LEFT JOIN user u_tr ON u_tr.id = ga.trainer_user_id
        WHERE ga.active = 1
-       ORDER BY ga.geographic_area_name`
+       ORDER BY r.sort_order, r.region_name, ga.geographic_area_name`
     );
     res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/areas
+router.post('/areas', authenticate, async (req, res, next) => {
+  try {
+    const { geographic_area_name } = req.body;
+    if (!geographic_area_name) return res.status(400).json({ success: false, error: 'Name is required' });
+    const roleFields = ['scheduling_coordinator_user_id', 'field_manager_user_id', 'client_manager_user_id',
+      'sales_user_id', 'recruiter_user_id', 'onboarder_user_id',
+      'client_specialist_user_id', 'scheduling_specialist_user_id', 'trainer_user_id',
+      'region_id', 'state_id'];
+    const cols = ['geographic_area_name', ...roleFields.filter(f => req.body[f] !== undefined)];
+    const vals = [geographic_area_name, ...roleFields.filter(f => req.body[f] !== undefined).map(f => req.body[f] || null)];
+    const [result] = await pool.query(
+      `INSERT INTO geographic_area (${cols.join(', ')}, active) VALUES (${cols.map(() => '?').join(', ')}, 1)`,
+      vals
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/areas/:id
+router.put('/areas/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const fields = ['geographic_area_name',
+      'scheduling_coordinator_user_id', 'field_manager_user_id', 'client_manager_user_id',
+      'sales_user_id', 'recruiter_user_id', 'onboarder_user_id',
+      'client_specialist_user_id', 'scheduling_specialist_user_id', 'trainer_user_id',
+      'region_id', 'state_id'];
+    const updates = fields.filter(f => req.body[f] !== undefined);
+    if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
+    const setClauses = updates.map(f => `${f} = ?`).join(', ');
+    const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
+    await pool.query(`UPDATE geographic_area SET ${setClauses} WHERE id = ?`, [...values, id]);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/areas/:id (soft delete)
+router.delete('/areas/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE geographic_area SET active = 0 WHERE id = ?', [id]);
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }
@@ -192,3 +304,4 @@ router.get('/classes', authenticate, async (req, res, next) => {
 });
 
 module.exports = router;
+

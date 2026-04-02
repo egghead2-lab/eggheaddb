@@ -148,7 +148,7 @@ router.post('/', authenticate, async (req, res, next) => {
 
     const fields = [
       'nickname', 'school_name', 'payment_through_us', 'location_type_id', 'location_phone',
-      'address', 'city_id', 'geographic_area_id_online', 'point_of_contact', 'poc_title_id',
+      'address', 'city_id', 'geographic_area_id_online', 'point_of_contact', 'poc_title',
       'poc_phone', 'poc_email', 'contractor_id', 'location_enrollment', 'demo_allowed',
       'demo_type_id', 'demo_pay', 'demo_notes', 'class_pricing_type_id', 'virtus_required',
       'tb_required', 'livescan_required', 'livescan_info', 'contract_permit_required',
@@ -182,7 +182,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
     const fields = [
       'nickname', 'school_name', 'payment_through_us', 'location_type_id', 'location_phone',
-      'address', 'city_id', 'geographic_area_id_online', 'point_of_contact', 'poc_title_id',
+      'address', 'city_id', 'geographic_area_id_online', 'point_of_contact', 'poc_title',
       'poc_phone', 'poc_email', 'contractor_id', 'location_enrollment', 'demo_allowed',
       'demo_type_id', 'demo_pay', 'demo_notes', 'class_pricing_type_id', 'virtus_required',
       'tb_required', 'livescan_required', 'livescan_info', 'contract_permit_required',

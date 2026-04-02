@@ -110,10 +110,7 @@ export default function LocationDetailPage() {
           <Section title="Point of Contact" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
               <Input label="Contact Name" {...register('point_of_contact')} />
-              <Select label="Title" {...register('poc_title_id')}>
-                <option value="">Select title…</option>
-                {(ref.pocTitles || []).map(t => <option key={t.id} value={t.id}>{t.poc_title_name}</option>)}
-              </Select>
+              <Input label="Title" {...register('poc_title')} />
               <Input label="Phone" {...register('poc_phone')} />
               <Input label="Email" type="email" {...register('poc_email')} />
             </div>

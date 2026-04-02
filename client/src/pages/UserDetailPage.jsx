@@ -15,7 +15,7 @@ import { toFormData } from '../lib/utils';
 
 export default function UserDetailPage() {
   const { id } = useParams();
-  const isNew = id === 'new';
+  const isNew = !id;
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showNewRole, setShowNewRole] = useState(false);
