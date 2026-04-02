@@ -17,8 +17,11 @@ export function ProtectedRoute({ children }) {
     enabled: !!user,
   });
 
-  // While auth is resolving, render children to avoid flash
-  if (authLoading || !user) return children;
+  // While auth is resolving, show nothing
+  if (authLoading) return null;
+
+  // Not logged in — redirect to login
+  if (!user) return <Navigate to="/login" replace />;
 
   const role = user.role;
 
