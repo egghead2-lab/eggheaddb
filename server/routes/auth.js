@@ -110,14 +110,8 @@ router.get('/google/callback', async (req, res, next) => {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     });
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' ? true : false,
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.redirect(process.env.CLIENT_URL || 'http://localhost:5173');
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    res.redirect(`${clientUrl}/login?token=${token}`);
   } catch (err) {
     next(err);
   }
@@ -153,14 +147,7 @@ router.post('/login', async (req, res, next) => {
     const payload = { userId: user.id, name: fullName, role: user.role_name || 'user', areas: [] };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' ? true : false,
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.json({ success: true, data: { id: user.id, name: fullName, role: user.role_name, areas: [] } });
+    res.json({ success: true, token, data: { id: user.id, name: fullName, role: user.role_name, areas: [] } });
   } catch (err) {
     next(err);
   }
@@ -168,7 +155,6 @@ router.post('/login', async (req, res, next) => {
 
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
   res.json({ success: true });
 });
 

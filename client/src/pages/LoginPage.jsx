@@ -12,6 +12,15 @@ export default function LoginPage() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [formError, setFormError] = useState('');
 
+  // Pick up token from Google OAuth redirect (?token=...)
+  useEffect(() => {
+    const urlToken = params.get('token');
+    if (urlToken) {
+      localStorage.setItem('token', urlToken);
+      window.location.replace('/');
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthenticated) navigate('/');
   }, [isAuthenticated]);
