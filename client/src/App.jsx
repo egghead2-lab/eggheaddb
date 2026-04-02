@@ -16,6 +16,7 @@ import StudentsPage from './pages/StudentsPage';
 import StudentDetailPage from './pages/StudentDetailPage';
 import BulkInputPage from './pages/BulkInputPage';
 import ToolManagerPage from './pages/ToolManagerPage';
+import ProfessorSchedulePage from './pages/ProfessorSchedulePage';
 import ContractorsPage from './pages/ContractorsPage';
 import ContractorDetailPage from './pages/ContractorDetailPage';
 import LessonsPage from './pages/LessonsPage';
@@ -62,6 +63,8 @@ export default function App() {
       <Route path="/parents" element={<ProtectedRoute><ParentsPage /></ProtectedRoute>} />
       <Route path="/parents/new" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
       <Route path="/parents/:id" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
+      <Route path="/schedule" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
+      <Route path="/schedule/:id" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

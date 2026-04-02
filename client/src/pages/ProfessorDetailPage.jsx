@@ -63,6 +63,9 @@ export default function ProfessorDetailPage() {
               {isNew ? 'New Professor' : (prof.professor_nickname || `${prof.first_name || ''} ${prof.last_name || ''}`)}
             </h1>
           </div>
+          {!isNew && (
+            <Link to={`/schedule/${id}`} className="text-sm text-[#1e3a5f] hover:underline">View Schedule →</Link>
+          )}
         </div>
 
         <div className="p-6 space-y-4 pb-32">
