@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import ProfessorsPage from './pages/ProfessorsPage';
 import ProfessorDetailPage from './pages/ProfessorDetailPage';
@@ -13,6 +14,10 @@ import UsersPage from './pages/UsersPage';
 import UserDetailPage from './pages/UserDetailPage';
 import StudentsPage from './pages/StudentsPage';
 import StudentDetailPage from './pages/StudentDetailPage';
+import BulkInputPage from './pages/BulkInputPage';
+import ToolManagerPage from './pages/ToolManagerPage';
+import ContractorsPage from './pages/ContractorsPage';
+import ContractorDetailPage from './pages/ContractorDetailPage';
 import LessonsPage from './pages/LessonsPage';
 import LessonDetailPage from './pages/LessonDetailPage';
 import ModuleDetailPage from './pages/ModuleDetailPage';
@@ -25,7 +30,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<Navigate to="/programs" replace />} />
+      <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
       <Route path="/professors" element={<ProtectedRoute><ProfessorsPage /></ProtectedRoute>} />
       <Route path="/professors/new" element={<ProtectedRoute><ProfessorDetailPage /></ProtectedRoute>} />
       <Route path="/professors/:id" element={<ProtectedRoute><ProfessorDetailPage /></ProtectedRoute>} />
@@ -44,6 +49,9 @@ export default function App() {
       <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
       <Route path="/students/new" element={<ProtectedRoute><StudentDetailPage /></ProtectedRoute>} />
       <Route path="/students/:id" element={<ProtectedRoute><StudentDetailPage /></ProtectedRoute>} />
+      <Route path="/bulk-input" element={<ProtectedRoute><BulkInputPage /></ProtectedRoute>} />
+      <Route path="/contractors" element={<ProtectedRoute><ContractorsPage /></ProtectedRoute>} />
+      <Route path="/contractors/:id" element={<ProtectedRoute><ContractorDetailPage /></ProtectedRoute>} />
       <Route path="/lessons" element={<ProtectedRoute><LessonsPage /></ProtectedRoute>} />
       <Route path="/lessons/new" element={<ProtectedRoute><LessonDetailPage /></ProtectedRoute>} />
       <Route path="/lessons/:id" element={<ProtectedRoute><LessonDetailPage /></ProtectedRoute>} />
@@ -54,7 +62,8 @@ export default function App() {
       <Route path="/parents" element={<ProtectedRoute><ParentsPage /></ProtectedRoute>} />
       <Route path="/parents/new" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
       <Route path="/parents/:id" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
-      <Route path="*" element={<Navigate to="/programs" replace />} />
+      <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

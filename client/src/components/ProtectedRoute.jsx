@@ -1,4 +1,43 @@
-// AUTH BYPASSED — re-enable before production
+import { useLocation, Navigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../hooks/useAuth';
+import api from '../api/client';
+
+const ADMIN_ROLES = ['Admin', 'CEO'];
+
 export function ProtectedRoute({ children }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  const role = user?.role || 'Admin'; // Default while auth bypassed
+
+  // Admin/CEO always pass
+  if (ADMIN_ROLES.includes(role)) return children;
+
+  // Fetch permissions from DB
+  const { data: permData, isLoading } = useQuery({
+    queryKey: ['my-permissions'],
+    queryFn: () => api.get('/tools/my-permissions').then(r => r.data),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // While loading, allow (avoid flash of redirect)
+  if (isLoading) return children;
+
+  const allowedPaths = (permData?.data || []).map(t => t.path);
+
+  // Check if current path matches any allowed tool path
+  const path = location.pathname;
+  const hasAccess = allowedPaths.some(p =>
+    p === path || (p !== '/' && path.startsWith(p + '/')) || (p !== '/' && path.startsWith(p))
+  ) || path === '/'; // Dashboard always accessible
+
+  // Also check base path for detail pages (e.g. /programs/123 -> /programs)
+  if (!hasAccess) {
+    const base = '/' + path.split('/').filter(Boolean)[0];
+    const baseAllowed = allowedPaths.includes(base);
+    if (baseAllowed) return children;
+  }
+
+  if (!hasAccess) return <Navigate to="/" replace />;
   return children;
 }

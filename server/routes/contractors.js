@@ -1,0 +1,124 @@
+const express = require('express');
+const router = express.Router();
+const pool = require('../db/pool');
+const { authenticate } = require('../middleware/auth');
+
+// GET /api/contractors
+router.get('/', authenticate, async (req, res, next) => {
+  try {
+    const { search, sort, dir, page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereClauses = ['c.active = 1'];
+    let params = [];
+
+    if (search) {
+      whereClauses.push(`(c.contractor_name LIKE ? OR c.key_contact_name LIKE ?)`);
+      const q = `%${search}%`;
+      params.push(q, q);
+    }
+
+    const where = `WHERE ${whereClauses.join(' AND ')}`;
+    const sortMap = { name: 'c.contractor_name', contact: 'c.key_contact_name', strength: 'c.relationship_strength' };
+    const sortCol = sortMap[sort] || 'c.contractor_name';
+    const sortDir = dir === 'desc' ? 'DESC' : 'ASC';
+
+    const [rows] = await pool.query(
+      `SELECT c.*,
+              CONCAT(u.first_name, ' ', u.last_name) AS salesperson_name,
+              (SELECT COUNT(*) FROM location l WHERE l.contractor_id = c.id AND l.active = 1) AS location_count
+       FROM contractor c
+       LEFT JOIN user u ON u.id = c.salesperson_user_id AND u.active = 1
+       ${where}
+       ORDER BY ${sortCol} ${sortDir}
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM contractor c ${where}`, params
+    );
+
+    res.json({ success: true, data: rows, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contractors/:id
+router.get('/:id', authenticate, async (req, res, next) => {
+  try {
+    const [[contractor]] = await pool.query(
+      `SELECT c.*,
+              CONCAT(u.first_name, ' ', u.last_name) AS salesperson_name
+       FROM contractor c
+       LEFT JOIN user u ON u.id = c.salesperson_user_id AND u.active = 1
+       WHERE c.id = ? AND c.active = 1`,
+      [req.params.id]
+    );
+    if (!contractor) return res.status(404).json({ success: false, error: 'Contractor not found' });
+
+    // Get assigned locations
+    const [locations] = await pool.query(
+      `SELECT l.id, l.nickname, l.school_name, l.active,
+              ga.geographic_area_name
+       FROM location l
+       LEFT JOIN geographic_area ga ON ga.id = l.geographic_area_id_online
+       WHERE l.contractor_id = ? AND l.active = 1
+       ORDER BY l.nickname`,
+      [req.params.id]
+    );
+
+    res.json({ success: true, data: { ...contractor, locations } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/contractors
+router.post('/', authenticate, async (req, res, next) => {
+  try {
+    const { contractor_name } = req.body;
+    if (!contractor_name) return res.status(400).json({ success: false, error: 'Name is required' });
+
+    const [result] = await pool.query(
+      `INSERT INTO contractor (contractor_name, active) VALUES (?, 1)`,
+      [contractor_name]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/contractors/:id
+router.put('/:id', authenticate, async (req, res, next) => {
+  try {
+    const data = req.body;
+    const fields = [
+      'contractor_name', 'salesperson_user_id', 'client_since', 'relationship_strength',
+      'rebooking_notes', 'minimum_to_run', 'last_price_raise',
+      'key_contact_name', 'key_contact_email', 'key_contact_phone',
+      'day_of_notifications', 'client_vibe',
+      'livescan_multiple', 'livescan_required', 'tb_required', 'professor_misc_notes',
+      'behavioral_guidelines', 'area_demographic', 'flexibility_notes',
+      'invoice_notes', 'last_updated', 'general_notes', 'active',
+    ];
+
+    const updateFields = fields.filter(f => data[f] !== undefined);
+    const values = updateFields.map(f => data[f] === '' ? null : data[f]);
+
+    if (updateFields.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+
+    await pool.query(
+      `UPDATE contractor SET ${updateFields.map(f => `${f} = ?`).join(', ')} WHERE id = ?`,
+      [...values, req.params.id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

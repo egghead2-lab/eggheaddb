@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getLessonsPage, createLesson, deleteLesson } from '../api/lessons';
+import { createClass, reorderLessons } from '../api/classes';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -42,6 +43,9 @@ export default function LessonsPage() {
   const [newClassId, setNewClassId] = useState('');
   const [copiedId, setCopiedId] = useState(null);
   const [expandedModules, setExpandedModules] = useState(new Set());
+  const [showNewModule, setShowNewModule] = useState(false);
+  const [newModuleName, setNewModuleName] = useState('');
+  const [newModuleType, setNewModuleType] = useState('');
   const qc = useQueryClient();
 
   const toggleModule = (key) => {
@@ -101,6 +105,30 @@ export default function LessonsPage() {
     onSuccess: () => { qc.invalidateQueries(['lessons-page']); qc.invalidateQueries(['lessons']); },
   });
 
+  const createModuleMutation = useMutation({
+    mutationFn: (data) => createClass(data),
+    onSuccess: () => {
+      qc.invalidateQueries(['classes']);
+      qc.invalidateQueries(['lessons-page']);
+      setNewModuleName(''); setNewModuleType(''); setShowNewModule(false);
+    },
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: ({ classId, lessonIds }) => reorderLessons(classId, lessonIds),
+    onSuccess: () => { qc.invalidateQueries(['lessons-page']); qc.invalidateQueries(['classes']); },
+  });
+
+  const moveLessonInModule = (group, lessonId, direction) => {
+    const lessonIds = group.lessons.map(l => l.id);
+    const idx = lessonIds.indexOf(lessonId);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= lessonIds.length) return;
+    [lessonIds[idx], lessonIds[newIdx]] = [lessonIds[newIdx], lessonIds[idx]];
+    reorderMutation.mutate({ classId: group.class_id, lessonIds });
+  };
+
   const copyBlurb = (l) => {
     if (l.class_description) {
       navigator.clipboard.writeText(l.class_description);
@@ -150,8 +178,29 @@ export default function LessonsPage() {
               </Button>
               <button onClick={() => setShowAdd(false)} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
             </div>
+          ) : showNewModule ? (
+            <div className="flex gap-2 items-center">
+              <input type="text" placeholder="Module name" value={newModuleName} onChange={e => setNewModuleName(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f]" autoFocus />
+              <select value={newModuleType} onChange={e => setNewModuleType(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1.5 text-sm appearance-none pr-8 bg-white focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
+                <option value="">Type…</option>
+                <option value="1">Class</option>
+                <option value="2">Camp</option>
+                <option value="5">Robotics</option>
+                <option value="6">Financial Literacy</option>
+              </select>
+              <Button onClick={() => newModuleName && createModuleMutation.mutate({ class_name: newModuleName, program_type_id: newModuleType || 1 })}
+                disabled={createModuleMutation.isPending || !newModuleName}>
+                {createModuleMutation.isPending ? '…' : 'Create'}
+              </Button>
+              <button onClick={() => setShowNewModule(false)} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+            </div>
           ) : (
-            <Button onClick={() => setShowAdd(true)}>+ New Lesson</Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setShowNewModule(true)}>+ New Module</Button>
+              <Button onClick={() => setShowAdd(true)}>+ New Lesson</Button>
+            </div>
           )}
         </div>
       }>
@@ -221,6 +270,7 @@ export default function LessonsPage() {
                 {isExpanded && <div className="bg-white border border-t-0 border-gray-200 rounded-b-lg overflow-hidden">
                   <table className="w-full text-sm" style={{tableLayout: 'fixed'}}>
                     <colgroup>
+                      <col className="w-12" />
                       <col />
                       <col className="w-16" />
                       <col className="w-20" />
@@ -231,6 +281,7 @@ export default function LessonsPage() {
                     </colgroup>
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
+                        <th className="w-12"></th>
                         <th className="text-left px-4 py-2 font-medium text-gray-600">Lesson</th>
                         <th className="text-center px-3 py-2 font-medium text-gray-600 w-16">Type</th>
                         <th className="text-center px-3 py-2 font-medium text-gray-600 w-20">Status</th>
@@ -246,6 +297,16 @@ export default function LessonsPage() {
                         const pLink = l.parent_portal_link || group.parent_portal_link;
                         return (
                           <tr key={l.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                            <td className="px-1 py-1 text-center">
+                              <div className="flex flex-col items-center">
+                                <button type="button" onClick={() => moveLessonInModule(group, l.id, -1)}
+                                  disabled={i === 0} title="Move up"
+                                  className={`text-lg leading-none ${i === 0 ? 'text-gray-200' : 'text-gray-400 hover:text-[#1e3a5f]'}`}>▲</button>
+                                <button type="button" onClick={() => moveLessonInModule(group, l.id, 1)}
+                                  disabled={i === group.lessons.length - 1} title="Move down"
+                                  className={`text-lg leading-none ${i === group.lessons.length - 1 ? 'text-gray-200' : 'text-gray-400 hover:text-[#1e3a5f]'}`}>▼</button>
+                              </div>
+                            </td>
                             <td className="px-4 py-2">
                               <Link to={`/lessons/${l.id}`} className="font-medium text-[#1e3a5f] hover:underline">{toProperCase(l.lesson_name)}</Link>
                               {l.lesson_description && (

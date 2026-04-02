@@ -38,7 +38,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN class c ON c.id = lc.class_id AND c.active = 1
        LEFT JOIN program_type pt ON pt.id = c.program_type_id AND pt.active = 1
        ${where}
-       ORDER BY ${sortCol} ${sortDir}, l.lesson_name ASC
+       ORDER BY ${sortCol} ${sortDir}, lc.sort_order ASC, l.lesson_name ASC
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );

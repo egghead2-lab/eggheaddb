@@ -49,11 +49,12 @@ router.get('/', authenticate, async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT loc.id, loc.nickname, loc.school_name, loc.address, loc.active,
               loc.payment_through_us, loc.virtus_required, loc.tb_required, loc.livescan_required,
-              loc.location_enrollment, loc.demo_allowed, loc.tbd,
+              loc.location_enrollment, loc.demo_allowed, loc.tbd, loc.retained,
+              loc.client_manager_user_id,
               c.city_name,
               ga.geographic_area_name,
               con.contractor_name,
-              CONCAT(cm_user.first_name, ' ', cm_user.last_name) AS client_manager,
+              COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm_user.first_name, ' ', cm_user.last_name)) AS client_manager,
               lt.location_type_name,
               (SELECT COUNT(*) FROM default_location_class_type dlct
                WHERE dlct.location_id = loc.id AND dlct.active = 1) AS class_count
@@ -61,6 +62,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN city c ON c.id = loc.city_id
        LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online AND ga.active = 1
        LEFT JOIN user cm_user ON cm_user.id = ga.client_manager_user_id
+       LEFT JOIN user loc_cm ON loc_cm.id = loc.client_manager_user_id AND loc_cm.active = 1
        LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        LEFT JOIN location_type lt ON lt.id = loc.location_type_id AND lt.active = 1
        ${where}
@@ -188,7 +190,11 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'registration_link_for_flyer', 'custom_flyer_required', 'custom_flyer_items_required',
       'flyer_quantity', 'parking_difficulty_id', 'parking_information', 'school_procedure_Info',
       'internal_notes', 'observes_allowed', 'jewish', 'set_dates_ourselves', 'number_of_weeks',
-      'school_calendar_link', 'invoicing_notes', 'tbd', 'tbd_notes', 'active',
+      'school_calendar_link', 'invoicing_notes', 'tbd', 'tbd_notes', 'retained',
+      'client_manager_user_id',
+      'site_coordinator_name', 'site_coordinator_email', 'site_coordinator_phone', 'site_coordinator_role',
+      'invoice_contact_name', 'invoice_contact_email', 'invoice_contact_phone', 'invoice_at_district',
+      'active',
     ];
 
     const updateFields = fields.filter(f => data[f] !== undefined);

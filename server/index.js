@@ -13,6 +13,9 @@ const usersRoutes = require('./routes/users');
 const holidaysRoutes = require('./routes/holidays');
 const studentsRoutes = require('./routes/students');
 const parentsRoutes = require('./routes/parents');
+const contractorsRoutes = require('./routes/contractors');
+const bulkInputRoutes = require('./routes/bulk-input');
+const toolsRoutes = require('./routes/tools');
 const lessonsRoutes = require('./routes/lessons');
 const classesRoutes = require('./routes/classes');
 const errorHandler = require('./middleware/errorHandler');
@@ -49,6 +52,9 @@ app.use('/api/users', usersRoutes);
 app.use('/api/holidays', holidaysRoutes);
 app.use('/api/students', studentsRoutes);
 app.use('/api/parents', parentsRoutes);
+app.use('/api/contractors', contractorsRoutes);
+app.use('/api/bulk-input', bulkInputRoutes);
+app.use('/api/tools', toolsRoutes);
 
 // Error handler
 app.use(errorHandler);
