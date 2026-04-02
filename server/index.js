@@ -17,6 +17,7 @@ const contractorsRoutes = require('./routes/contractors');
 const bulkInputRoutes = require('./routes/bulk-input');
 const toolsRoutes = require('./routes/tools');
 const scheduleRoutes = require('./routes/schedule');
+const assignmentBoardRoutes = require('./routes/assignment-board');
 const lessonsRoutes = require('./routes/lessons');
 const classesRoutes = require('./routes/classes');
 const errorHandler = require('./middleware/errorHandler');
@@ -57,6 +58,7 @@ app.use('/api/contractors', contractorsRoutes);
 app.use('/api/bulk-input', bulkInputRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/schedule', scheduleRoutes);
+app.use('/api/assignment-board', assignmentBoardRoutes);
 
 // Error handler
 app.use(errorHandler);
