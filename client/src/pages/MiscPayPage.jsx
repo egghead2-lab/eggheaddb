@@ -1,3 +1,4 @@
+import { PayrollTabBar } from './PayrollDashboardPage';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getMiscPay, createMiscPay, reviewMiscPay } from '../api/payroll';
@@ -122,6 +123,7 @@ export default function MiscPayPage() {
 
   return (
     <AppShell>
+      <PayrollTabBar />
       <PageHeader title="Miscellaneous Pay" action={
         <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : '+ New Submission'}</Button>
       }>

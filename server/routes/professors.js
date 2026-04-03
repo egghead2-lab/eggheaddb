@@ -157,7 +157,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
     );
 
     const [upcomingSessions] = await pool.query(
-      `SELECT s.session_date, s.session_time, prog.program_nickname, loc.nickname AS location_nickname
+      `SELECT s.session_date, s.session_time, prog.program_nickname, prog.location_id, loc.nickname AS location_nickname
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id

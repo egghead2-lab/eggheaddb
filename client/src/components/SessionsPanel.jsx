@@ -291,7 +291,14 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
                 <Button size="sm" onClick={handleBulkGenerate} disabled={bulkMutation.isPending || !bulkStart || !bulkEnd}>
                   {bulkMutation.isPending ? '…' : 'Generate'}
                 </Button>
-                {futureHolidays.length > 0 && <span className="text-[10px] text-blue-500">(skips {futureHolidays.length} holidays)</span>}
+                {futureHolidays.length > 0 && (
+                  <span className="text-[10px] text-blue-500 cursor-help" title={
+                    (holidays || []).filter(h => futureHolidays.includes((h.holiday_date || '').split('T')[0]))
+                      .map(h => `${h.holiday_name} (${formatDate(h.holiday_date)})`).join('\n')
+                  }>
+                    skips {futureHolidays.length} holidays ⓘ
+                  </span>
+                )}
                 <button onClick={() => setShowBulk(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
               </div>
             ) : showAdd ? (

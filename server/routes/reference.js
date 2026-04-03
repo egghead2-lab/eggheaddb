@@ -3,6 +3,72 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/search?q=
+router.get('/search', authenticate, async (req, res, next) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) return res.json({ success: true, data: [] });
+    const s = `%${q}%`;
+
+    const [programs] = await pool.query(
+      `SELECT id, program_nickname AS name, 'program' AS type FROM program WHERE active = 1 AND program_nickname LIKE ? LIMIT 5`, [s]
+    );
+    const [professors] = await pool.query(
+      `SELECT id, CONCAT(professor_nickname, ' ', last_name) AS name, 'professor' AS type FROM professor WHERE active = 1 AND (professor_nickname LIKE ? OR first_name LIKE ? OR last_name LIKE ?) LIMIT 5`, [s, s, s]
+    );
+    const [locations] = await pool.query(
+      `SELECT id, nickname AS name, 'location' AS type FROM location WHERE active = 1 AND (nickname LIKE ? OR school_name LIKE ?) AND (location_type_id IS NULL OR location_type_id != 5) LIMIT 5`, [s, s]
+    );
+    const [students] = await pool.query(
+      `SELECT id, CONCAT(first_name, ' ', last_name) AS name, 'student' AS type FROM student WHERE active = 1 AND (first_name LIKE ? OR last_name LIKE ?) LIMIT 5`, [s, s]
+    );
+    const [contractors] = await pool.query(
+      `SELECT id, contractor_name AS name, 'contractor' AS type FROM contractor WHERE active = 1 AND contractor_name LIKE ? LIMIT 5`, [s]
+    );
+
+    res.json({ success: true, data: [...programs, ...professors, ...locations, ...students, ...contractors] });
+  } catch (err) { next(err); }
+});
+
+// GET /api/dashboard-kpis
+router.get('/dashboard-kpis', authenticate, async (req, res, next) => {
+  try {
+    const [[active]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id
+       WHERE p.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
+       AND (p.last_session_date >= CURDATE() OR p.last_session_date IS NULL)`
+    );
+    const [[unconfirmed]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id
+       WHERE p.active = 1 AND cs.class_status_name = 'Unconfirmed'
+       AND (p.last_session_date >= CURDATE() OR p.last_session_date IS NULL)`
+    );
+    const [[upcoming]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM session s
+       JOIN program p ON p.id = s.program_id AND p.active = 1
+       WHERE s.active = 1 AND s.session_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)`
+    );
+    const [[overdue]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM lesson WHERE active = 1 AND review_status = 'overdue'`
+    );
+    const [[activeProfessors]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id
+       WHERE p.active = 1 AND ps.professor_status_name = 'Active'`
+    );
+    const [[activeLocations]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM location WHERE active = 1 AND (location_type_id IS NULL OR location_type_id != 5)`
+    );
+    res.json({ success: true, data: {
+      activePrograms: active.cnt,
+      unconfirmedPrograms: unconfirmed.cnt,
+      upcomingSessions7d: upcoming.cnt,
+      overdueLessons: overdue.cnt,
+      activeProfessors: activeProfessors.cnt,
+      activeLocations: activeLocations.cnt,
+    }});
+  } catch (err) { next(err); }
+});
+
 // GET /api/sidebar-counts
 router.get('/sidebar-counts', authenticate, async (req, res, next) => {
   try {

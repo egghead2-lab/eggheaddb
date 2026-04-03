@@ -354,7 +354,7 @@ export default function ProfessorDetailPage() {
                       <td className="px-3 py-2">{s.session_date ? formatDate(s.session_date) : '—'}</td>
                       <td className="px-3 py-2 text-gray-500">{s.session_time ? formatTime(s.session_time) : '—'}</td>
                       <td className="px-3 py-2 text-gray-600">{s.program_nickname}</td>
-                      <td className="px-3 py-2 text-gray-500">{s.location_nickname || '—'}</td>
+                      <td className="px-3 py-2 text-gray-500">{s.location_id ? <Link to={`/locations/${s.location_id}`} className="text-[#1e3a5f] hover:underline">{s.location_nickname}</Link> : (s.location_nickname || '—')}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -1,3 +1,4 @@
+import { PayrollTabBar } from './PayrollDashboardPage';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getFmTime, createFmTime, approveFmTime } from '../api/payroll';
@@ -124,6 +125,7 @@ export default function FmDailyLogPage() {
 
   return (
     <AppShell>
+      <PayrollTabBar />
       <PageHeader title="Field Manager Daily Log" action={
         canSubmit ? <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : '+ New Log Entry'}</Button> : null
       } />

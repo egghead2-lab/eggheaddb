@@ -21,6 +21,11 @@ import AssignmentBoardPage from './pages/AssignmentBoardPage';
 import PayrollDashboardPage from './pages/PayrollDashboardPage';
 import MiscPayPage from './pages/MiscPayPage';
 import FmDailyLogPage from './pages/FmDailyLogPage';
+import GustoCodesPage from './pages/GustoCodesPage';
+import PayrollRunsPage from './pages/PayrollRunsPage';
+import SessionPayPage from './pages/SessionPayPage';
+import OnboardingPayPage from './pages/OnboardingPayPage';
+import MileagePage from './pages/MileagePage';
 import ContractorsPage from './pages/ContractorsPage';
 import ContractorDetailPage from './pages/ContractorDetailPage';
 import LessonsPage from './pages/LessonsPage';
@@ -73,8 +78,13 @@ export default function App() {
       <Route path="/schedule/:id" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
       <Route path="/payroll" element={<ProtectedRoute><PayrollDashboardPage /></ProtectedRoute>} />
+      <Route path="/payroll/runs" element={<ProtectedRoute><PayrollRunsPage /></ProtectedRoute>} />
       <Route path="/payroll/misc-pay" element={<ProtectedRoute><MiscPayPage /></ProtectedRoute>} />
       <Route path="/payroll/fm-log" element={<ProtectedRoute><FmDailyLogPage /></ProtectedRoute>} />
+      <Route path="/payroll/gusto-codes" element={<ProtectedRoute><GustoCodesPage /></ProtectedRoute>} />
+      <Route path="/payroll/session-pay" element={<ProtectedRoute><SessionPayPage /></ProtectedRoute>} />
+      <Route path="/payroll/onboarding-pay" element={<ProtectedRoute><OnboardingPayPage /></ProtectedRoute>} />
+      <Route path="/payroll/mileage" element={<ProtectedRoute><MileagePage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
