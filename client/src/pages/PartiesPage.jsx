@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getParties } from '../api/parties';
-import { useProfessorList, useGeneralData } from '../hooks/useReferenceData';
+import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -24,8 +24,12 @@ export default function PartiesPage() {
   const [sort, setSort] = useState('');
   const [dir, setDir] = useState('desc');
 
-  const { data: profListData } = useProfessorList();
-  const professorList = profListData?.data || [];
+  const { data: partyProfsData } = useQuery({
+    queryKey: ['party-professors'],
+    queryFn: () => import('../api/client').then(m => m.default.get('/parties/professors').then(r => r.data)),
+    staleTime: 5 * 60 * 1000,
+  });
+  const professorList = partyProfsData?.data || [];
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
 
@@ -70,7 +74,7 @@ export default function PartiesPage() {
           <option value="all">All Parties</option>
         </Select>
         <Input
-          placeholder="Search by type or professor…"
+          placeholder="Search name, contact, email, date…"
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
           className="w-56"

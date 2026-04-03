@@ -3,6 +3,26 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/parties/professors — professors with current/future parties
+router.get('/professors', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT p.id, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name
+       FROM program prog
+       JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
+       JOIN program_type pt ON pt.id = cl.program_type_id AND pt.program_type_name = 'Party'
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
+       JOIN professor p ON p.active = 1 AND (p.id = prog.lead_professor_id OR p.id = prog.assistant_professor_id)
+       WHERE prog.active = 1
+         AND (prog.first_session_date >= CURDATE() OR prog.first_session_date IS NULL)
+       ORDER BY display_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/parties (party-type programs only)
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -16,9 +36,9 @@ router.get('/', authenticate, async (req, res, next) => {
     let params = [];
 
     if (search) {
-      whereClauses.push(`(prog.program_nickname LIKE ? OR CONCAT(lp.first_name, ' ', lp.last_name) LIKE ?)`);
+      whereClauses.push(`(prog.program_nickname LIKE ? OR CONCAT(lp.first_name, ' ', lp.last_name) LIKE ? OR CONCAT(par.first_name, ' ', par.last_name) LIKE ? OR par.email LIKE ? OR DATE_FORMAT(prog.first_session_date, '%m/%d/%Y') LIKE ? OR DATE_FORMAT(prog.first_session_date, '%Y-%m-%d') LIKE ?)`);
       const s = `%${search}%`;
-      params.push(s, s);
+      params.push(s, s, s, s, s, s);
     }
     if (status) {
       whereClauses.push(`cs.class_status_name = ?`);
@@ -27,8 +47,8 @@ router.get('/', authenticate, async (req, res, next) => {
       whereClauses.push(`cs.class_status_name NOT LIKE 'Cancelled%'`);
     }
     if (professor) {
-      whereClauses.push(`prog.lead_professor_id = ?`);
-      params.push(professor);
+      whereClauses.push(`(prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)`);
+      params.push(professor, professor);
     }
     // Timeframe filter: 'current' (default), 'past', 'all'
     const timeframe = req.query.timeframe || 'current';
