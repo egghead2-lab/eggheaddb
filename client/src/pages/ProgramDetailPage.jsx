@@ -126,27 +126,55 @@ export default function ProgramDetailPage() {
               </Select>
               <Input label="Assist Pay" type="number" step="0.01" prefix="$" {...register('assistant_professor_pay')} />
             </div>
-            <div className="grid grid-cols-4 gap-4 mt-4">
+            <div className="grid grid-cols-5 gap-4 mt-4">
               <Input label="Parent Cost" type="number" step="0.01" prefix="$" {...register('parent_cost')} />
               <Input label="Lab Fee" type="number" step="0.01" prefix="$" {...register('lab_fee')} />
-              <Input label="Our Cut" type="number" step="0.01" prefix="$" {...register('our_cut')} />
+              <Input label="Our Cut (per session)" type="number" step="0.01" prefix="$" {...register('our_cut')} />
               {(() => {
                 const ourCut = parseFloat(watch('our_cut')) || 0;
+                const labFee = parseFloat(watch('lab_fee')) || 0;
+                const enrolled = parseInt(prog.number_enrolled) || 0;
                 const billable = (prog.sessions || []).filter(s => !s.not_billed);
-                const perSession = billable.length > 0 && ourCut > 0 ? ourCut / billable.length : null;
+                const isPerStudent = prog.class_pricing_type_name === 'Per Student';
+
+                // Billable cost calculation
+                let billableCost = 0;
+                if (isPerStudent) {
+                  // Per student: (Our Cut + Lab Fee) × enrolled students × billable sessions
+                  const perStudentPerSession = ourCut + labFee;
+                  billableCost = perStudentPerSession * enrolled * billable.length;
+                } else {
+                  // Flat fee: Our Cut × billable sessions
+                  billableCost = ourCut * billable.length;
+                }
+
+                const perSession = billable.length > 0 && ourCut > 0 ? (isPerStudent ? (ourCut + labFee) * enrolled : ourCut) : null;
                 const totalProfPay = billable.reduce((sum, s) => sum + (parseFloat(s.professor_pay) || 0) + (parseFloat(s.assistant_pay) || 0), 0);
-                const mismatch = ourCut > 0 && totalProfPay > 0 && totalProfPay > ourCut;
+
                 return (
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-700">Per Session</label>
-                    <span className="text-sm text-gray-500 py-1.5 px-3 bg-gray-50 rounded border border-gray-200">
-                      {perSession ? formatCurrency(perSession) : '—'}
-                      <span className="text-gray-400 text-xs ml-1">({billable.length} billable)</span>
-                    </span>
-                    {mismatch && (
-                      <p className="text-xs text-amber-600">Total professor pay ({formatCurrency(totalProfPay)}) exceeds our cut ({formatCurrency(ourCut)})</p>
-                    )}
-                  </div>
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-700">Per Session Revenue</label>
+                      <span className="text-sm text-gray-500 py-1.5 px-3 bg-gray-50 rounded border border-gray-200">
+                        {perSession ? formatCurrency(perSession) : '—'}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {isPerStudent ? `Per Student × ${enrolled} enrolled` : 'Flat Fee'}
+                        {' · '}{billable.length} billable
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-700">Total Billable</label>
+                      <span className={`text-sm font-medium py-1.5 px-3 rounded border ${billableCost > 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                        {billableCost > 0 ? formatCurrency(billableCost) : '—'}
+                      </span>
+                      {totalProfPay > 0 && billableCost > 0 && (
+                        <span className={`text-[10px] ${totalProfPay > billableCost ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                          Prof cost: {formatCurrency(totalProfPay)} {totalProfPay > billableCost ? '(exceeds revenue!)' : `(${Math.round(totalProfPay / billableCost * 100)}% of revenue)`}
+                        </span>
+                      )}
+                    </div>
+                  </>
                 );
               })()}
             </div>

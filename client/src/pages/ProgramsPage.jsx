@@ -144,12 +144,13 @@ export default function ProgramsPage() {
                     <SortTh col="start_date" sort={sort} dir={dir} onSort={handleSort}>Start</SortTh>
                     <SortTh col="end_date" sort={sort} dir={dir} onSort={handleSort}>End</SortTh>
                     <SortTh col="professor" sort={sort} dir={dir} onSort={handleSort}>Lead Prof</SortTh>
+                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Sessions</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-700">Enrolled</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {programs.length === 0 ? (
-                    <tr><td colSpan={9} className="text-center py-12 text-gray-400">No programs found</td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-gray-400">No programs found</td></tr>
                   ) : programs.map((p, i) => (
                     <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className="px-4 py-2.5">
@@ -162,6 +163,7 @@ export default function ProgramsPage() {
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.first_session_date ? formatDate(p.first_session_date) : '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.last_session_date ? formatDate(p.last_session_date) : '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600">{p.lead_professor_nickname || '—'}</td>
+                      <td className="px-3 py-2.5 text-center text-gray-600">{p.session_count || 0}</td>
                       <td className="px-4 py-2.5 text-right text-gray-700">
                         {p.number_enrolled != null ? `${p.number_enrolled} / ${p.maximum_students || '—'}` : '—'}
                       </td>

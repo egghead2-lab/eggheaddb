@@ -45,6 +45,21 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Auto-trim all string values in request bodies
+app.use((req, res, next) => {
+  function trimStrings(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(trimStrings);
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = typeof v === 'string' ? v.trim() : (typeof v === 'object' ? trimStrings(v) : v);
+    }
+    return out;
+  }
+  if (req.body && typeof req.body === 'object') req.body = trimStrings(req.body);
+  next();
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });

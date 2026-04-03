@@ -82,7 +82,8 @@ router.get('/', authenticate, async (req, res, next) => {
               pt.program_type_name,
               CONCAT(lp.first_name, ' ', lp.last_name) AS lead_professor_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
-              CONCAT(ap.first_name, ' ', ap.last_name) AS assistant_professor_name
+              CONCAT(ap.first_name, ' ', ap.last_name) AS assistant_professor_name,
+              prog.session_count
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
@@ -131,6 +132,8 @@ router.get('/:id', authenticate, async (req, res, next) => {
               loc.retained AS location_retained,
               cl.class_name, cl.class_code, cl.formal_class_name,
               pt.program_type_name,
+              ct.class_type_name,
+              cpt.class_pricing_type_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
               CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname,
               CONCAT(dp.professor_nickname, ' ', dp.last_name) AS demo_professor_nickname
@@ -139,6 +142,8 @@ router.get('/:id', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN class_type ct ON ct.id = cl.class_type_id
+       LEFT JOIN class_pricing_type cpt ON cpt.id = loc.class_pricing_type_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
        LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id
        LEFT JOIN professor dp ON dp.id = prog.demo_professor_id
@@ -352,6 +357,76 @@ router.put('/:id/sessions', authenticate, async (req, res, next) => {
   }
 });
 
+// POST /api/programs/:id/sessions/bulk — generate sessions from date range + day of week
+router.post('/:id/sessions/bulk', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { start_date, end_date, skip_dates } = req.body;
+
+    if (!start_date || !end_date) return res.status(400).json({ success: false, error: 'Start and end date required' });
+
+    // Get program to know days of week and defaults
+    const [[program]] = await pool.query(
+      `SELECT * FROM program WHERE id = ? AND active = 1`, [id]
+    );
+    if (!program) return res.status(404).json({ success: false, error: 'Program not found' });
+
+    // Determine which days of the week this program runs
+    const dayMap = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    const allowedDays = Object.entries(dayMap).filter(([key]) => program[key]).map(([, val]) => val);
+
+    if (allowedDays.length === 0) return res.status(400).json({ success: false, error: 'No days of week set on this program' });
+
+    const skipSet = new Set((skip_dates || []).map(d => d.split('T')[0]));
+
+    // Get existing session dates to avoid duplicates
+    const [existing] = await pool.query(
+      `SELECT session_date FROM session WHERE program_id = ? AND active = 1`, [id]
+    );
+    const existingDates = new Set(existing.map(s => s.session_date.toISOString().split('T')[0]));
+
+    // Generate dates
+    const start = new Date(start_date + 'T12:00:00');
+    const end = new Date(end_date + 'T12:00:00');
+    const newDates = [];
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay();
+      const key = d.toISOString().split('T')[0];
+      if (allowedDays.includes(dow) && !skipSet.has(key) && !existingDates.has(key)) {
+        newDates.push(key);
+      }
+    }
+
+    if (newDates.length === 0) return res.json({ success: true, created: 0, message: 'No new dates to add' });
+
+    // Insert sessions
+    for (const dateStr of newDates) {
+      await pool.query(
+        `INSERT INTO session (program_id, session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, active, ts_inserted, ts_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+        [id, dateStr, program.start_time || null, program.lead_professor_id || null, program.lead_professor_pay || null,
+         program.assistant_professor_id || null, program.assistant_professor_pay || null]
+      );
+    }
+
+    // Update first/last session dates
+    await pool.query(
+      `UPDATE program SET
+         first_session_date = (SELECT MIN(session_date) FROM session WHERE program_id = ? AND active = 1),
+         last_session_date = (SELECT MAX(session_date) FROM session WHERE program_id = ? AND active = 1),
+         session_count = (SELECT COUNT(*) FROM session WHERE program_id = ? AND active = 1),
+         ts_updated = NOW()
+       WHERE id = ?`,
+      [id, id, id, id]
+    );
+
+    res.json({ success: true, created: newDates.length, dates: newDates });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/programs/:id/sessions/add — add a single session
 router.post('/:id/sessions/add', authenticate, async (req, res, next) => {
   try {
@@ -371,9 +446,10 @@ router.post('/:id/sessions/add', authenticate, async (req, res, next) => {
       `UPDATE program SET
          first_session_date = (SELECT MIN(session_date) FROM session WHERE program_id = ? AND active = 1),
          last_session_date = (SELECT MAX(session_date) FROM session WHERE program_id = ? AND active = 1),
+         session_count = (SELECT COUNT(*) FROM session WHERE program_id = ? AND active = 1),
          ts_updated = NOW()
        WHERE id = ?`,
-      [id, id, id]
+      [id, id, id, id]
     );
 
     res.json({ success: true, id: result.insertId });
@@ -412,9 +488,10 @@ router.put('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
       `UPDATE program SET
          first_session_date = (SELECT MIN(session_date) FROM session WHERE program_id = ? AND active = 1),
          last_session_date = (SELECT MAX(session_date) FROM session WHERE program_id = ? AND active = 1),
+         session_count = (SELECT COUNT(*) FROM session WHERE program_id = ? AND active = 1),
          ts_updated = NOW()
        WHERE id = ?`,
-      [id, id, id]
+      [id, id, id, id]
     );
 
     res.json({ success: true });
@@ -438,9 +515,10 @@ router.delete('/:id/sessions/:sessionId', authenticate, async (req, res, next) =
       `UPDATE program SET
          first_session_date = (SELECT MIN(session_date) FROM session WHERE program_id = ? AND active = 1),
          last_session_date = (SELECT MAX(session_date) FROM session WHERE program_id = ? AND active = 1),
+         session_count = (SELECT COUNT(*) FROM session WHERE program_id = ? AND active = 1),
          ts_updated = NOW()
        WHERE id = ?`,
-      [id, id, id]
+      [id, id, id, id]
     );
 
     res.json({ success: true });

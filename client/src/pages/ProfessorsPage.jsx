@@ -103,12 +103,14 @@ export default function ProfessorsPage() {
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">SC Owner</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Trained In</th>
                     <SortTh col="base_pay" sort={sort} dir={dir} onSort={handleSort} align="right">Base Pay</SortTh>
+                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Programs</th>
                     <th className="text-center px-4 py-3 font-semibold text-gray-700">Compliance</th>
+                    <th className="w-16"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {professors.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">No professors found</td></tr>
+                    <tr><td colSpan={9} className="text-center py-12 text-gray-400">No professors found</td></tr>
                   ) : professors.map((p, i) => (
                     <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className="px-4 py-2.5">
@@ -127,10 +129,14 @@ export default function ProfessorsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(p.base_pay)}</td>
+                      <td className="px-3 py-2.5 text-center text-gray-600">{p.active_program_count || 0}</td>
                       <td className="px-4 py-2.5 text-center text-xs font-medium">
                         <span className={`mr-1.5 ${p.tb_test ? 'text-green-600' : 'text-gray-300'}`}>TB</span>
                         <span className={`mr-1.5 ${p.livescan_count > 0 ? 'text-green-600' : 'text-gray-300'}`}>LS</span>
                         <span className={p.virtus ? 'text-green-600' : 'text-gray-300'}>V</span>
+                      </td>
+                      <td className="px-2 py-2.5 text-center">
+                        <Link to={`/schedule/${p.id}`} className="text-xs text-[#1e3a5f] hover:underline" title="View schedule">Schedule</Link>
                       </td>
                     </tr>
                   ))}
