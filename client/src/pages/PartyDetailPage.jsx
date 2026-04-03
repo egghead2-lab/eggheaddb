@@ -115,7 +115,7 @@ export default function PartyDetailPage() {
             <div className="grid grid-cols-5 gap-3">
               <Select label="Status" required {...register('class_status_id', { required: 'Required' })} error={errors.class_status_id?.message}>
                 <option value="">Select…</option>
-                {(ref.classStatuses || []).map(s => (
+                {(ref.classStatuses || []).filter(s => !isNew || !s.class_status_name.startsWith('Cancelled')).map(s => (
                   <option key={s.id} value={s.id}>{s.class_status_name}</option>
                 ))}
               </Select>

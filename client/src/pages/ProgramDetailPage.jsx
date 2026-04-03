@@ -96,7 +96,7 @@ export default function ProgramDetailPage() {
               <Input label="Program Nickname" {...register('program_nickname')} />
               <Select label="Status" {...register('class_status_id')}>
                 <option value="">Select status…</option>
-                {(ref.classStatuses || []).map(s => (
+                {(ref.classStatuses || []).filter(s => !isNew || !s.class_status_name.startsWith('Cancelled')).map(s => (
                   <option key={s.id} value={s.id}>{s.class_status_name}</option>
                 ))}
               </Select>

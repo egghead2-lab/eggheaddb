@@ -102,7 +102,7 @@ export default function LocationDetailPage() {
                 {(ref.contractors || []).map(c => <option key={c.id} value={c.id}>{c.contractor_name}</option>)}
               </Select>
               <Toggle label="Retained Client" checked={!!watch('retained')} onChange={v => setValue('retained', v ? 1 : 0, { shouldDirty: true })} />
-              <Toggle label="Active" checked={watch('active') !== 0 && watch('active') !== '0'} onChange={v => setValue('active', v ? 1 : 0, { shouldDirty: true })} />
+              {!isNew && <Toggle label="Active" checked={watch('active') !== 0 && watch('active') !== '0'} onChange={v => setValue('active', v ? 1 : 0, { shouldDirty: true })} />}
             </div>
           </Section>
 

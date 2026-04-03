@@ -60,7 +60,7 @@ export default function ProfessorDetailPage() {
           <div>
             <Link to="/professors" className="text-sm text-gray-500 hover:text-[#1e3a5f]">← Professors</Link>
             <h1 className="text-xl font-bold text-gray-900 mt-0.5">
-              {isNew ? 'New Professor' : (prof.professor_nickname || `${prof.first_name || ''} ${prof.last_name || ''}`)}
+              {isNew ? 'New Professor' : (prof.professor_nickname || [prof.first_name, prof.last_name].filter(Boolean).join(' ') || 'Professor')}
             </h1>
           </div>
           {!isNew && (
@@ -75,7 +75,7 @@ export default function ProfessorDetailPage() {
               <Input label="Preferred Name" required {...register('professor_nickname', { required: 'Required' })} error={errors.professor_nickname?.message} />
               <Select label="Status" required {...register('professor_status_id', { required: 'Required' })} error={errors.professor_status_id?.message}>
                 <option value="">Select status…</option>
-                {(ref.professorStatuses || []).map(s => (
+                {(ref.professorStatuses || []).filter(s => !isNew || ['Active', 'Substitute', 'Training'].includes(s.professor_status_name)).map(s => (
                   <option key={s.id} value={s.id}>{s.professor_status_name}</option>
                 ))}
               </Select>

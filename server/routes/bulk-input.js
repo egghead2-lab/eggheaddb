@@ -24,9 +24,10 @@ router.get('/setup', authenticate, async (req, res, next) => {
     );
     const [classes] = await pool.query(
       `SELECT c.id, c.class_name, c.class_code, c.program_type_id, c.class_type_id,
-              pt.program_type_name
+              pt.program_type_name, ct.class_type_name
        FROM class c
        LEFT JOIN program_type pt ON pt.id = c.program_type_id
+       LEFT JOIN class_type ct ON ct.id = c.class_type_id
        WHERE c.active = 1 ORDER BY c.class_name`
     );
     const [programTypes] = await pool.query(

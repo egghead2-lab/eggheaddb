@@ -7,6 +7,11 @@ import { Spinner } from '../components/ui/Spinner';
 import { formatCurrency } from '../lib/utils';
 
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','M-F'];
+const chevronSvg = "bg-[length:16px_16px] bg-[position:right_0.5rem_center] bg-no-repeat bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%236b7280%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5.23%207.21a.75.75%200%20011.06.02L10%2011.168l3.71-3.938a.75.75%200%20111.08%201.04l-4.25%204.5a.75.75%200%2001-1.08%200l-4.25-4.5a.75.75%200%2001.02-1.06z%22%20clip-rule%3D%22evenodd%22%2F%3E%3C%2Fsvg%3E')]";
+const dd = `w-full rounded border border-gray-300 pl-3 pr-8 py-1.5 text-sm appearance-none bg-white focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${chevronSvg}`;
+const ii = "w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]";
+const dds = `w-full rounded border border-gray-300 pl-2 pr-6 py-1 text-xs appearance-none bg-white focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${chevronSvg}`;
+const iis = "w-full rounded border border-gray-300 px-2 py-1 text-xs focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]";
 
 // --- Helpers ---
 function isInvalidDay(dateStr, day, freqMode) {
@@ -68,21 +73,15 @@ function makeNickname(locNick, grades, classCode, existingSet) {
 function StepHeader({ current }) {
   const labels = ['Setup', 'Program Details', 'Enrollment', 'Dates', 'Costs', 'Review & Save'];
   return (
-    <div className="flex items-center gap-2 mb-6">
+    <div className="flex gap-1 mb-6">
       {labels.map((label, i) => {
         const step = i + 1;
         const done = step < current;
         const active = step === current;
         return (
-          <div key={step} className="flex items-center gap-2">
-            <div className={`flex items-center gap-1.5 ${active ? 'text-blue-600' : done ? 'text-gray-400' : 'text-gray-300'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                active ? 'border-blue-600 bg-blue-600 text-white' : done ? 'border-gray-300 bg-gray-100 text-gray-400' : 'border-gray-200 text-gray-300'
-              }`}>{done ? '✓' : step}</div>
-              <span className={`text-xs font-medium hidden sm:block ${active ? 'text-blue-700' : 'text-gray-400'}`}>{label}</span>
-            </div>
-            {i < 5 && <div className="w-4 h-px bg-gray-200" />}
-          </div>
+          <div key={step} className={`flex-1 text-center py-2 text-xs font-medium rounded ${
+            active ? 'bg-[#1e3a5f] text-white' : done ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-400'
+          }`}>{step}. {label}</div>
         );
       })}
     </div>
@@ -91,8 +90,8 @@ function StepHeader({ current }) {
 
 function NavButtons({ onBack, onNext, nextLabel, nextDisabled, loading }) {
   return (
-    <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
-      {onBack ? <button onClick={onBack} className="px-4 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-100">← Back</button> : <div />}
+    <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-200">
+      {onBack ? <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700">← Back</button> : <div />}
       <Button onClick={onNext} disabled={nextDisabled || loading}>
         {loading ? 'Loading…' : (nextLabel ?? 'Next →')}
       </Button>
@@ -101,15 +100,10 @@ function NavButtons({ onBack, onNext, nextLabel, nextDisabled, loading }) {
 }
 
 function BulkBtn({ onClick, label }) {
-  return <button onClick={onClick} className="px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded font-medium whitespace-nowrap">
+  return <button type="button" onClick={onClick} className="px-1.5 py-1 text-xs bg-[#1e3a5f] hover:bg-[#152a47] text-white rounded font-medium whitespace-nowrap flex-shrink-0">
     {label ?? '↓'}
   </button>;
 }
-
-const sel = "text-xs px-2 py-1 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-400";
-const inp = "text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400";
-const th = "border border-gray-200 px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap";
-const td = "border border-gray-100 px-1 py-1";
 
 export default function BulkInputPage() {
   const [step, setStep] = useState(1);
@@ -129,7 +123,7 @@ export default function BulkInputPage() {
   const [rows, setRows] = useState([]);
   const [locations, setLocations] = useState([]);
   const [nickToId, setNickToId] = useState({});
-  const [bulk, setBulk] = useState({ locNickname: '', classType: '', className: '', grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '' });
+  const [bulk, setBulk] = useState({ locNickname: '', programType: '', classType: '', classId: '', grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '' });
 
   // Accumulated program data
   const [programData, setProgramData] = useState([]);
@@ -150,22 +144,35 @@ export default function BulkInputPage() {
 
   const skipSet = useMemo(() => new Set(skipDates.filter(Boolean)), [skipDates]);
 
-  // Build class type -> class name mapping
-  const classTypes = useMemo(() => {
-    const types = new Set();
-    (setup.classes || []).forEach(c => { if (c.class_type_name) types.add(c.class_type_name); });
-    return [...types].sort();
-  }, [setup.classes]);
+  // Locations filtered by mode selection
+  const filteredLocations = useMemo(() => {
+    if (!setup.locations) return [];
+    if (mode === 'contractor' && contractor) return setup.locations.filter(l => String(l.contractor_id) === contractor);
+    if (mode === 'location' && locationId) return setup.locations.filter(l => String(l.id) === locationId);
+    return [];
+  }, [setup.locations, mode, contractor, locationId]);
 
-  const typeToClasses = useMemo(() => {
-    const m = {};
+  // Three-level filtering: Program Type → Class Type (subject) → Class Name
+  const programTypeNames = useMemo(() => {
+    const types = new Set();
+    (setup.programTypes || []).forEach(t => types.add(t.program_type_name));
+    return [...types].sort();
+  }, [setup.programTypes]);
+
+  function getClassTypesForProgramType(progType) {
+    const types = new Set();
     (setup.classes || []).forEach(c => {
-      const t = c.class_type_name || 'Other';
-      if (!m[t]) m[t] = [];
-      m[t].push(c);
+      if ((!progType || c.program_type_name === progType) && c.class_type_name) types.add(c.class_type_name);
     });
-    return m;
-  }, [setup.classes]);
+    return [...types].sort();
+  }
+
+  function getFilteredClasses(progType, clsType) {
+    return (setup.classes || []).filter(c =>
+      (!progType || c.program_type_name === progType) &&
+      (!clsType || c.class_type_name === clsType)
+    );
+  }
 
   const classById = useMemo(() => {
     const m = {};
@@ -185,21 +192,19 @@ export default function BulkInputPage() {
 
   // --- Row helpers ---
   function makeBlankRow() {
-    const ct = classTypes[0] || '';
-    const cn = typeToClasses[ct]?.[0]?.id || '';
     const loc = locations[0] || '';
-    return { locNickname: loc, locId: nickToId[loc] || '', classType: ct, classId: cn, grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '' };
+    return { locNickname: loc, locId: nickToId[loc] || '', programType: '', classType: '', classId: '', grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '' };
   }
 
   function updateRow(i, field, value) {
     setRows(prev => {
       const next = [...prev];
       const row = { ...next[i], [field]: value };
+      if (field === 'locNickname') row.locId = nickToId[value] || '';
+      if (field === 'programType') { row.classType = ''; row.classId = ''; }
       if (field === 'classType') {
-        row.classId = typeToClasses[value]?.[0]?.id || '';
-      }
-      if (field === 'locNickname') {
-        row.locId = nickToId[value] || '';
+        const filtered = getFilteredClasses(row.programType, value);
+        row.classId = filtered[0]?.id || '';
       }
       next[i] = row;
       return next;
@@ -210,8 +215,12 @@ export default function BulkInputPage() {
     setBulk(prev => ({ ...prev, [field]: value }));
     setRows(prev => prev.map(r => {
       const updated = { ...r, [field]: value };
-      if (field === 'classType') updated.classId = typeToClasses[value]?.[0]?.id || '';
       if (field === 'locNickname') updated.locId = nickToId[value] || '';
+      if (field === 'programType') { updated.classType = ''; updated.classId = ''; }
+      if (field === 'classType') {
+        const filtered = getFilteredClasses(updated.programType, value);
+        updated.classId = filtered[0]?.id || '';
+      }
       return updated;
     }));
   }
@@ -236,11 +245,11 @@ export default function BulkInputPage() {
     setNickToId(nti);
     if (!globalStatus && setup.classStatuses?.length) setGlobalStatus(String(setup.classStatuses[0].id));
     if (!globalProgramType && setup.programTypes?.length) setGlobalProgramType(setup.programTypes[0].program_type_name);
-    const initRows = Array.from({ length: rowCount }, () => {
-      const ct = classTypes[0] || '';
-      const cn = typeToClasses[ct]?.[0]?.id || '';
-      return { locNickname: locs[0] || '', locId: nti[locs[0]] || '', classType: ct, classId: cn, grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '' };
-    });
+    const initRows = Array.from({ length: rowCount }, () => ({
+      locNickname: locs[0] || '', locId: nti[locs[0]] || '',
+      programType: '', classType: '', classId: '',
+      grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '',
+    }));
     setRows(initRows);
     setStep(2);
   }
@@ -342,22 +351,25 @@ export default function BulkInputPage() {
   // ===== RENDER =====
   return (
     <AppShell>
-      <div className="px-6 py-5 max-w-[1600px]">
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <h1 className="text-xl font-bold text-gray-900">Bulk Program Input</h1>
+      </div>
+      <div className="p-6 max-w-[1600px]">
         <StepHeader current={step} />
 
         {/* ===== STEP 1: Setup ===== */}
         {step === 1 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-base font-semibold text-gray-800 mb-4">Setup</h2>
             <div className="flex flex-wrap gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Number of Programs</label>
+                <label className="text-xs font-medium text-gray-700">Number of Programs</label>
                 <input type="number" min={1} max={100} value={rowCount} onChange={e => setRowCount(Math.max(1, parseInt(e.target.value) || 1))}
-                  className={`${inp} w-28`} />
+                  className={`${ii} w-28`} />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Mode</label>
-                <select value={mode} onChange={e => setMode(e.target.value)} className={sel}>
+                <label className="text-xs font-medium text-gray-700">Mode</label>
+                <select value={mode} onChange={e => setMode(e.target.value)} className={dd}>
                   <option value="">Select…</option>
                   <option value="contractor">By Contractor</option>
                   <option value="location">By Location</option>
@@ -365,8 +377,8 @@ export default function BulkInputPage() {
               </div>
               {mode === 'contractor' && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Contractor</label>
-                  <select value={contractor} onChange={e => setContractor(e.target.value)} className={`${sel} min-w-[200px]`}>
+                  <label className="text-xs font-medium text-gray-700">Contractor</label>
+                  <select value={contractor} onChange={e => setContractor(e.target.value)} className={`${dd} min-w-[200px]`}>
                     <option value="">Select…</option>
                     {(setup.contractors || []).map(c => <option key={c.id} value={c.id}>{c.contractor_name}</option>)}
                   </select>
@@ -374,14 +386,17 @@ export default function BulkInputPage() {
               )}
               {mode === 'location' && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Location</label>
-                  <select value={locationId} onChange={e => setLocationId(e.target.value)} className={`${sel} min-w-[240px]`}>
+                  <label className="text-xs font-medium text-gray-700">Location</label>
+                  <select value={locationId} onChange={e => setLocationId(e.target.value)} className={`${dd} min-w-[240px]`}>
                     <option value="">Select…</option>
                     {(setup.locations || []).map(l => <option key={l.id} value={l.id}>{l.nickname}</option>)}
                   </select>
                 </div>
               )}
             </div>
+            {filteredLocations.length > 0 && (
+              <div className="mt-3 text-sm text-gray-500">{filteredLocations.length} active location{filteredLocations.length !== 1 ? 's' : ''} available</div>
+            )}
             <NavButtons onNext={goToStep2} nextLabel="Next → Program Details"
               nextDisabled={!mode || (mode === 'contractor' && !contractor) || (mode === 'location' && !locationId)} />
           </div>
@@ -389,136 +404,137 @@ export default function BulkInputPage() {
 
         {/* ===== STEP 2: Program Details ===== */}
         {step === 2 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-base font-semibold text-gray-800 mb-4">Program Details</h2>
             {/* Globals */}
             <div className="flex flex-wrap gap-4 mb-4">
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Class Status</label>
-                <select value={globalStatus} onChange={e => setGlobalStatus(e.target.value)} className={sel}>
+                <label className="text-xs font-medium text-gray-700">Class Status</label>
+                <select value={globalStatus} onChange={e => setGlobalStatus(e.target.value)} className={dd}>
                   {(setup.classStatuses || []).map(s => <option key={s.id} value={s.id}>{s.class_status_name}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Program Type</label>
-                <select value={globalProgramType} onChange={e => setGlobalProgramType(e.target.value)} className={sel}>
+                <label className="text-xs font-medium text-gray-700">Program Type</label>
+                <select value={globalProgramType} onChange={e => setGlobalProgramType(e.target.value)} className={dd}>
                   {(setup.programTypes || []).map(t => <option key={t.id} value={t.program_type_name}>{t.program_type_name}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Sales Rep</label>
-                <select value={salesRep} onChange={e => setSalesRep(e.target.value)} className={sel}>
+                <label className="text-xs font-medium text-gray-700">Sales Rep</label>
+                <select value={salesRep} onChange={e => setSalesRep(e.target.value)} className={dd}>
                   <option value="">None</option>
                   {(setup.salesUsers || []).map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Bulk Fill Panel */}
-            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-2">Bulk Fill — set a value then click ↓ to apply to all rows</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-2 items-end">
-                {mode === 'contractor' && (
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase">Location</label>
-                    <div className="flex items-center gap-1">
-                      <select value={bulk.locNickname} onChange={e => setBulk(p => ({ ...p, locNickname: e.target.value }))} className={`${sel} min-w-[130px]`}>
-                        {locations.map(l => <option key={l}>{l}</option>)}
-                      </select>
-                      <BulkBtn onClick={() => bulkFill('locNickname', bulk.locNickname)} />
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-col gap-0.5">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase">Class Type</label>
-                  <div className="flex items-center gap-1">
-                    <select value={bulk.classType} onChange={e => setBulk(p => ({ ...p, classType: e.target.value, classId: typeToClasses[e.target.value]?.[0]?.id || '' }))} className={`${sel} min-w-[110px]`}>
-                      {classTypes.map(t => <option key={t}>{t}</option>)}
-                    </select>
-                    <BulkBtn onClick={() => bulkFill('classType', bulk.classType)} />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase">Class Name</label>
-                  <div className="flex items-center gap-1">
-                    <select value={bulk.classId} onChange={e => setBulk(p => ({ ...p, classId: e.target.value }))} className={`${sel} min-w-[130px]`}>
-                      {(typeToClasses[bulk.classType] || []).map(c => <option key={c.id} value={c.id}>{c.class_name}</option>)}
-                    </select>
-                    <BulkBtn onClick={() => setRows(prev => prev.map(r => ({ ...r, classId: bulk.classId })))} />
-                  </div>
-                </div>
-                {[['Grades', 'grades', 'K-5', 'w-16'], ['Start Time', 'startTime', '', 'w-24'], ['Length (min)', 'classLength', '60', 'w-16']].map(([label, field, ph, w]) => (
-                  <div key={field} className="flex flex-col gap-0.5">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase">{label}</label>
-                    <div className="flex items-center gap-1">
-                      <input type={field === 'startTime' ? 'time' : field === 'classLength' ? 'number' : 'text'}
-                        value={bulk[field]} onChange={e => setBulk(p => ({ ...p, [field]: e.target.value }))}
-                        placeholder={ph} className={`${inp} ${w}`} />
-                      <BulkBtn onClick={() => bulkFill(field, bulk[field])} />
-                    </div>
-                  </div>
-                ))}
-                <div className="flex flex-col gap-0.5">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase">Day</label>
-                  <div className="flex items-center gap-1">
-                    <select value={bulk.day} onChange={e => setBulk(p => ({ ...p, day: e.target.value }))} className={sel}>
-                      {DAYS.map(d => <option key={d}>{d}</option>)}
-                    </select>
-                    <BulkBtn onClick={() => bulkFill('day', bulk.day)} />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase">Notes</label>
-                  <div className="flex items-center gap-1">
-                    <input value={bulk.notes} onChange={e => setBulk(p => ({ ...p, notes: e.target.value }))} placeholder="Notes" className={`${inp} w-28`} />
-                    <BulkBtn onClick={() => bulkFill('notes', bulk.notes)} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="text-xs w-full border-collapse">
+            {/* Table with inline bulk fill row */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th className={th}>Loc ID</th>
-                    {mode === 'contractor' && <th className={th}>Location</th>}
-                    <th className={th}>Class Type</th>
-                    <th className={th}>Class Name</th>
-                    <th className={th}>Grades</th>
-                    <th className={th}>Start Time</th>
-                    <th className={th}>Length</th>
-                    <th className={th}>Day</th>
-                    <th className={th}>Notes</th>
-                    <th className={th}></th>
-                    <th className={th}></th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Loc ID</th>
+                    {mode === 'contractor' && <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Location</th>}
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Program Type</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Class Type</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Class Name</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Grades</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Start Time</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Length</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Day</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">Notes</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs"></th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-700 text-xs"></th>
+                  </tr>
+                  {/* Bulk fill row */}
+                  <tr className="bg-[#1e3a5f]/5 border-b-2 border-[#1e3a5f]/20">
+                    <td className={`px-2 py-1 text-center text-[10px] text-blue-400`}>—</td>
+                    {mode === 'contractor' && (
+                      <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                        <select value={bulk.locNickname} onChange={e => setBulk(p => ({ ...p, locNickname: e.target.value }))} className={`w-full ${dds} text-[10px] bg-blue-50`}>
+                          {locations.map(l => <option key={l}>{l}</option>)}
+                        </select>
+                        <BulkBtn onClick={() => bulkFill('locNickname', bulk.locNickname)} />
+                      </div></td>
+                    )}
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <select value={bulk.programType} onChange={e => setBulk(p => ({ ...p, programType: e.target.value, classType: '', classId: '' }))} className={`w-full ${dds} text-[10px] bg-blue-50`}>
+                        <option value="">All</option>
+                        {programTypeNames.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                      <BulkBtn onClick={() => bulkFill('programType', bulk.programType)} />
+                    </div></td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <select value={bulk.classType} onChange={e => { const v = e.target.value; setBulk(p => ({ ...p, classType: v, classId: getFilteredClasses(bulk.programType, v)[0]?.id || '' })); }} className={`w-full ${dds} text-[10px] bg-blue-50`}>
+                        <option value="">All</option>
+                        {getClassTypesForProgramType(bulk.programType).map(t => <option key={t}>{t}</option>)}
+                      </select>
+                      <BulkBtn onClick={() => bulkFill('classType', bulk.classType)} />
+                    </div></td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <select value={bulk.classId} onChange={e => setBulk(p => ({ ...p, classId: e.target.value }))} className={`w-full ${dds} text-[10px] bg-blue-50`}>
+                        <option value="">Select…</option>
+                        {getFilteredClasses(bulk.programType, bulk.classType).map(c => <option key={c.id} value={c.id}>{c.class_name}</option>)}
+                      </select>
+                      <BulkBtn onClick={() => setRows(prev => prev.map(r => ({ ...r, classId: bulk.classId })))} />
+                    </div></td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <input value={bulk.grades} onChange={e => setBulk(p => ({ ...p, grades: e.target.value }))} placeholder="K-5" className={`w-full ${iis} text-[10px] bg-blue-50`} />
+                      <BulkBtn onClick={() => bulkFill('grades', bulk.grades)} />
+                    </div></td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <input type="time" step="60" value={bulk.startTime} onChange={e => setBulk(p => ({ ...p, startTime: e.target.value }))} className={`w-full ${iis} text-[10px] bg-blue-50`} />
+                      <BulkBtn onClick={() => bulkFill('startTime', bulk.startTime)} />
+                    </div></td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <input type="number" value={bulk.classLength} onChange={e => setBulk(p => ({ ...p, classLength: e.target.value }))} placeholder="60" className={`w-14 ${iis} text-[10px] bg-blue-50`} />
+                      <BulkBtn onClick={() => bulkFill('classLength', bulk.classLength)} />
+                    </div></td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <select value={bulk.day} onChange={e => setBulk(p => ({ ...p, day: e.target.value }))} className={`w-full ${dds} text-[10px] bg-blue-50`}>
+                        {DAYS.map(d => <option key={d}>{d}</option>)}
+                      </select>
+                      <BulkBtn onClick={() => bulkFill('day', bulk.day)} />
+                    </div></td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-0.5">
+                      <input value={bulk.notes} onChange={e => setBulk(p => ({ ...p, notes: e.target.value }))} placeholder="Notes" className={`w-full ${iis} text-[10px] bg-blue-50`} />
+                      <BulkBtn onClick={() => bulkFill('notes', bulk.notes)} />
+                    </div></td>
+                    <td className="px-2 py-1"></td>
+                    <td className={`px-2 py-1 text-center text-[10px] text-blue-500 font-medium`}>Bulk</td>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className={`${td} font-mono text-gray-400 whitespace-nowrap px-2`}>{r.locId || '—'}</td>
+                      <td className={`px-2 py-1 font-mono text-gray-400 whitespace-nowrap px-2`}>{r.locId || '—'}</td>
                       {mode === 'contractor' && (
-                        <td className={td}><select value={r.locNickname} onChange={e => updateRow(i, 'locNickname', e.target.value)} className={`w-full ${sel}`}>
+                        <td className="px-2 py-1"><select value={r.locNickname} onChange={e => updateRow(i, 'locNickname', e.target.value)} className={`w-full ${dds}`}>
                           {locations.map(l => <option key={l}>{l}</option>)}
                         </select></td>
                       )}
-                      <td className={td}><select value={r.classType} onChange={e => updateRow(i, 'classType', e.target.value)} className={`w-full ${sel}`}>
-                        {classTypes.map(t => <option key={t}>{t}</option>)}
+                      <td className="px-2 py-1"><select value={r.programType} onChange={e => updateRow(i, 'programType', e.target.value)} className={`w-full ${dds}`}>
+                        <option value="">All</option>
+                        {programTypeNames.map(t => <option key={t}>{t}</option>)}
                       </select></td>
-                      <td className={td}><select value={r.classId} onChange={e => updateRow(i, 'classId', e.target.value)} className={`w-full ${sel}`}>
-                        {(typeToClasses[r.classType] || []).map(c => <option key={c.id} value={c.id}>{c.class_name}</option>)}
+                      <td className="px-2 py-1"><select value={r.classType} onChange={e => updateRow(i, 'classType', e.target.value)} className={`w-full ${dds}`}>
+                        <option value="">All</option>
+                        {getClassTypesForProgramType(r.programType).map(t => <option key={t}>{t}</option>)}
                       </select></td>
-                      <td className={td}><input value={r.grades} onChange={e => updateRow(i, 'grades', e.target.value)} placeholder="K-5" className={`w-full ${inp}`} /></td>
-                      <td className={td}><input type="time" step="60" value={r.startTime} onChange={e => updateRow(i, 'startTime', e.target.value)} className={`w-full ${inp}`} /></td>
-                      <td className={td}><input type="number" value={r.classLength} onChange={e => updateRow(i, 'classLength', e.target.value)} placeholder="60" className={`w-20 ${inp}`} /></td>
-                      <td className={td}><select value={r.day} onChange={e => updateRow(i, 'day', e.target.value)} className={`w-full ${sel}`}>
+                      <td className="px-2 py-1"><select value={r.classId} onChange={e => updateRow(i, 'classId', e.target.value)} className={`w-full ${dds}`}>
+                        <option value="">Select…</option>
+                        {getFilteredClasses(r.programType, r.classType).map(c => <option key={c.id} value={c.id}>{c.class_name}</option>)}
+                      </select></td>
+                      <td className="px-2 py-1"><input value={r.grades} onChange={e => updateRow(i, 'grades', e.target.value)} placeholder="K-5" className={`w-full ${iis}`} /></td>
+                      <td className="px-2 py-1"><input type="time" step="60" value={r.startTime} onChange={e => updateRow(i, 'startTime', e.target.value)} className={`w-full ${iis}`} /></td>
+                      <td className="px-2 py-1"><input type="number" value={r.classLength} onChange={e => updateRow(i, 'classLength', e.target.value)} placeholder="60" className={`w-20 ${iis}`} /></td>
+                      <td className="px-2 py-1"><select value={r.day} onChange={e => updateRow(i, 'day', e.target.value)} className={`w-full ${dds}`}>
                         {DAYS.map(d => <option key={d}>{d}</option>)}
                       </select></td>
-                      <td className={td}><input value={r.notes} onChange={e => updateRow(i, 'notes', e.target.value)} placeholder="Notes" className={`w-full ${inp}`} /></td>
-                      <td className={`${td} text-center px-2`}><button onClick={() => setRows(p => p.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">✕</button></td>
-                      <td className={`${td} px-2`}><button onClick={() => copyFromPrevious(i)}
+                      <td className="px-2 py-1"><input value={r.notes} onChange={e => updateRow(i, 'notes', e.target.value)} placeholder="Notes" className={`w-full ${iis}`} /></td>
+                      <td className={`px-2 py-1 text-center px-2`}><button onClick={() => setRows(p => p.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">✕</button></td>
+                      <td className={`px-2 py-1 px-2`}><button onClick={() => copyFromPrevious(i)}
                         className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-gray-100 text-gray-500 whitespace-nowrap">Copy ↑</button></td>
                     </tr>
                   ))}
@@ -532,22 +548,22 @@ export default function BulkInputPage() {
 
         {/* ===== STEP 3: Enrollment ===== */}
         {step === 3 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-base font-semibold text-gray-800 mb-4">Enrollment</h2>
-            <div className="overflow-x-auto">
-              <table className="text-sm w-full border-collapse">
+            <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+              <table className="w-full text-sm">
                 <thead><tr className="bg-gray-50">
-                  {['Program Nickname','Day','Min','Max'].map(h => <th key={h} className={th}>{h}</th>)}
+                  {['Program Nickname','Day','Min','Max'].map(h => <th key={h} className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {programData.map((p, i) => (
                     <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className={`${td} px-3 py-2 font-medium text-gray-800`}>{p.nickname}</td>
-                      <td className={`${td} px-3 py-2 text-gray-600`}>{p.day}</td>
-                      <td className={`${td} w-20 px-2`}><input type="number" min={0} value={enrollRows[i]?.min ?? '0'}
-                        onChange={e => setEnrollRows(prev => { const n = [...prev]; n[i] = { ...n[i], min: e.target.value }; return n; })} className={`w-full ${inp}`} /></td>
-                      <td className={`${td} w-20 px-2`}><input type="number" min={0} value={enrollRows[i]?.max ?? '20'}
-                        onChange={e => setEnrollRows(prev => { const n = [...prev]; n[i] = { ...n[i], max: e.target.value }; return n; })} className={`w-full ${inp}`} /></td>
+                      <td className={`px-2 py-1 px-3 py-2 font-medium text-gray-800`}>{p.nickname}</td>
+                      <td className={`px-2 py-1 px-3 py-2 text-gray-600`}>{p.day}</td>
+                      <td className={`px-2 py-1 w-20 px-2`}><input type="number" min={0} value={enrollRows[i]?.min ?? '0'}
+                        onChange={e => setEnrollRows(prev => { const n = [...prev]; n[i] = { ...n[i], min: e.target.value }; return n; })} className={`w-full ${iis}`} /></td>
+                      <td className={`px-2 py-1 w-20 px-2`}><input type="number" min={0} value={enrollRows[i]?.max ?? '20'}
+                        onChange={e => setEnrollRows(prev => { const n = [...prev]; n[i] = { ...n[i], max: e.target.value }; return n; })} className={`w-full ${iis}`} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -559,10 +575,10 @@ export default function BulkInputPage() {
 
         {/* ===== STEP 4: Dates ===== */}
         {step === 4 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-base font-semibold text-gray-800 mb-4">Dates</h2>
             <div className="flex items-center gap-4 mb-4">
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Frequency</span>
+              <span className="text-xs font-medium text-gray-700">Frequency</span>
               {['weekly', 'daily'].map(f => (
                 <label key={f} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
                   <input type="radio" checked={freqMode === f} onChange={() => setFreqMode(f)} className="text-blue-500" />
@@ -571,11 +587,11 @@ export default function BulkInputPage() {
               ))}
             </div>
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Skip Dates (apply to all)</p>
+              <p className="text-xs font-medium text-gray-700 mb-2">Skip Dates (apply to all)</p>
               <div className="flex flex-wrap gap-2 items-center">
                 {skipDates.map((d, i) => (
                   <div key={i} className="flex items-center gap-1">
-                    <input type="date" value={d} onChange={e => setSkipDates(prev => { const n = [...prev]; n[i] = e.target.value; return n; })} className={inp} />
+                    <input type="date" value={d} onChange={e => setSkipDates(prev => { const n = [...prev]; n[i] = e.target.value; return n; })} className={iis} />
                     <button onClick={() => setSkipDates(prev => prev.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                   </div>
                 ))}
@@ -585,34 +601,34 @@ export default function BulkInputPage() {
             <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-wrap gap-3 items-end">
               <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide self-center">Bulk Start Date</span>
               <div className="flex items-center gap-1">
-                <input type="date" value={bulkStartDate} onChange={e => setBulkStartDate(e.target.value)} className={`${inp} bg-white`} />
+                <input type="date" value={bulkStartDate} onChange={e => setBulkStartDate(e.target.value)} className={`${iis} bg-white`} />
                 <BulkBtn onClick={() => { if (bulkStartDate) setRows4(prev => prev.map(r => ({ ...r, startDate: bulkStartDate }))); }} label="Apply to all ↓" />
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="text-xs w-full border-collapse">
+            <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+              <table className="w-full text-xs">
                 <thead><tr className="bg-gray-50">
-                  {['Program Nickname', 'Day', 'Start Date', freqMode === 'weekly' ? 'Weeks' : 'Sessions', 'Generated Dates', 'Skipped Dates'].map(h => <th key={h} className={th}>{h}</th>)}
+                  {['Program Nickname', 'Day', 'Start Date', freqMode === 'weekly' ? 'Weeks' : 'Sessions', 'Generated Dates', 'Skipped Dates'].map(h => <th key={h} className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {programData.map((p, i) => {
                     const c = computed4[i];
                     return (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                        <td className={`${td} px-2 py-1 font-medium text-gray-800 whitespace-nowrap`}>{p.nickname}</td>
-                        <td className={`${td} px-2 py-1 text-gray-600`}>{p.day}</td>
-                        <td className={`${td} px-1`}>
+                        <td className={`px-2 py-1 px-2 py-1 font-medium text-gray-800 whitespace-nowrap`}>{p.nickname}</td>
+                        <td className={`px-2 py-1 px-2 py-1 text-gray-600`}>{p.day}</td>
+                        <td className={`px-2 py-1 px-1`}>
                           <input type="date" value={rows4[i]?.startDate ?? ''} onChange={e => setRows4(prev => { const n = [...prev]; n[i] = { ...n[i], startDate: e.target.value }; return n; })}
-                            className={`${inp} ${c?.invalid ? 'border-red-400 bg-red-50 text-red-700' : ''}`} />
+                            className={`${iis} ${c?.invalid ? 'border-red-400 bg-red-50 text-red-700' : ''}`} />
                           {c?.invalid && <p className="text-red-500 text-[10px] mt-0.5">Wrong day</p>}
                         </td>
-                        <td className={`${td} px-1`}><input type="number" min={1} max={20} value={rows4[i]?.sessions ?? ''}
+                        <td className={`px-2 py-1 px-1`}><input type="number" min={1} max={20} value={rows4[i]?.sessions ?? ''}
                           onChange={e => setRows4(prev => { const n = [...prev]; n[i] = { ...n[i], sessions: parseInt(e.target.value) || '' }; return n; })}
-                          className={`w-16 ${inp}`} /></td>
-                        <td className={`${td} px-2 text-gray-600 max-w-[200px] whitespace-normal leading-relaxed`}>
+                          className={`w-16 ${iis}`} /></td>
+                        <td className={`px-2 py-1 px-2 text-gray-600 max-w-[200px] whitespace-normal leading-relaxed`}>
                           {c?.valid?.length ? c.valid.map(v => v.display).join(', ') : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className={`${td} px-2 text-amber-600 max-w-[160px] whitespace-normal`}>
+                        <td className={`px-2 py-1 px-2 text-amber-600 max-w-[160px] whitespace-normal`}>
                           {c?.skipped?.length ? c.skipped.join(', ') : <span className="text-gray-300">—</span>}
                         </td>
                       </tr>
@@ -627,22 +643,22 @@ export default function BulkInputPage() {
 
         {/* ===== STEP 5: Costs ===== */}
         {step === 5 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-base font-semibold text-gray-800 mb-4">Costs</h2>
             <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-wrap gap-3 items-end">
               <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide self-center">Bulk Fill</span>
               <div className="flex flex-col gap-0.5">
                 <label className="text-[10px] font-medium text-gray-500 uppercase">Per-Session Cost ($)</label>
                 <div className="flex items-center gap-1">
-                  <input type="number" step="1" min={0} value={bulkPerCost} onChange={e => setBulkPerCost(e.target.value)} placeholder="0" className={`${inp} w-20 bg-white`} />
+                  <input type="number" step="1" min={0} value={bulkPerCost} onChange={e => setBulkPerCost(e.target.value)} placeholder="0" className={`${iis} w-20 bg-white`} />
                   <BulkBtn onClick={() => { const n = parseFloat(bulkPerCost); setRows5(prev => prev.map(() => ({ perCost: isNaN(n) ? '' : n }))); }} label="Apply to all ↓" />
                 </div>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="text-xs w-full border-collapse">
+            <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+              <table className="w-full text-xs">
                 <thead><tr className="bg-gray-50">
-                  {['Program Nickname', 'Day', 'Length (min)', 'Sessions', 'Per-Session Cost ($)', 'Total Price ($)', 'Class Pricing (DB)'].map(h => <th key={h} className={th}>{h}</th>)}
+                  {['Program Nickname', 'Day', 'Length (min)', 'Sessions', 'Per-Session Cost ($)', 'Total Price ($)', 'Class Pricing (DB)'].map(h => <th key={h} className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {programData.map((p, i) => {
@@ -652,15 +668,15 @@ export default function BulkInputPage() {
                     const loc = (setup.locations || []).find(l => String(l.id) === p.locId);
                     return (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                        <td className={`${td} px-2 font-medium text-gray-800 whitespace-nowrap`}>{p.nickname}</td>
-                        <td className={`${td} px-2 text-gray-600`}>{p.day}</td>
-                        <td className={`${td} px-2 text-gray-600 text-center`}>{p.classLength}</td>
-                        <td className={`${td} px-2 text-gray-600 text-center`}>{p.sessions}</td>
-                        <td className={`${td} px-1`}><input type="number" step="1" min={0} value={per === '' ? '' : per ?? ''}
+                        <td className={`px-2 py-1 px-2 font-medium text-gray-800 whitespace-nowrap`}>{p.nickname}</td>
+                        <td className={`px-2 py-1 px-2 text-gray-600`}>{p.day}</td>
+                        <td className={`px-2 py-1 px-2 text-gray-600 text-center`}>{p.classLength}</td>
+                        <td className={`px-2 py-1 px-2 text-gray-600 text-center`}>{p.sessions}</td>
+                        <td className={`px-2 py-1 px-1`}><input type="number" step="1" min={0} value={per === '' ? '' : per ?? ''}
                           onChange={e => setRows5(prev => { const n = [...prev]; n[i] = { perCost: parseFloat(e.target.value) || '' }; return n; })}
-                          className={`w-20 ${inp}`} /></td>
-                        <td className={`${td} px-2 font-mono font-semibold text-gray-800 text-right`}>{total !== '—' ? `$${total}` : '—'}</td>
-                        <td className={`${td} px-2 text-gray-500`}>{loc?.classPricing || '—'}</td>
+                          className={`w-20 ${iis}`} /></td>
+                        <td className={`px-2 py-1 px-2 font-mono font-semibold text-gray-800 text-right`}>{total !== '—' ? `$${total}` : '—'}</td>
+                        <td className={`px-2 py-1 px-2 text-gray-500`}>{loc?.classPricing || '—'}</td>
                       </tr>
                     );
                   })}
@@ -681,7 +697,7 @@ export default function BulkInputPage() {
             }
           });
           return (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <div className="bg-white rounded-lg border border-gray-200 p-5">
               <h2 className="text-base font-semibold text-gray-800 mb-1">Review & Save</h2>
               <p className="text-sm text-gray-500 mb-4">{programData.length} programs ready to save</p>
 
@@ -693,16 +709,16 @@ export default function BulkInputPage() {
               {/* Compliance */}
               <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Compliance by Location</h3>
               <div className="overflow-x-auto mb-5">
-                <table className="text-xs w-full border-collapse">
+                <table className="w-full text-xs">
                   <thead><tr className="bg-gray-50">
-                    {['Location', 'TB', 'Livescan', 'Virtus', 'Flyer', 'Contract', 'Payment Through Us'].map(h => <th key={h} className={th}>{h}</th>)}
+                    {['Location', 'TB', 'Livescan', 'Virtus', 'Flyer', 'Contract', 'Payment Through Us'].map(h => <th key={h} className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {[...seenLocs.values()].map(loc => (
                       <tr key={loc.id} className="bg-white hover:bg-gray-50">
-                        <td className={`${td} px-3 py-2 font-medium text-gray-800`}>{loc.nickname}</td>
+                        <td className={`px-2 py-1 px-3 py-2 font-medium text-gray-800`}>{loc.nickname}</td>
                         {[loc.tb_required, loc.livescan_required, loc.virtus_required, loc.flyer_required, loc.contract_permit_required, loc.payment_through_us].map((v, j) => (
-                          <td key={j} className={`${td} px-3 py-2 text-center`}>
+                          <td key={j} className={`px-2 py-1 px-3 py-2 text-center`}>
                             {v ? <span className="text-amber-600 font-semibold">Yes</span> : <span className="text-gray-400">No</span>}
                           </td>
                         ))}
@@ -715,20 +731,20 @@ export default function BulkInputPage() {
               {/* Programs */}
               <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Programs to Save</h3>
               <div className="overflow-x-auto mb-4">
-                <table className="text-xs w-full border-collapse">
+                <table className="w-full text-xs">
                   <thead><tr className="bg-gray-50">
-                    {['Nickname', 'Location', 'Day', 'Time', 'Dates', 'Sessions', 'Total'].map(h => <th key={h} className={th}>{h}</th>)}
+                    {['Nickname', 'Location', 'Day', 'Time', 'Dates', 'Sessions', 'Total'].map(h => <th key={h} className="text-left px-3 py-2 font-semibold text-gray-700 text-xs">{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {programData.map((p, i) => (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                        <td className={`${td} px-2 py-1.5 font-medium text-gray-800`}>{p.nickname}</td>
-                        <td className={`${td} px-2 py-1.5 text-gray-600`}>{p.locNickname}</td>
-                        <td className={`${td} px-2 py-1.5 text-gray-600`}>{p.day}</td>
-                        <td className={`${td} px-2 py-1.5 text-gray-600 whitespace-nowrap`}>{p.startTime}</td>
-                        <td className={`${td} px-2 py-1.5 text-gray-500 max-w-[160px] whitespace-normal`}>{p.generatedDates || '—'}</td>
-                        <td className={`${td} px-2 py-1.5 text-center`}>{p.sessions}</td>
-                        <td className={`${td} px-2 py-1.5 font-mono text-gray-800 text-right`}>{p.totalPrice ? `$${Number(p.totalPrice).toFixed(2)}` : '—'}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 font-medium text-gray-800`}>{p.nickname}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 text-gray-600`}>{p.locNickname}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 text-gray-600`}>{p.day}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 text-gray-600 whitespace-nowrap`}>{p.startTime}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 text-gray-500 max-w-[160px] whitespace-normal`}>{p.generatedDates || '—'}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 text-center`}>{p.sessions}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 font-mono text-gray-800 text-right`}>{p.totalPrice ? `$${Number(p.totalPrice).toFixed(2)}` : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
