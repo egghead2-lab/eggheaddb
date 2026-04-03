@@ -54,16 +54,17 @@ function SidebarGroup({ group, isOpen, onToggle, badgeCounts }) {
             const badgeKey = BADGE_MAP[item.to];
             const count = badgeKey ? (badgeCounts?.[badgeKey] || 0) : 0;
             return (
-            <NavLink key={item.to} to={item.to}
-              className={({ isActive }) =>
-                `flex items-center justify-between pl-6 pr-3 py-1.5 rounded text-sm transition-colors ${
-                  isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/10'
-                }`
-              }>
-              {item.label}
-              {count > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{count}</span>}
-            </NavLink>
-          );})
+              <NavLink key={item.to} to={item.to}
+                className={({ isActive }) =>
+                  `flex items-center justify-between pl-6 pr-3 py-1.5 rounded text-sm transition-colors ${
+                    isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/10'
+                  }`
+                }>
+                {item.label}
+                {count > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{count}</span>}
+              </NavLink>
+            );
+          })}
         </div>
       )}
     </div>
