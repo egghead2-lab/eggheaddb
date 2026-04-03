@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getLocation, createLocation, updateLocation } from '../api/locations';
+import { updateProgram } from '../api/programs';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { toFormData, formatDate } from '../lib/utils';
 import { AppShell } from '../components/layout/AppShell';
@@ -256,6 +257,11 @@ export default function LocationDetailPage() {
             };
             const statusLabel = { paid: 'Paid', sent: 'Sent', not_sent: 'Not Sent' };
 
+            const inlineInvoiceUpdate = async (progId, data) => {
+              await updateProgram(progId, data);
+              qc.invalidateQueries(['locations', id]);
+            };
+
             const renderRow = (p, i) => {
               const invStatus = getInvoiceStatus(p);
               const current = isCurrent(p);
@@ -265,10 +271,19 @@ export default function LocationDetailPage() {
                   <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
                   <td className="px-3 py-2 text-gray-600">{p.lead_professor || '—'}</td>
                   <td className="px-3 py-2 text-xs text-gray-500">{p.first_session_date ? formatDate(p.first_session_date) : '—'}{p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}</td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${statusColor[invStatus]}`}>
-                      {statusLabel[invStatus]}
-                    </span>
+                  <td className="px-3 py-1 text-center">
+                    <select defaultValue={invStatus}
+                      onChange={e => {
+                        const v = e.target.value;
+                        if (v === 'paid') inlineInvoiceUpdate(p.id, { invoice_paid: 1, invoice_date_sent: p.invoice_date_sent || new Date().toISOString().split('T')[0] });
+                        else if (v === 'sent') inlineInvoiceUpdate(p.id, { invoice_paid: 0, invoice_date_sent: new Date().toISOString().split('T')[0] });
+                        else inlineInvoiceUpdate(p.id, { invoice_paid: 0, invoice_date_sent: null });
+                      }}
+                      className={`rounded border px-1.5 py-0.5 text-[10px] font-medium appearance-none cursor-pointer ${statusColor[invStatus]}`}>
+                      <option value="not_sent">Not Sent</option>
+                      <option value="sent">Sent</option>
+                      <option value="paid">Paid</option>
+                    </select>
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500">{p.invoice_date_sent ? formatDate(p.invoice_date_sent) : '—'}</td>
                 </tr>

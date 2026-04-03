@@ -193,6 +193,29 @@ export default function ProgramDetailPage() {
             </div>
           </Section>
 
+          {/* Invoicing */}
+          <Section title={(() => {
+            const paid = watch('invoice_paid');
+            const sent = watch('invoice_date_sent');
+            const status = paid ? 'Paid' : sent ? 'Sent' : 'Not Sent';
+            const color = paid ? 'text-green-600' : sent ? 'text-amber-600' : 'text-red-500';
+            return <span>Invoicing <span className={`text-xs font-medium ${color}`}>({status})</span></span>;
+          })()} defaultOpen={false}>
+            <div className="grid grid-cols-4 gap-4">
+              <Toggle label="Invoice Needed" checked={!!watch('invoice_needed')} onChange={v => setValue('invoice_needed', v ? 1 : 0, { shouldDirty: true })} />
+              <Toggle label="Invoice Paid" checked={!!watch('invoice_paid')} onChange={v => setValue('invoice_paid', v ? 1 : 0, { shouldDirty: true })} />
+              <Input label="Invoice Date Sent" type="date" {...register('invoice_date_sent')} />
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-700">Quick Actions</label>
+                <button type="button" onClick={() => { setValue('invoice_date_sent', new Date().toISOString().split('T')[0], { shouldDirty: true }); }}
+                  className="text-xs text-[#1e3a5f] hover:underline text-left py-1.5">Mark Sent Today</button>
+              </div>
+            </div>
+            <div className="mt-4">
+              <Input label="Invoice Notes" {...register('invoice_notes')} />
+            </div>
+          </Section>
+
           {/* Schedule */}
           <Section title="Schedule" defaultOpen={true}>
             <div className="grid grid-cols-4 gap-4">

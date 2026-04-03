@@ -166,7 +166,9 @@ export default function ProgramsPage() {
                         <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>
                       </td>
                       <td className="px-4 py-2.5"><Badge status={p.class_status_name} /></td>
-                      <td className="px-4 py-2.5 text-gray-600">{p.location_nickname || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">
+                        {p.location_id ? <Link to={`/locations/${p.location_id}`} className="text-[#1e3a5f] hover:underline">{p.location_nickname}</Link> : '—'}
+                      </td>
                       <td className="px-4 py-2.5 text-gray-600">
                         {p.class_name || p.program_type_name || '—'}
                         {p.class_type_name && (

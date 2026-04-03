@@ -72,10 +72,12 @@ router.get('/', authenticate, async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.live, prog.start_time, prog.class_length_minutes,
+              prog.location_id,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday,
               prog.saturday, prog.sunday, prog.number_enrolled, prog.minimum_students,
               prog.maximum_students, prog.payment_through_us, prog.first_session_date,
               prog.last_session_date, prog.parent_cost, prog.lab_fee,
+              prog.invoice_paid, prog.invoice_date_sent, prog.invoice_needed,
               cs.class_status_name,
               loc.nickname AS location_nickname,
               cl.class_name, cl.class_code,
