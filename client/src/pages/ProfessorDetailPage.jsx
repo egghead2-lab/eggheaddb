@@ -1,19 +1,75 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { getProfessor, createProfessor, updateProfessor } from '../api/professors';
-import { useGeneralData } from '../hooks/useReferenceData';
+import { getProfessor, createProfessor, updateProfessor, createLivescan, updateLivescan, deleteLivescan } from '../api/professors';
+import { useGeneralData, useLocationList } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
+import { SearchSelect } from '../components/ui/SearchSelect';
 import { Spinner } from '../components/ui/Spinner';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { TRAINING_FIELDS } from '../lib/constants';
 import { formatDate, formatTime, toFormData } from '../lib/utils';
+
+function LivescanForm({ form, setForm, contractors, locations, onSave, onCancel, isPending }) {
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const contractorOptions = contractors.map(c => ({ id: String(c.id), label: c.contractor_name }));
+  const locationOptions = locations.map(l => ({ id: String(l.id), label: l.nickname }));
+
+  return (
+    <div className="border border-gray-200 rounded-md p-3 bg-gray-50 space-y-3">
+      {/* Contractor vs Location toggle */}
+      <div className="flex gap-3 text-sm">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="radio" checked={form.lsType === 'contractor'} onChange={() => set('lsType', 'contractor')} className="accent-[#1e3a5f]" />
+          Contractor
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="radio" checked={form.lsType === 'location'} onChange={() => set('lsType', 'location')} className="accent-[#1e3a5f]" />
+          Specific Location
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {form.lsType === 'contractor' ? (
+          <SearchSelect
+            label="Contractor" required
+            options={contractorOptions} displayKey="label" valueKey="id"
+            value={form.contractorId} onChange={v => set('contractorId', v)}
+            placeholder="Search contractors…"
+          />
+        ) : (
+          <SearchSelect
+            label="Location" required
+            options={locationOptions} displayKey="label" valueKey="id"
+            value={form.locationId} onChange={v => set('locationId', v)}
+            placeholder="Search locations…"
+          />
+        )}
+        <Input label="Date" type="date" value={form.date} onChange={e => set('date', e.target.value)} />
+        <div className="flex items-end pb-1">
+          <Toggle label="Pass" checked={form.pass} onChange={v => set('pass', v)} />
+        </div>
+        <Input label="Notes" value={form.notes} onChange={e => set('notes', e.target.value)} />
+        <div className="col-span-2">
+          <Input label="Livescan Link" value={form.link} onChange={e => set('link', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1">Cancel</button>
+        <Button type="button" onClick={onSave} disabled={isPending}>
+          {isPending ? 'Saving…' : 'Save'}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function ProfessorDetailPage() {
   const { id } = useParams();
@@ -28,6 +84,8 @@ export default function ProfessorDetailPage() {
   });
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
+  const { data: locationListData } = useLocationList();
+  const locationList = locationListData?.data || [];
 
   const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
 
@@ -41,6 +99,50 @@ export default function ProfessorDetailPage() {
       qc.invalidateQueries(['professors']);
       if (isNew && res?.id) navigate(`/professors/${res.id}`);
     },
+  });
+
+  const emptyLsForm = () => ({ lsType: 'contractor', contractorId: '', locationId: '', date: '', pass: true, notes: '', link: '' });
+  const [lsAdding, setLsAdding] = useState(false);
+  const [lsEdit, setLsEdit] = useState(null); // ls.id being edited
+  const [lsForm, setLsForm] = useState(emptyLsForm());
+
+  const lsCreate = useMutation({
+    mutationFn: (data) => createLivescan(id, data),
+    onSuccess: () => { qc.invalidateQueries(['professors', id]); setLsAdding(false); setLsForm(emptyLsForm()); },
+    onError: (e) => alert('Save failed: ' + (e?.response?.data?.error || e.message)),
+  });
+  const lsUpdate = useMutation({
+    mutationFn: ({ lsId, data }) => updateLivescan(id, lsId, data),
+    onSuccess: () => { qc.invalidateQueries(['professors', id]); setLsEdit(null); setLsForm(emptyLsForm()); },
+    onError: (e) => alert('Save failed: ' + (e?.response?.data?.error || e.message)),
+  });
+  const lsDelete = useMutation({
+    mutationFn: (lsId) => deleteLivescan(id, lsId),
+    onSuccess: () => qc.invalidateQueries(['professors', id]),
+    onError: (e) => alert('Delete failed: ' + (e?.response?.data?.error || e.message)),
+  });
+
+  const startLsEdit = (ls) => {
+    setLsEdit(ls.id);
+    setLsAdding(false);
+    setLsForm({
+      lsType: ls.contractor_id ? 'contractor' : 'location',
+      contractorId: ls.contractor_id ? String(ls.contractor_id) : '',
+      locationId: ls.location_id ? String(ls.location_id) : '',
+      date: ls.livescan_date ? ls.livescan_date.split('T')[0] : '',
+      pass: !!ls.pass,
+      notes: ls.notes || '',
+      link: ls.livescan_link || '',
+    });
+  };
+
+  const lsFormToPayload = () => ({
+    contractor_id: lsForm.lsType === 'contractor' ? lsForm.contractorId || null : null,
+    location_id: lsForm.lsType === 'location' ? lsForm.locationId || null : null,
+    livescan_date: lsForm.date || null,
+    livescan_link: lsForm.link || null,
+    notes: lsForm.notes || null,
+    pass: lsForm.pass ? 1 : 0,
   });
 
   const prof = profData?.data || {};
@@ -131,18 +233,57 @@ export default function ProfessorDetailPage() {
               <Toggle label="TB Test" checked={!!watch('tb_test')} onChange={v => setValue('tb_test', v ? 1 : 0, { shouldDirty: true })} />
               <Input label="TB Date" type="date" {...register('tb_date')} />
             </div>
-            {prof.livescans && prof.livescans.length > 0 && (
+            {/* Livescans */}
+            {!isNew && (
               <div className="mt-4">
-                <div className="text-xs font-medium text-gray-700 mb-2">Livescans</div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-700">Livescans</span>
+                  {!lsAdding && lsEdit === null && (
+                    <button type="button" onClick={() => { setLsAdding(true); setLsForm(emptyLsForm()); }}
+                      className="text-xs text-[#1e3a5f] hover:underline">+ Add</button>
+                  )}
+                </div>
+
                 <div className="space-y-1">
-                  {prof.livescans.map(ls => (
-                    <div key={ls.id} className="text-sm text-gray-600 flex gap-4">
-                      <span>{ls.location_nickname || 'Unknown location'}</span>
-                      <span>{ls.livescan_date ? formatDate(ls.livescan_date) : '—'}</span>
-                      <span className={ls.pass ? 'text-green-600' : 'text-red-500'}>{ls.pass ? 'Pass' : 'Fail'}</span>
+                  {(prof.livescans || []).map(ls => (
+                    <div key={ls.id}>
+                      {lsEdit === ls.id ? (
+                        <LivescanForm
+                          form={lsForm} setForm={setLsForm}
+                          contractors={ref.contractors || []} locations={locationList}
+                          onSave={() => lsUpdate.mutate({ lsId: ls.id, data: lsFormToPayload() })}
+                          onCancel={() => { setLsEdit(null); setLsForm(emptyLsForm()); }}
+                          isPending={lsUpdate.isPending}
+                        />
+                      ) : (
+                        <div className="text-sm text-gray-600 flex gap-3 items-center py-0.5">
+                          <span className="flex-1 truncate">{ls.display_name || ls.location_nickname || ls.contractor_name || 'Unknown'}</span>
+                          <span className="text-gray-500 shrink-0">{ls.livescan_date ? formatDate(ls.livescan_date) : '—'}</span>
+                          <span className={`shrink-0 ${ls.pass ? 'text-green-600' : 'text-red-500'}`}>{ls.pass ? 'Pass' : 'Fail'}</span>
+                          <button type="button" onClick={() => startLsEdit(ls)}
+                            className="text-xs text-gray-400 hover:text-[#1e3a5f] shrink-0">Edit</button>
+                          <button type="button" onClick={() => { if (confirm('Delete this livescan?')) lsDelete.mutate(ls.id); }}
+                            className="text-xs text-gray-400 hover:text-red-500 shrink-0">Delete</button>
+                        </div>
+                      )}
                     </div>
                   ))}
+                  {prof.livescans?.length === 0 && lsEdit === null && !lsAdding && (
+                    <p className="text-sm text-gray-400">No livescans on file</p>
+                  )}
                 </div>
+
+                {lsAdding && (
+                  <div className="mt-2">
+                    <LivescanForm
+                      form={lsForm} setForm={setLsForm}
+                      contractors={ref.contractors || []} locations={locationList}
+                      onSave={() => lsCreate.mutate(lsFormToPayload())}
+                      onCancel={() => { setLsAdding(false); setLsForm(emptyLsForm()); }}
+                      isPending={lsCreate.isPending}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </Section>

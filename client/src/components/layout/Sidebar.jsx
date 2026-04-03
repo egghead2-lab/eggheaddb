@@ -13,12 +13,7 @@ const FALLBACK_GROUPS = [
   ]},
 ];
 
-const BADGE_MAP = {
-  '/programs': 'unconfirmedPrograms',
-  '/lessons': 'overdueLessons',
-};
-
-function SidebarGroup({ group, isOpen, onToggle, badgeCounts }) {
+function SidebarGroup({ group, isOpen, onToggle }) {
   const location = useLocation();
   const isActive = group.items.some(item =>
     item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
@@ -50,21 +45,16 @@ function SidebarGroup({ group, isOpen, onToggle, badgeCounts }) {
       </button>
       {isOpen && (
         <div className="mt-0.5 space-y-0.5">
-          {group.items.map(item => {
-            const badgeKey = BADGE_MAP[item.to];
-            const count = badgeKey ? (badgeCounts?.[badgeKey] || 0) : 0;
-            return (
-              <NavLink key={item.to} to={item.to}
-                className={({ isActive }) =>
-                  `flex items-center justify-between pl-6 pr-3 py-1.5 rounded text-sm transition-colors ${
-                    isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/10'
-                  }`
-                }>
-                {item.label}
-                {count > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{count}</span>}
-              </NavLink>
-            );
-          })}
+          {group.items.map(item => (
+            <NavLink key={item.to} to={item.to}
+              className={({ isActive }) =>
+                `flex items-center pl-6 pr-3 py-1.5 rounded text-sm transition-colors ${
+                  isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/10'
+                }`
+              }>
+              {item.label}
+            </NavLink>
+          ))}
         </div>
       )}
     </div>
@@ -74,15 +64,6 @@ function SidebarGroup({ group, isOpen, onToggle, badgeCounts }) {
 export function Sidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
-
-  // Sidebar badge counts
-  const { data: countsData } = useQuery({
-    queryKey: ['sidebar-counts'],
-    queryFn: () => api.get('/sidebar-counts').then(r => r.data),
-    staleTime: 60 * 1000,
-    enabled: !!user,
-  });
-  const badgeCounts = countsData?.data || {};
 
   // Fetch user's accessible tools from DB
   const { data: permData } = useQuery({
@@ -140,7 +121,7 @@ export function Sidebar() {
 
       <nav className="flex-1 py-3 px-2 overflow-y-auto">
         {navGroups.map(group => (
-          <SidebarGroup key={group.label} group={group} badgeCounts={badgeCounts}
+          <SidebarGroup key={group.label} group={group}
             isOpen={openGroups.has(group.label)} onToggle={() => toggleGroup(group.label)} />
         ))}
       </nav>

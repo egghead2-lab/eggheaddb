@@ -24,16 +24,15 @@ router.get('/', authenticate, async (req, res, next) => {
       whereClauses.push(`ps.professor_status_name != 'Terminated'`);
     }
     if (area) {
-      whereClauses.push(`ga.geographic_area_name = ?`);
+      whereClauses.push(`p.geographic_area = ?`);
       params.push(area);
     }
     if (training) {
       const trainingMap = {
         science_trained_id: 'p.science_trained_id = 1',
         engineering_trained_id: 'p.engineering_trained_id = 1',
+        robotics_trained_id: 'p.robotics_trained_id = 1',
         show_party_trained_id: 'p.show_party_trained_id = 1',
-        slime_party_trained_id: 'p.slime_party_trained_id = 1',
-        demo_trained_id: 'p.demo_trained_id = 1',
         studysmart_trained_id: 'p.studysmart_trained_id = 1',
         camp_trained_id: 'p.camp_trained_id = 1',
       };
@@ -45,7 +44,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
     const sortMap = {
       nickname: 'p.professor_nickname', status: 'ps.professor_status_name',
-      area: 'ga.geographic_area_name', base_pay: 'p.base_pay', rating: 'p.rating',
+      area: 'p.geographic_area', base_pay: 'p.base_pay', rating: 'p.rating',
       programs: 'active_program_count',
     };
     const sortCol = sortMap[sort] || 'p.professor_nickname';
@@ -53,12 +52,11 @@ router.get('/', authenticate, async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, p.phone_number,
-              p.base_pay, p.rating, p.virtus, p.tb_test,
-              p.science_trained_id, p.engineering_trained_id, p.show_party_trained_id,
-              p.slime_party_trained_id, p.demo_trained_id, p.studysmart_trained_id, p.camp_trained_id,
+              p.base_pay, p.rating, p.virtus, p.tb_test, p.geographic_area,
+              p.science_trained_id, p.engineering_trained_id, p.robotics_trained_id,
+              p.show_party_trained_id, p.studysmart_trained_id, p.camp_trained_id,
               ps.professor_status_name,
               c.city_name,
-              ga.geographic_area_name,
               CONCAT(sc_user.first_name, ' ', sc_user.last_name) AS scheduling_coordinator,
               (SELECT COUNT(*) FROM livescan l WHERE l.professor_id = p.id AND l.active = 1) AS livescan_count,
               (SELECT COUNT(*) FROM availability a WHERE a.professor_id = p.id AND a.active = 1) AS availability_count,
@@ -66,7 +64,6 @@ router.get('/', authenticate, async (req, res, next) => {
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id AND ga.active = 1
        LEFT JOIN user sc_user ON sc_user.id = p.scheduling_coordinator_owner_id
        ${where}
        ORDER BY ${sortCol} ${sortDir}, p.last_name ASC
@@ -79,7 +76,6 @@ router.get('/', authenticate, async (req, res, next) => {
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id AND ga.active = 1
        ${where}`,
       params
     );
@@ -124,9 +120,13 @@ router.get('/:id', authenticate, async (req, res, next) => {
     );
 
     const [livescans] = await pool.query(
-      `SELECT l.*, loc.nickname AS location_nickname
+      `SELECT l.*,
+              loc.nickname AS location_nickname,
+              c.contractor_name,
+              COALESCE(c.contractor_name, loc.nickname) AS display_name
        FROM livescan l
        LEFT JOIN location loc ON loc.id = l.location_id
+       LEFT JOIN contractor c ON c.id = l.contractor_id
        WHERE l.professor_id = ? AND l.active = 1
        ORDER BY l.livescan_date DESC`,
       [id]
@@ -245,6 +245,43 @@ router.put('/:id', authenticate, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// POST /api/professors/:id/livescans
+router.post('/:id/livescans', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { contractor_id, location_id, livescan_date, livescan_link, notes, pass } = req.body;
+    const [result] = await pool.query(
+      `INSERT INTO livescan (professor_id, contractor_id, location_id, livescan_date, livescan_link, notes, pass, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [id, contractor_id || null, location_id || null, livescan_date || null, livescan_link || null, notes || null, pass ? 1 : 0]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/professors/:id/livescans/:lsId
+router.put('/:id/livescans/:lsId', authenticate, async (req, res, next) => {
+  try {
+    const { lsId } = req.params;
+    const { contractor_id, location_id, livescan_date, livescan_link, notes, pass } = req.body;
+    await pool.query(
+      `UPDATE livescan SET contractor_id = ?, location_id = ?, livescan_date = ?, livescan_link = ?, notes = ?, pass = ?, ts_updated = NOW()
+       WHERE id = ?`,
+      [contractor_id || null, location_id || null, livescan_date || null, livescan_link || null, notes || null, pass ? 1 : 0, lsId]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/professors/:id/livescans/:lsId
+router.delete('/:id/livescans/:lsId', authenticate, async (req, res, next) => {
+  try {
+    const { lsId } = req.params;
+    await pool.query(`UPDATE livescan SET active = 0, ts_updated = NOW() WHERE id = ?`, [lsId]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
