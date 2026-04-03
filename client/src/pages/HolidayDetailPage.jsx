@@ -14,7 +14,7 @@ import { toFormData } from '../lib/utils';
 
 export default function HolidayDetailPage() {
   const { id } = useParams();
-  const isNew = id === 'new';
+  const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const qc = useQueryClient();
 

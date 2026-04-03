@@ -17,7 +17,7 @@ import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 
 export default function LocationDetailPage() {
   const { id } = useParams();
-  const isNew = id === 'new';
+  const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const qc = useQueryClient();
 

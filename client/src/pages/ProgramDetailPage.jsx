@@ -21,7 +21,7 @@ import { WEEKDAY_KEYS, WEEKDAYS } from '../lib/constants';
 
 export default function ProgramDetailPage() {
   const { id } = useParams();
-  const isNew = id === 'new';
+  const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const qc = useQueryClient();
 

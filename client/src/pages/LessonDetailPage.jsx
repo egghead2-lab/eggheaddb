@@ -40,7 +40,7 @@ const CURRICULUM_ITEMS = [
 
 export default function LessonDetailPage() {
   const { id } = useParams();
-  const isNew = id === 'new';
+  const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showAddClass, setShowAddClass] = useState(false);
