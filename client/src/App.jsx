@@ -18,6 +18,9 @@ import BulkInputPage from './pages/BulkInputPage';
 import ToolManagerPage from './pages/ToolManagerPage';
 import ProfessorSchedulePage from './pages/ProfessorSchedulePage';
 import AssignmentBoardPage from './pages/AssignmentBoardPage';
+import PayrollDashboardPage from './pages/PayrollDashboardPage';
+import MiscPayPage from './pages/MiscPayPage';
+import FmDailyLogPage from './pages/FmDailyLogPage';
 import ContractorsPage from './pages/ContractorsPage';
 import ContractorDetailPage from './pages/ContractorDetailPage';
 import LessonsPage from './pages/LessonsPage';
@@ -69,6 +72,9 @@ export default function App() {
       <Route path="/schedule" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/schedule/:id" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
+      <Route path="/payroll" element={<ProtectedRoute><PayrollDashboardPage /></ProtectedRoute>} />
+      <Route path="/payroll/misc-pay" element={<ProtectedRoute><MiscPayPage /></ProtectedRoute>} />
+      <Route path="/payroll/fm-log" element={<ProtectedRoute><FmDailyLogPage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
