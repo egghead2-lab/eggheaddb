@@ -62,8 +62,8 @@ function SidebarGroup({ group, isOpen, onToggle, badgeCounts }) {
               }>
               {item.label}
               {count > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{count}</span>}
-            </NavLink>);
-          ))}
+            </NavLink>
+          );})
         </div>
       )}
     </div>
