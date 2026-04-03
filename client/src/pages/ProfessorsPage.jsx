@@ -12,6 +12,7 @@ import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { formatCurrency } from '../lib/utils';
 import { TRAINING_FIELDS } from '../lib/constants';
+import { exportToCsv } from '../lib/exportCsv';
 import { SortTh } from '../components/ui/SortTh';
 
 export default function ProfessorsPage() {
@@ -57,7 +58,15 @@ export default function ProfessorsPage() {
   return (
     <AppShell>
       <PageHeader title="Professors" action={
-        <Link to="/professors/new"><Button>+ New Professor</Button></Link>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => exportToCsv('professors.csv', professors, [
+            { label: 'Preferred Name', key: 'professor_nickname' }, { label: 'Status', key: 'professor_status_name' },
+            { label: 'Area', key: 'geographic_area_name' }, { label: 'Email', key: 'email' },
+            { label: 'Phone', key: 'phone_number' }, { label: 'Base Pay', key: 'base_pay' },
+            { label: 'Programs', key: 'active_program_count' },
+          ])} className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">Export CSV</button>
+          <Link to="/professors/new"><Button>+ New Professor</Button></Link>
+        </div>
       }>
         <Input
           placeholder="Search by name or nickname…"
@@ -103,7 +112,7 @@ export default function ProfessorsPage() {
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">SC Owner</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Trained In</th>
                     <SortTh col="base_pay" sort={sort} dir={dir} onSort={handleSort} align="right">Base Pay</SortTh>
-                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Programs</th>
+                    <SortTh col="programs" sort={sort} dir={dir} onSort={handleSort} align="center">Programs</SortTh>
                     <th className="text-center px-4 py-3 font-semibold text-gray-700">Compliance</th>
                     <th className="w-16"></th>
                   </tr>

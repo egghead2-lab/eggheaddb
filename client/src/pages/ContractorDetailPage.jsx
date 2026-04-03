@@ -12,7 +12,7 @@ import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
-import { toFormData } from '../lib/utils';
+import { toFormData, formatDate } from '../lib/utils';
 
 const STRENGTH_OPTIONS = ['Strong', 'Good', 'Moderate', 'Weak'];
 
@@ -195,6 +195,36 @@ export default function ContractorDetailPage() {
               </div>
             )}
           </Section>
+
+          {/* Active programs across locations */}
+          {contractor.programs && contractor.programs.length > 0 && (
+            <Section title={`Active Programs (${contractor.programs.length})`} defaultOpen={false}>
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
+                      <th className="text-center px-3 py-2 font-medium text-gray-600 w-16">Sessions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {contractor.programs.map((p, i) => (
+                      <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                        <td className="px-3 py-2"><Link to={`/programs/${p.id}`} className="text-[#1e3a5f] hover:underline font-medium">{p.program_nickname}</Link></td>
+                        <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
+                        <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{p.first_session_date ? formatDate(p.first_session_date) : '—'}{p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}</td>
+                        <td className="px-3 py-2 text-center text-gray-600">{p.session_count || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
         </div>
 
         <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">

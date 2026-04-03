@@ -9,4 +9,5 @@ export const addSession = (id, data) => api.post(`/programs/${id}/sessions/add`,
 export const bulkGenerateSessions = (id, data) => api.post(`/programs/${id}/sessions/bulk`, data).then(r => r.data);
 export const updateSession = (id, sessionId, data) => api.put(`/programs/${id}/sessions/${sessionId}`, data).then(r => r.data);
 export const deleteSession = (id, sessionId) => api.delete(`/programs/${id}/sessions/${sessionId}`).then(r => r.data);
+export const copyProgram = (id) => api.post(`/programs/${id}/copy`).then(r => r.data);
 export const getRoster = (id) => api.get(`/programs/${id}/roster`).then(r => r.data);

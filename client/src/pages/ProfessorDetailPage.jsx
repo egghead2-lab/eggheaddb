@@ -13,7 +13,7 @@ import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { TRAINING_FIELDS } from '../lib/constants';
-import { formatDate, toFormData } from '../lib/utils';
+import { formatDate, formatTime, toFormData } from '../lib/utils';
 
 export default function ProfessorDetailPage() {
   const { id } = useParams();
@@ -194,6 +194,33 @@ export default function ProfessorDetailPage() {
               </table>
             ) : <p className="text-sm text-gray-400">No availability on file</p>}
           </Section>
+
+          {/* Upcoming Sessions Preview */}
+          {prof.upcomingSessions && prof.upcomingSessions.length > 0 && (
+            <Section title={`Upcoming Sessions (${prof.upcomingSessions.length})`} defaultOpen={true}>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {prof.upcomingSessions.map((s, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-2">{s.session_date ? formatDate(s.session_date) : '—'}</td>
+                      <td className="px-3 py-2 text-gray-500">{s.session_time ? formatTime(s.session_time) : '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{s.program_nickname}</td>
+                      <td className="px-3 py-2 text-gray-500">{s.location_nickname || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Link to={`/schedule/${id}`} className="text-xs text-[#1e3a5f] hover:underline mt-2 inline-block">View full schedule →</Link>
+            </Section>
+          )}
 
           {/* Section 7: Sub History */}
           <Section title="Substitute History">

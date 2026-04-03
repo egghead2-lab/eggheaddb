@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { getProgram, createProgram, updateProgram } from '../api/programs';
+import { getProgram, createProgram, updateProgram, copyProgram } from '../api/programs';
 import { useGeneralData, useProfessorList, useLocationList, useLessons } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
@@ -80,6 +80,12 @@ export default function ProgramDetailPage() {
                 ) : null}
               </div>
             </div>
+            {!isNew && (
+              <button type="button" onClick={async () => {
+                const res = await copyProgram(id);
+                if (res?.id) navigate(`/programs/${res.id}`);
+              }} className="text-xs text-gray-400 hover:text-[#1e3a5f]">Duplicate</button>
+            )}
           </div>
           {!isNew && (
             <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-gray-500">
@@ -223,6 +229,7 @@ export default function ProgramDetailPage() {
                 sessions={prog.sessions || []}
                 professors={professors}
                 lessons={lessons}
+                holidays={ref.holidays || []}
                 programClassId={prog.class_id}
                 defaultTime={prog.start_time}
                 program={prog}

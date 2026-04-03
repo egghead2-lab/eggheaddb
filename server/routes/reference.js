@@ -3,6 +3,24 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/sidebar-counts
+router.get('/sidebar-counts', authenticate, async (req, res, next) => {
+  try {
+    const [[unconfirmed]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id
+       WHERE p.active = 1 AND cs.class_status_name = 'Unconfirmed'
+       AND (p.last_session_date >= CURDATE() OR p.last_session_date IS NULL)`
+    );
+    const [[overdueLessons]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM lesson WHERE active = 1 AND review_status = 'overdue'`
+    );
+    res.json({ success: true, data: {
+      unconfirmedPrograms: unconfirmed.cnt,
+      overdueLessons: overdueLessons.cnt,
+    }});
+  } catch (err) { next(err); }
+});
+
 // GET /api/regions
 router.get('/regions', authenticate, async (req, res, next) => {
   try {

@@ -132,9 +132,23 @@ router.get('/:id', authenticate, async (req, res, next) => {
       [id]
     );
 
+    const [programs] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.last_session_date,
+              prog.session_count, prog.parent_cost, prog.our_cut, prog.invoice_paid, prog.invoice_date_sent,
+              prog.invoice_needed, prog.invoice_notes,
+              cs.class_status_name,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       WHERE prog.location_id = ? AND prog.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
+       ORDER BY prog.first_session_date DESC`,
+      [id]
+    );
+
     res.json({
       success: true,
-      data: { ...location, classTypes, cutTypes },
+      data: { ...location, classTypes, cutTypes, programs },
     });
   } catch (err) {
     next(err);

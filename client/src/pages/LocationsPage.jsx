@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { SortTh } from '../components/ui/SortTh';
+import { exportToCsv } from '../lib/exportCsv';
 
 export default function LocationsPage() {
   const [search, setSearch] = useState('');
@@ -73,7 +74,15 @@ export default function LocationsPage() {
   return (
     <AppShell>
       <PageHeader title="Locations" action={
-        <Link to="/locations/new"><Button>+ New Location</Button></Link>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => exportToCsv('locations.csv', locations, [
+            { label: 'Nickname', key: 'nickname' }, { label: 'School Name', key: 'school_name' },
+            { label: 'Area', key: 'geographic_area_name' }, { label: 'Contractor', key: 'contractor_name' },
+            { label: 'Client Manager', key: 'client_manager' }, { label: 'Retained', key: r => r.retained ? 'Yes' : 'No' },
+            { label: 'Classes', key: 'class_count' },
+          ])} className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">Export CSV</button>
+          <Link to="/locations/new"><Button>+ New Location</Button></Link>
+        </div>
       }>
         <Input placeholder="Search by name…" value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }} className="w-60" />

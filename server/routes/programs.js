@@ -79,7 +79,7 @@ router.get('/', authenticate, async (req, res, next) => {
               cs.class_status_name,
               loc.nickname AS location_nickname,
               cl.class_name, cl.class_code,
-              pt.program_type_name,
+              pt.program_type_name, ct2.class_type_name,
               CONCAT(lp.first_name, ' ', lp.last_name) AS lead_professor_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
               CONCAT(ap.first_name, ' ', ap.last_name) AS assistant_professor_name,
@@ -89,6 +89,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
        LEFT JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
+       LEFT JOIN class_type ct2 ON ct2.id = cl.class_type_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id AND lp.active = 1
        LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id AND ap.active = 1
        LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
@@ -695,6 +696,36 @@ router.put('/:id/roster/:rosterId', authenticate, async (req, res, next) => {
     );
 
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/programs/:id/copy — duplicate a program (no sessions)
+router.post('/:id/copy', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[orig]] = await pool.query(`SELECT * FROM program WHERE id = ? AND active = 1`, [id]);
+    if (!orig) return res.status(404).json({ success: false, error: 'Program not found' });
+
+    const fields = [
+      'class_status_id', 'location_id', 'class_id', 'start_time', 'class_length_minutes',
+      'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+      'general_notes', 'parent_cost', 'our_cut', 'lab_fee', 'minimum_students', 'maximum_students',
+      'payment_through_us', 'lead_professor_id', 'lead_professor_pay',
+      'assistant_professor_id', 'assistant_professor_pay',
+      'tb_required', 'livescan_required', 'virtus_required',
+    ];
+
+    const cols = ['program_nickname', ...fields, 'active', 'ts_inserted', 'ts_updated'];
+    const vals = [`${orig.program_nickname} (Copy)`, ...fields.map(f => orig[f]), 1, new Date(), new Date()];
+    const placeholders = cols.map(() => '?').join(', ');
+
+    const [result] = await pool.query(
+      `INSERT INTO program (${cols.join(', ')}) VALUES (${placeholders})`, vals
+    );
+
+    res.json({ success: true, id: result.insertId });
   } catch (err) {
     next(err);
   }

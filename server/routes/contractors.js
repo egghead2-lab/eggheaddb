@@ -69,7 +69,25 @@ router.get('/:id', authenticate, async (req, res, next) => {
       [req.params.id]
     );
 
-    res.json({ success: true, data: { ...contractor, locations } });
+    // Active programs across all contractor locations
+    const locIds = locations.map(l => l.id);
+    let programs = [];
+    if (locIds.length) {
+      [programs] = await pool.query(
+        `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.last_session_date,
+                prog.session_count, cs.class_status_name, loc.nickname AS location_nickname
+         FROM program prog
+         LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+         LEFT JOIN location loc ON loc.id = prog.location_id
+         WHERE prog.location_id IN (${locIds.map(() => '?').join(',')})
+           AND prog.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
+           AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
+         ORDER BY prog.first_session_date DESC`,
+        locIds
+      );
+    }
+
+    res.json({ success: true, data: { ...contractor, locations, programs } });
   } catch (err) {
     next(err);
   }

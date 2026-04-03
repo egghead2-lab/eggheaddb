@@ -46,6 +46,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const sortMap = {
       nickname: 'p.professor_nickname', status: 'ps.professor_status_name',
       area: 'ga.geographic_area_name', base_pay: 'p.base_pay', rating: 'p.rating',
+      programs: 'active_program_count',
     };
     const sortCol = sortMap[sort] || 'p.professor_nickname';
     const sortDir = dir === 'desc' ? 'DESC' : 'ASC';
@@ -155,9 +156,21 @@ router.get('/:id', authenticate, async (req, res, next) => {
       [id]
     );
 
+    const [upcomingSessions] = await pool.query(
+      `SELECT s.session_date, s.session_time, prog.program_nickname, loc.nickname AS location_nickname
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE s.active = 1 AND s.session_date >= CURDATE()
+         AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
+       ORDER BY s.session_date ASC, s.session_time ASC
+       LIMIT 10`,
+      [id, id, id, id]
+    );
+
     res.json({
       success: true,
-      data: { ...professor, availability, livescans, bins, daysOff, incidents, reviews },
+      data: { ...professor, availability, livescans, bins, daysOff, incidents, reviews, upcomingSessions },
     });
   } catch (err) {
     next(err);

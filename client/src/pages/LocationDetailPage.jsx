@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getLocation, createLocation, updateLocation } from '../api/locations';
 import { useGeneralData } from '../hooks/useReferenceData';
-import { toFormData } from '../lib/utils';
+import { toFormData, formatDate } from '../lib/utils';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
@@ -234,6 +234,114 @@ export default function LocationDetailPage() {
               </table>
             </Section>
           )}
+
+          {/* Programs & Invoicing at this location */}
+          {!isNew && loc.programs && loc.programs.length > 0 && (() => {
+            const today = new Date().toISOString().split('T')[0];
+            const getInvoiceStatus = (p) => {
+              if (p.invoice_paid) return 'paid';
+              if (p.invoice_date_sent) return 'sent';
+              return 'not_sent';
+            };
+            const isCurrent = (p) => p.last_session_date && p.last_session_date.split('T')[0] >= today;
+            const currentPrograms = loc.programs.filter(isCurrent);
+            const pastPrograms = loc.programs.filter(p => !isCurrent(p));
+            const unpaidPast = pastPrograms.filter(p => !p.invoice_paid);
+            const paidPast = pastPrograms.filter(p => p.invoice_paid);
+
+            const statusColor = {
+              paid: 'bg-green-50 text-green-700 border-green-200',
+              sent: 'bg-amber-50 text-amber-700 border-amber-200',
+              not_sent: 'bg-red-50 text-red-700 border-red-200',
+            };
+            const statusLabel = { paid: 'Paid', sent: 'Sent', not_sent: 'Not Sent' };
+
+            const renderRow = (p, i) => {
+              const invStatus = getInvoiceStatus(p);
+              const current = isCurrent(p);
+              return (
+                <tr key={p.id} className={current && invStatus === 'paid' ? 'bg-green-50/30' : invStatus === 'not_sent' && !current ? 'bg-red-50/30' : invStatus === 'sent' && !current ? 'bg-amber-50/30' : ''}>
+                  <td className="px-3 py-2"><Link to={`/programs/${p.id}`} className="text-[#1e3a5f] hover:underline font-medium">{p.program_nickname}</Link></td>
+                  <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
+                  <td className="px-3 py-2 text-gray-600">{p.lead_professor || '—'}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{p.first_session_date ? formatDate(p.first_session_date) : '—'}{p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}</td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${statusColor[invStatus]}`}>
+                      {statusLabel[invStatus]}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{p.invoice_date_sent ? formatDate(p.invoice_date_sent) : '—'}</td>
+                </tr>
+              );
+            };
+
+            return (
+              <>
+                {/* Current Programs */}
+                <Section title={`Current Programs (${currentPrograms.length})`} defaultOpen={true}>
+                  {currentPrograms.length === 0 ? <p className="text-sm text-gray-400">No current programs</p> : (
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Lead</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-600 w-20">Invoice</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600 w-24">Sent</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">{currentPrograms.map(renderRow)}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </Section>
+
+                {/* Unpaid Past Programs */}
+                {unpaidPast.length > 0 && (
+                  <Section title={`Outstanding Invoices (${unpaidPast.length})`} defaultOpen={true}>
+                    <div className="bg-white rounded-lg border border-red-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-red-50 border-b border-red-200">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium text-red-700">Program</th>
+                            <th className="text-left px-3 py-2 font-medium text-red-700">Status</th>
+                            <th className="text-left px-3 py-2 font-medium text-red-700">Lead</th>
+                            <th className="text-left px-3 py-2 font-medium text-red-700">Dates</th>
+                            <th className="text-center px-3 py-2 font-medium text-red-700 w-20">Invoice</th>
+                            <th className="text-left px-3 py-2 font-medium text-red-700 w-24">Sent</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">{unpaidPast.map(renderRow)}</tbody>
+                      </table>
+                    </div>
+                  </Section>
+                )}
+
+                {/* Paid Past Programs */}
+                {paidPast.length > 0 && (
+                  <Section title={`Paid Programs (${paidPast.length})`} defaultOpen={false}>
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Lead</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-600 w-20">Invoice</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600 w-24">Sent</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">{paidPast.map(renderRow)}</tbody>
+                      </table>
+                    </div>
+                  </Section>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">

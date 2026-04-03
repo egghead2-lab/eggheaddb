@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate, formatTime, getProgramDay } from '../lib/utils';
+import { exportToCsv } from '../lib/exportCsv';
 import { SortTh } from '../components/ui/SortTh';
 
 export default function ProgramsPage() {
@@ -71,7 +72,15 @@ export default function ProgramsPage() {
   return (
     <AppShell>
       <PageHeader title="Programs" action={
-        <Link to="/programs/new"><Button>+ New Program</Button></Link>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => exportToCsv('programs.csv', programs, [
+            { label: 'Program', key: 'program_nickname' }, { label: 'Status', key: 'class_status_name' },
+            { label: 'Location', key: 'location_nickname' }, { label: 'Type', key: 'class_name' },
+            { label: 'Lead Professor', key: 'lead_professor_nickname' }, { label: 'Sessions', key: 'session_count' },
+            { label: 'Enrolled', key: 'number_enrolled' }, { label: 'Start', key: 'first_session_date' }, { label: 'End', key: 'last_session_date' },
+          ])} className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">Export CSV</button>
+          <Link to="/programs/new"><Button>+ New Program</Button></Link>
+        </div>
       }>
         <Select value={timeframe} onChange={e => { setTimeframe(e.target.value); setPage(1); }} className="w-44">
           <option value="current">Current & Future</option>
@@ -115,12 +124,12 @@ export default function ProgramsPage() {
           ))}
         </Select>
         <div className="flex flex-col gap-0.5">
-          <label className="text-xs text-gray-500">Start From</label>
           <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-36" />
+          <label className="text-[10px] text-gray-400">From</label>
         </div>
         <div className="flex flex-col gap-0.5">
-          <label className="text-xs text-gray-500">Start To</label>
           <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-36" />
+          <label className="text-[10px] text-gray-400">To</label>
         </div>
         {hasFilters && (
           <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-700 underline">Clear</button>
@@ -158,7 +167,18 @@ export default function ProgramsPage() {
                       </td>
                       <td className="px-4 py-2.5"><Badge status={p.class_status_name} /></td>
                       <td className="px-4 py-2.5 text-gray-600">{p.location_nickname || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{p.class_name || p.program_type_name || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">
+                        {p.class_name || p.program_type_name || '—'}
+                        {p.class_type_name && (
+                          <span className={`ml-1 inline-block px-1 py-0.5 text-[10px] font-medium rounded ${
+                            p.class_type_name === 'Science' ? 'bg-blue-100 text-blue-700' :
+                            p.class_type_name === 'Engineering' ? 'bg-orange-100 text-orange-700' :
+                            p.class_type_name === 'Robotics' ? 'bg-purple-100 text-purple-700' :
+                            p.class_type_name === 'Financial Literacy' ? 'bg-emerald-100 text-emerald-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>{p.class_type_name}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-gray-600">{getProgramDay(p)} {formatTime(p.start_time)}</td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.first_session_date ? formatDate(p.first_session_date) : '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.last_session_date ? formatDate(p.last_session_date) : '—'}</td>

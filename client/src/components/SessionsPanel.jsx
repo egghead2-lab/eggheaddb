@@ -130,7 +130,7 @@ function DeleteCell({ s, idx, dateStr, onDelete, onDeleteAndShift }) {
   );
 }
 
-export function SessionsPanel({ programId, sessions, professors, lessons, programClassId, defaultTime, program }) {
+export function SessionsPanel({ programId, sessions, professors, lessons, holidays, programClassId, defaultTime, program }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [newDate, setNewDate] = useState('');
@@ -189,9 +189,14 @@ export function SessionsPanel({ programId, sessions, professors, lessons, progra
     });
   };
 
+  // Future holiday dates for skip
+  const futureHolidays = (holidays || [])
+    .map(h => (h.holiday_date || '').split('T')[0])
+    .filter(d => d >= new Date().toISOString().split('T')[0]);
+
   const handleBulkGenerate = () => {
     if (!bulkStart || !bulkEnd) return;
-    bulkMutation.mutate({ start_date: bulkStart, end_date: bulkEnd });
+    bulkMutation.mutate({ start_date: bulkStart, end_date: bulkEnd, skip_dates: futureHolidays });
   };
 
   const handleUpdate = useCallback((sessionId, data) => {
@@ -286,6 +291,7 @@ export function SessionsPanel({ programId, sessions, professors, lessons, progra
                 <Button size="sm" onClick={handleBulkGenerate} disabled={bulkMutation.isPending || !bulkStart || !bulkEnd}>
                   {bulkMutation.isPending ? '…' : 'Generate'}
                 </Button>
+                {futureHolidays.length > 0 && <span className="text-[10px] text-blue-500">(skips {futureHolidays.length} holidays)</span>}
                 <button onClick={() => setShowBulk(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
               </div>
             ) : showAdd ? (
