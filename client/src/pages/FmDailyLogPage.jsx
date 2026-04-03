@@ -44,23 +44,27 @@ export default function FmDailyLogPage() {
   const canApprove = ['Admin', 'CEO', 'Human Resources'].includes(user?.role);
   const canSubmit = ['Field Manager', 'Admin', 'CEO'].includes(user?.role);
 
-  // Get field managers (users with Field Manager role)
+  // Get field managers — match FM users to professors by name since emails may differ
   const { data: fmUsersData } = useQuery({
     queryKey: ['fm-users'],
     queryFn: () => api.get('/users?role=Field+Manager&limit=100').then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
-  // Match FM users to professors by email
   const { data: fmProfsData } = useQuery({
     queryKey: ['fm-professors'],
     queryFn: () => api.get('/professors?status=Active&limit=500').then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
   const fmUsers = fmUsersData?.data || [];
-  const fmEmails = new Set(fmUsers.map(u => u.email?.toLowerCase()));
-  const fieldManagers = (fmProfsData?.data || [])
-    .filter(p => fmEmails.has(p.email?.toLowerCase()))
-    .map(p => ({ id: p.id, name: `${p.professor_nickname} ${p.last_name || ''}`.trim() }));
+  const allProfs = fmProfsData?.data || [];
+  const fieldManagers = fmUsers.map(u => {
+    // Try to find matching professor by name
+    const prof = allProfs.find(p =>
+      p.email?.toLowerCase() === u.email?.toLowerCase() ||
+      (p.first_name?.toLowerCase() === u.first_name?.toLowerCase() && p.last_name?.toLowerCase() === u.last_name?.toLowerCase())
+    );
+    return { id: prof?.id || u.id, name: `${u.first_name} ${u.last_name}`, userId: u.id, professorId: prof?.id };
+  }).filter(f => f.id);
 
   // Form state
   const [form, setForm] = useState({
