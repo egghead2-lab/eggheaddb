@@ -168,9 +168,23 @@ router.get('/:id', authenticate, async (req, res, next) => {
       [id, id, id, id]
     );
 
+    const [activePrograms] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.last_session_date,
+              prog.session_count, cs.class_status_name, loc.nickname AS location_nickname,
+              CASE WHEN prog.lead_professor_id = ? THEN 'Lead' ELSE 'Assist' END AS role
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE prog.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
+         AND (prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
+         AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
+       ORDER BY prog.first_session_date ASC`,
+      [id, id, id]
+    );
+
     res.json({
       success: true,
-      data: { ...professor, availability, livescans, bins, daysOff, incidents, reviews, upcomingSessions },
+      data: { ...professor, availability, livescans, bins, daysOff, incidents, reviews, upcomingSessions, activePrograms },
     });
   } catch (err) {
     next(err);

@@ -53,7 +53,7 @@ router.get('/', authenticate, async (req, res, next) => {
               loc.client_manager_user_id,
               c.city_name,
               ga.geographic_area_name,
-              con.contractor_name,
+              loc.contractor_id, con.contractor_name,
               COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm_user.first_name, ' ', cm_user.last_name)) AS client_manager,
               lt.location_type_name,
               (SELECT COUNT(*) FROM default_location_class_type dlct

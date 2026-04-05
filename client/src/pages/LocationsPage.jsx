@@ -148,7 +148,7 @@ export default function LocationsPage() {
                           {cmUsers.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
                         </select>
                       </td>
-                      <td className="px-3 py-2 text-gray-600 text-xs">{l.contractor_name || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600 text-xs">{l.contractor_id ? <Link to={`/contractors/${l.contractor_id}`} className="text-[#1e3a5f] hover:underline">{l.contractor_name}</Link> : '—'}</td>
                       <td className="px-2 py-2 text-center">
                         <input
                           type="checkbox"

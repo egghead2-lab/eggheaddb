@@ -18,6 +18,7 @@ const bulkInputRoutes = require('./routes/bulk-input');
 const toolsRoutes = require('./routes/tools');
 const scheduleRoutes = require('./routes/schedule');
 const payrollRoutes = require('./routes/payroll');
+const reportsRoutes = require('./routes/reports');
 const assignmentBoardRoutes = require('./routes/assignment-board');
 const lessonsRoutes = require('./routes/lessons');
 const classesRoutes = require('./routes/classes');
@@ -85,6 +86,7 @@ app.use('/api/bulk-input', bulkInputRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/payroll', payrollRoutes);
+app.use('/api/reports', reportsRoutes);
 app.use('/api/assignment-board', assignmentBoardRoutes);
 
 // Error handler

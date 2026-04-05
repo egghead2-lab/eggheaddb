@@ -85,6 +85,7 @@ router.get('/', authenticate, async (req, res, next) => {
               CONCAT(lp.first_name, ' ', lp.last_name) AS lead_professor_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
               CONCAT(ap.first_name, ' ', ap.last_name) AS assistant_professor_name,
+              prog.lead_professor_id,
               prog.session_count
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1

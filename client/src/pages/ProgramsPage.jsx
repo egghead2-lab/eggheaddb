@@ -184,7 +184,7 @@ export default function ProgramsPage() {
                       <td className="px-4 py-2.5 text-gray-600">{getProgramDay(p)} {formatTime(p.start_time)}</td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.first_session_date ? formatDate(p.first_session_date) : '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{p.last_session_date ? formatDate(p.last_session_date) : '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{p.lead_professor_nickname || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{p.lead_professor_id ? <Link to={`/professors/${p.lead_professor_id}`} className="text-[#1e3a5f] hover:underline">{p.lead_professor_nickname}</Link> : '—'}</td>
                       <td className="px-3 py-2.5 text-center text-gray-600">{p.session_count || 0}</td>
                       <td className="px-4 py-2.5 text-right text-gray-700">
                         {p.number_enrolled != null ? `${p.number_enrolled} / ${p.maximum_students || '—'}` : '—'}

@@ -12,6 +12,7 @@ import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { Spinner } from '../components/ui/Spinner';
+import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { TRAINING_FIELDS } from '../lib/constants';
 import { formatDate, formatTime, toFormData } from '../lib/utils';
@@ -335,6 +336,34 @@ export default function ProfessorDetailPage() {
               </table>
             ) : <p className="text-sm text-gray-400">No availability on file</p>}
           </Section>
+
+          {/* Active Programs */}
+          {prof.activePrograms && prof.activePrograms.length > 0 && (
+            <Section title={`Active Programs (${prof.activePrograms.length})`} defaultOpen={true}>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
+                    <th className="text-center px-3 py-2 font-medium text-gray-600">Role</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {prof.activePrograms.map(p => (
+                    <tr key={p.id}>
+                      <td className="px-3 py-2"><Link to={`/programs/${p.id}`} className="text-[#1e3a5f] hover:underline font-medium">{p.program_nickname}</Link></td>
+                      <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
+                      <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
+                      <td className="px-3 py-2 text-center"><span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${p.role === 'Lead' ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'}`}>{p.role}</span></td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{p.first_session_date ? formatDate(p.first_session_date) : '—'}{p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          )}
 
           {/* Upcoming Sessions Preview */}
           {prof.upcomingSessions && prof.upcomingSessions.length > 0 && (
