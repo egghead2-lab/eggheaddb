@@ -25,10 +25,11 @@ const OPERATORS = {
 export default function ReportBuilderPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [previewId, setPreviewId] = useState(null);
   const [previewData, setPreviewData] = useState(null);
 
-  // Form
+  // Form — used for both create and edit
   const [form, setForm] = useState({ name: '', description: '', entity: '', display_mode: 'task', kpi_format: 'count', filters: [], role_ids: [], user_ids: [] });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -49,9 +50,29 @@ export default function ReportBuilderPage() {
   const allUsers = usersData?.data || [];
 
   const createMutation = useMutation({ mutationFn: (d) => createReport(d), onSuccess: () => { qc.invalidateQueries(['reports']); setShowCreate(false); resetForm(); } });
+  const updateMutation = useMutation({ mutationFn: ({ id, data }) => updateReport(id, data), onSuccess: () => { qc.invalidateQueries(['reports']); setEditingId(null); setShowCreate(false); resetForm(); } });
   const deleteMutation = useMutation({ mutationFn: (id) => deleteReport(id), onSuccess: () => qc.invalidateQueries(['reports']) });
 
-  const resetForm = () => setForm({ name: '', description: '', entity: '', display_mode: 'task', kpi_format: 'count', filters: [], role_ids: [], user_ids: [] });
+  const resetForm = () => { setForm({ name: '', description: '', entity: '', display_mode: 'task', kpi_format: 'count', filters: [], role_ids: [], user_ids: [] }); setEditingId(null); };
+
+  const startEdit = (report) => {
+    setForm({
+      name: report.name || '', description: report.description || '', entity: report.entity || '',
+      display_mode: report.display_mode || 'task', kpi_format: report.kpi_format || 'count',
+      filters: report.filters || [], role_ids: report.role_ids || [], user_ids: report.user_ids || [],
+    });
+    setEditingId(report.id);
+    setShowCreate(true);
+  };
+
+  const handleSave = () => {
+    if (!form.name || !form.entity) return;
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, data: form });
+    } else {
+      createMutation.mutate(form);
+    }
+  };
 
   const addFilter = () => {
     const entityFields = entities[form.entity]?.fields || [];
@@ -90,13 +111,15 @@ export default function ReportBuilderPage() {
   return (
     <AppShell>
       <PageHeader title="Report Builder" action={
-        <Button onClick={() => setShowCreate(!showCreate)}>{showCreate ? 'Cancel' : '+ New Report'}</Button>
+        <Button onClick={() => { if (showCreate) { setShowCreate(false); resetForm(); } else { setShowCreate(true); } }}>
+          {showCreate ? 'Cancel' : '+ New Report'}
+        </Button>
       } />
       <div className="p-6 space-y-4">
         {/* Create form */}
         {showCreate && (
           <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-800">New Report</h3>
+            <h3 className="text-sm font-semibold text-gray-800">{editingId ? 'Edit Report' : 'New Report'}</h3>
             <div className="grid grid-cols-4 gap-4">
               <Input label="Report Name" value={form.name} onChange={e => set('name', e.target.value)} />
               <Select label="Entity" value={form.entity} onChange={e => { set('entity', e.target.value); set('filters', []); }}>
@@ -198,8 +221,8 @@ export default function ReportBuilderPage() {
               </div>
             </div>
 
-            <Button onClick={() => form.name && form.entity && createMutation.mutate(form)} disabled={!form.name || !form.entity || createMutation.isPending}>
-              {createMutation.isPending ? 'Creating…' : 'Create Report'}
+            <Button onClick={handleSave} disabled={!form.name || !form.entity || createMutation.isPending || updateMutation.isPending}>
+              {(createMutation.isPending || updateMutation.isPending) ? 'Saving…' : editingId ? 'Save Changes' : 'Create Report'}
             </Button>
           </div>
         )}
@@ -238,6 +261,7 @@ export default function ReportBuilderPage() {
                     </td>
                     <td className="px-3 py-2 text-center">
                       <div className="flex gap-2 justify-center">
+                        <button onClick={() => startEdit(r)} className="text-xs text-[#1e3a5f] hover:underline">Edit</button>
                         <button onClick={() => handlePreview(r.id)} className="text-xs text-[#1e3a5f] hover:underline">{previewId === r.id ? 'Hide' : 'Run'}</button>
                         <button onClick={() => { if (window.confirm('Delete this report?')) deleteMutation.mutate(r.id); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
                       </div>
