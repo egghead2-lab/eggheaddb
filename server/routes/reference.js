@@ -3,6 +3,50 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
+// PUT /api/bulk-update
+router.put('/bulk-update', authenticate, async (req, res, next) => {
+  try {
+    const { table, ids, updates } = req.body;
+    const allowedTables = ['location', 'program', 'professor'];
+    if (!allowedTables.includes(table)) return res.status(400).json({ success: false, error: 'Invalid table' });
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ success: false, error: 'No rows selected' });
+    if (!updates || Object.keys(updates).length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
+
+    // Whitelist fields per table
+    const fieldWhitelist = {
+      location: ['active', 'geographic_area_id_online', 'client_manager_user_id', 'contractor_id', 'retained',
+        'payment_through_us', 'virtus_required', 'tb_required', 'livescan_required', 'demo_allowed',
+        'flyer_required', 'custom_flyer_required', 'contract_permit_required', 'location_type_id',
+        'class_pricing_type_id', 'parking_difficulty_id', 'set_dates_ourselves', 'jewish', 'observes_allowed'],
+      program: ['class_status_id', 'lead_professor_id', 'lead_professor_pay', 'live', 'payment_through_us',
+        'roster_received', 'roster_confirmed', 'flyer_required', 'demo_required', 'active',
+        'tb_required', 'livescan_required', 'virtus_required', 'invoice_needed',
+        'open_blast_sent', 'two_week_blast_sent', 'one_week_blast_sent', 'final_blast_sent', 'parent_feedback_requested'],
+      professor: ['professor_status_id', 'geographic_area_id', 'scheduling_coordinator_user_id',
+        'base_pay', 'active', 'science_trained_id', 'engineering_trained_id', 'demo_trained_id',
+        'show_party_trained_id', 'slime_party_trained_id', 'camp_trained_id', 'studysmart_trained_id'],
+    };
+
+    const allowed = fieldWhitelist[table] || [];
+    const setClauses = [];
+    const values = [];
+    for (const [key, val] of Object.entries(updates)) {
+      if (!allowed.includes(key)) continue;
+      setClauses.push(`${key} = ?`);
+      values.push(val);
+    }
+    if (setClauses.length === 0) return res.status(400).json({ success: false, error: 'No valid fields' });
+
+    const placeholders = ids.map(() => '?').join(', ');
+    await pool.query(
+      `UPDATE ${table} SET ${setClauses.join(', ')}, ts_updated = NOW() WHERE id IN (${placeholders})`,
+      [...values, ...ids]
+    );
+
+    res.json({ success: true, updated: ids.length });
+  } catch (err) { next(err); }
+});
+
 // GET /api/column-prefs/:pageKey
 router.get('/column-prefs/:pageKey', authenticate, async (req, res, next) => {
   try {

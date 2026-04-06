@@ -76,7 +76,7 @@ const ENTITIES = {
       demo_required: { label: 'Demo Required', type: 'boolean', col: 'prog.demo_required' },
       lead_virtus: { label: 'Lead Prof Has Virtus', type: 'boolean', col: 'lp.virtus' },
       lead_tb: { label: 'Lead Prof Has TB', type: 'boolean', col: 'lp.tb_test' },
-      lead_has_livescan_at_location: { label: 'Lead Prof Livescanned at Location', type: 'number', col: 'lead_has_livescan_at_location' },
+      lead_has_livescan_at_location: { label: 'Lead Prof Livescanned at Location', type: 'number', col: '(SELECT COUNT(*) FROM livescan ls WHERE ls.professor_id = lp.id AND ls.active = 1 AND ls.location_id = loc.id)' },
       day_monday: { label: 'Runs Monday', type: 'boolean', col: 'prog.monday' },
       day_tuesday: { label: 'Runs Tuesday', type: 'boolean', col: 'prog.tuesday' },
       day_wednesday: { label: 'Runs Wednesday', type: 'boolean', col: 'prog.wednesday' },

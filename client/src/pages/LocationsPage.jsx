@@ -14,10 +14,17 @@ import { SortTh } from '../components/ui/SortTh';
 import { exportToCsv } from '../lib/exportCsv';
 import { useColumnPrefs } from '../hooks/useColumnPrefs';
 import { ColumnPicker } from '../components/ui/ColumnPicker';
+import { useRowSelection } from '../hooks/useRowSelection';
+import { BulkEditBar } from '../components/ui/BulkEditBar';
 
 const COLUMNS = [
   { key: 'nickname', label: 'Nickname' },
   { key: 'area', label: 'Area' },
+  { key: 'phone', label: 'Phone Number', default: false },
+  { key: 'contact_name', label: 'Contact Name', default: false },
+  { key: 'contact_email', label: 'Contact Email', default: false },
+  { key: 'contact_phone', label: 'Contact Phone', default: false },
+  { key: 'info_sheet', label: 'Info Sheet', default: false },
   { key: 'client_manager', label: 'Client Manager' },
   { key: 'contractor', label: 'Contractor' },
   { key: 'retained', label: 'Retained' },
@@ -82,12 +89,29 @@ export default function LocationsPage() {
 
   const colPrefs = useColumnPrefs('locations', COLUMNS);
   const v = (key) => colPrefs.isColumnVisible(key);
+  const selection = useRowSelection(locations);
+
+  const bulkFields = [
+    { key: 'geographic_area_id_online', label: 'Area', type: 'select', options: (ref.areas || []).map(a => ({ value: a.id, label: a.geographic_area_name })) },
+    { key: 'client_manager_user_id', label: 'Client Manager', type: 'select', options: cmUsers.map(u => ({ value: u.id, label: `${u.first_name} ${u.last_name}` })) },
+    { key: 'contractor_id', label: 'Contractor', type: 'select', options: (ref.contractors || []).map(c => ({ value: c.id, label: c.contractor_name })) },
+    { key: 'retained', label: 'Retained', type: 'toggle' },
+    { key: 'active', label: 'Active', type: 'toggle' },
+    { key: 'payment_through_us', label: 'Payment Through Us', type: 'toggle' },
+    { key: 'virtus_required', label: 'Virtus Required', type: 'toggle' },
+    { key: 'tb_required', label: 'TB Required', type: 'toggle' },
+    { key: 'livescan_required', label: 'Livescan Required', type: 'toggle' },
+    { key: 'demo_allowed', label: 'Demo Allowed', type: 'toggle' },
+    { key: 'flyer_required', label: 'Flyer Required', type: 'toggle' },
+  ];
 
   const reset = () => { setSearch(''); setActive(''); setArea(''); setContractor(''); setPage(1); };
   const hasFilters = search || active || area || contractor;
 
   return (
     <AppShell>
+      <BulkEditBar count={selection.count} selected={selection.selected} onClear={selection.clearAll}
+        table="location" queryKey="locations" fields={bulkFields} />
       <PageHeader title="Locations" action={
         <div className="flex gap-2">
           <button type="button" onClick={() => exportToCsv('locations.csv', locations, [
@@ -133,8 +157,17 @@ export default function LocationsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
+                    <th className="w-8 px-2 py-3">
+                      <input type="checkbox" checked={selection.isAllSelected} onChange={selection.toggleAll}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                    </th>
                     {v('nickname') && <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Nickname</SortTh>}
                     {v('area') && <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>}
+                    {v('phone') && <th className="text-left px-3 py-3 font-semibold text-gray-700">Phone</th>}
+                    {v('contact_name') && <th className="text-left px-3 py-3 font-semibold text-gray-700">Contact</th>}
+                    {v('contact_email') && <th className="text-left px-3 py-3 font-semibold text-gray-700">Contact Email</th>}
+                    {v('contact_phone') && <th className="text-left px-3 py-3 font-semibold text-gray-700">Contact Phone</th>}
+                    {v('info_sheet') && <th className="text-left px-3 py-3 font-semibold text-gray-700">Info Sheet</th>}
                     {v('client_manager') && <th className="text-left px-3 py-3 font-semibold text-gray-700">Client Manager</th>}
                     {v('contractor') && <SortTh col="contractor" sort={sort} dir={dir} onSort={handleSort}>Contractor</SortTh>}
                     {v('retained') && <th className="text-center px-2 py-3 font-semibold text-gray-700 w-20">Retained</th>}
@@ -146,7 +179,11 @@ export default function LocationsPage() {
                   {locations.length === 0 ? (
                     <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No locations found</td></tr>
                   ) : locations.map((l) => (
-                    <tr key={l.id} className={l.retained ? 'bg-blue-50/30' : ''}>
+                    <tr key={l.id} className={`${l.retained ? 'bg-blue-50/30' : ''} ${selection.isSelected(l.id) ? '!bg-[#1e3a5f]/5' : ''}`}>
+                      <td className="w-8 px-2 py-2">
+                        <input type="checkbox" checked={selection.isSelected(l.id)} onChange={() => selection.toggle(l.id)}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                      </td>
                       {v('nickname') && <td className="px-4 py-2">
                         <Link to={`/locations/${l.id}`} className="font-medium text-[#1e3a5f] hover:underline">{l.nickname}</Link>
                         {l.school_name && l.school_name !== l.nickname && (
@@ -154,16 +191,16 @@ export default function LocationsPage() {
                         )}
                       </td>}
                       {v('area') && <td className="px-3 py-2 text-gray-600 text-xs">{l.geographic_area_name || '—'}</td>}
-                      {v('client_manager') && <td className="px-3 py-1">
-                        <select
-                          defaultValue={l.client_manager_user_id || ''}
-                          onChange={e => inlineUpdate(l.id, 'client_manager_user_id', e.target.value || null)}
-                          className="w-full rounded border border-gray-200 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f] appearance-none pr-6 bg-[length:12px_12px] bg-[position:right_0.25rem_center] bg-no-repeat bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%236b7280%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5.23%207.21a.75.75%200%20011.06.02L10%2011.168l3.71-3.938a.75.75%200%20111.08%201.04l-4.25%204.5a.75.75%200%2001-1.08%200l-4.25-4.5a.75.75%200%2001.02-1.06z%22%20clip-rule%3D%22evenodd%22%2F%3E%3C%2Fsvg%3E')]"
-                        >
-                          <option value="">{l.client_manager || '—'}</option>
-                          {cmUsers.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-                        </select>
+                      {v('phone') && <td className="px-3 py-2 text-gray-600 text-xs">{l.location_phone || '—'}</td>}
+                      {v('contact_name') && <td className="px-3 py-2 text-gray-600 text-xs">{l.point_of_contact || '—'}</td>}
+                      {v('contact_email') && <td className="px-3 py-2 text-gray-600 text-xs">
+                        {l.poc_email ? <a href={`mailto:${l.poc_email}`} className="text-[#1e3a5f] hover:underline">{l.poc_email}</a> : '—'}
                       </td>}
+                      {v('contact_phone') && <td className="px-3 py-2 text-gray-600 text-xs">{l.poc_phone || '—'}</td>}
+                      {v('info_sheet') && <td className="px-3 py-2 text-xs">
+                        {l.school_calendar_link ? <a href={l.school_calendar_link} target="_blank" rel="noopener noreferrer" className="text-[#1e3a5f] hover:underline">View</a> : '—'}
+                      </td>}
+                      {v('client_manager') && <td className="px-3 py-2 text-gray-600 text-xs">{l.client_manager || '—'}</td>}
                       {v('contractor') && <td className="px-3 py-2 text-gray-600 text-xs">{l.contractor_id ? <Link to={`/contractors/${l.contractor_id}`} className="text-[#1e3a5f] hover:underline">{l.contractor_name}</Link> : '—'}</td>}
                       {v('retained') && <td className="px-2 py-2 text-center">
                         <input
@@ -174,7 +211,9 @@ export default function LocationsPage() {
                           title={l.retained ? 'Retained client' : 'Not retained'}
                         />
                       </td>}
-                      {v('classes') && <td className="px-3 py-2 text-center text-gray-700">{l.class_count || 0}</td>}
+                      {v('classes') && <td className="px-3 py-2 text-center">
+                        <Link to={`/locations/${l.id}`} className="text-[#1e3a5f] hover:underline font-medium">{l.class_count || 0}</Link>
+                      </td>}
                       {v('compliance') && <td className="px-3 py-2 text-center text-xs font-medium">
                         <span className={`mr-1.5 ${l.tb_required ? 'text-amber-600' : 'text-gray-300'}`}>TB</span>
                         <span className={`mr-1.5 ${l.livescan_required ? 'text-amber-600' : 'text-gray-300'}`}>LS</span>

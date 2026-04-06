@@ -16,6 +16,8 @@ import { exportToCsv } from '../lib/exportCsv';
 import { SortTh } from '../components/ui/SortTh';
 import { useColumnPrefs } from '../hooks/useColumnPrefs';
 import { ColumnPicker } from '../components/ui/ColumnPicker';
+import { useRowSelection } from '../hooks/useRowSelection';
+import { BulkEditBar } from '../components/ui/BulkEditBar';
 
 const COLUMNS = [
   { key: 'nickname', label: 'Preferred Name' },
@@ -67,6 +69,19 @@ export default function ProfessorsPage() {
 
   const professors = data?.data || [];
   const total = data?.total || 0;
+  const selection = useRowSelection(professors);
+
+  const bulkFields = [
+    { key: 'professor_status_id', label: 'Status', type: 'select', options: (ref.professorStatuses || []).map(s => ({ value: s.id, label: s.professor_status_name })) },
+    { key: 'geographic_area_id', label: 'Area', type: 'select', options: (ref.areas || []).map(a => ({ value: a.id, label: a.geographic_area_name })) },
+    { key: 'base_pay', label: 'Base Pay', type: 'number' },
+    { key: 'active', label: 'Active', type: 'toggle' },
+    { key: 'science_trained_id', label: 'Science Trained', type: 'toggle' },
+    { key: 'engineering_trained_id', label: 'Engineering Trained', type: 'toggle' },
+    { key: 'demo_trained_id', label: 'Demo Trained', type: 'toggle' },
+    { key: 'show_party_trained_id', label: 'Show Party Trained', type: 'toggle' },
+    { key: 'camp_trained_id', label: 'Camp Trained', type: 'toggle' },
+  ];
   const limit = data?.limit || 50;
 
   const reset = () => { setSearch(''); setStatus(''); setArea(''); setTraining(''); setPage(1); };
@@ -74,6 +89,8 @@ export default function ProfessorsPage() {
 
   return (
     <AppShell>
+      <BulkEditBar count={selection.count} selected={selection.selected} onClear={selection.clearAll}
+        table="professor" queryKey="professors" fields={bulkFields} />
       <PageHeader title="Professors" action={
         <div className="flex gap-2">
           <button type="button" onClick={() => exportToCsv('professors.csv', professors, [
@@ -124,6 +141,10 @@ export default function ProfessorsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
+                    <th className="w-8 px-2 py-3">
+                      <input type="checkbox" checked={selection.isAllSelected} onChange={selection.toggleAll}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                    </th>
                     {v('nickname') && <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Preferred Name</SortTh>}
                     {v('status') && <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>}
                     {v('area') && <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>}
@@ -139,7 +160,11 @@ export default function ProfessorsPage() {
                   {professors.length === 0 ? (
                     <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No professors found</td></tr>
                   ) : professors.map((p, i) => (
-                    <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                    <tr key={p.id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${selection.isSelected(p.id) ? '!bg-[#1e3a5f]/5' : ''}`}>
+                      <td className="w-8 px-2 py-2.5">
+                        <input type="checkbox" checked={selection.isSelected(p.id)} onChange={() => selection.toggle(p.id)}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                      </td>
                       {v('nickname') && <td className="px-4 py-2.5">
                         <Link to={`/professors/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">
                           {p.professor_nickname}

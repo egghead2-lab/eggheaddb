@@ -14,6 +14,8 @@ import { SortTh } from '../components/ui/SortTh';
 import { formatDate, formatTimeRange, formatCurrency } from '../lib/utils';
 import { useColumnPrefs } from '../hooks/useColumnPrefs';
 import { ColumnPicker } from '../components/ui/ColumnPicker';
+import { useRowSelection } from '../hooks/useRowSelection';
+import { BulkEditBar } from '../components/ui/BulkEditBar';
 
 const COLUMNS = [
   { key: 'date', label: 'Date' },
@@ -80,12 +82,25 @@ export default function PartiesPage() {
   const parties = data?.data || [];
   const total = data?.total || 0;
   const limit = data?.limit || 50;
+  const selection = useRowSelection(parties);
 
-  const reset = () => { setSearch(''); setStatus(''); setProfessor(''); setTimeframe('current'); setDateFrom(''); setDateTo(''); setPage(1); };
+  const bulkFields = [
+    { key: 'class_status_id', label: 'Status', type: 'select', options: [
+      { value: 2, label: 'Confirmed' }, { value: 1, label: 'Unconfirmed' },
+      { value: 5, label: 'Cancelled - Other' }, { value: 6, label: 'Cancelled - Parent' },
+    ]},
+    { key: 'active', label: 'Active', type: 'toggle' },
+    { key: 'invoice_needed', label: 'Invoice Needed', type: 'toggle' },
+    { key: 'payment_through_us', label: 'Payment Through Us', type: 'toggle' },
+  ];
+
+  const reset =() => { setSearch(''); setStatus(''); setProfessor(''); setTimeframe('current'); setDateFrom(''); setDateTo(''); setPage(1); };
   const hasFilters = search || status || professor || timeframe !== 'current' || dateFrom || dateTo;
 
   return (
     <AppShell>
+      <BulkEditBar count={selection.count} selected={selection.selected} onClear={selection.clearAll}
+        table="program" queryKey="parties" fields={bulkFields} />
       <PageHeader title="Parties" action={
         <div className="flex gap-2">
           <Link to="/parties/new"><Button>+ New Party</Button></Link>
@@ -131,6 +146,10 @@ export default function PartiesPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
+                    <th className="w-8 px-2 py-3">
+                      <input type="checkbox" checked={selection.isAllSelected} onChange={selection.toggleAll}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                    </th>
                     {v('date') && <SortTh col="date" sort={sort} dir={dir} onSort={handleSort}>Date</SortTh>}
                     {v('time') && <th className="text-left px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">Time</th>}
                     {v('professor') && <SortTh col="professor" sort={sort} dir={dir} onSort={handleSort}>Lead Prof</SortTh>}
@@ -150,7 +169,11 @@ export default function PartiesPage() {
                   {parties.length === 0 ? (
                     <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No parties found</td></tr>
                   ) : parties.map((p, i) => (
-                    <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                    <tr key={p.id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${selection.isSelected(p.id) ? '!bg-[#1e3a5f]/5' : ''}`}>
+                      <td className="w-8 px-2 py-2.5">
+                        <input type="checkbox" checked={selection.isSelected(p.id)} onChange={() => selection.toggle(p.id)}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                      </td>
                       {v('date') && <td className="px-4 py-2.5 whitespace-nowrap">
                         <Link to={`/parties/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">
                           {p.party_date ? formatDate(p.party_date) : <span className="text-gray-400 italic">No date</span>}

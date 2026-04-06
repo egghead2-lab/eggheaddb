@@ -15,6 +15,8 @@ import { exportToCsv } from '../lib/exportCsv';
 import { SortTh } from '../components/ui/SortTh';
 import { useColumnPrefs } from '../hooks/useColumnPrefs';
 import { ColumnPicker } from '../components/ui/ColumnPicker';
+import { useRowSelection } from '../hooks/useRowSelection';
+import { BulkEditBar } from '../components/ui/BulkEditBar';
 
 const COLUMNS = [
   { key: 'nickname', label: 'Program' },
@@ -74,6 +76,23 @@ export default function ProgramsPage() {
   const programs = data?.data || [];
   const total = data?.total || 0;
   const limit = data?.limit || 50;
+  const selection = useRowSelection(programs);
+
+  const bulkFields = [
+    { key: 'class_status_id', label: 'Status', type: 'select', options: (ref.classStatuses || []).map(s => ({ value: s.id, label: s.class_status_name })) },
+    { key: 'lead_professor_id', label: 'Lead Professor', type: 'select', options: (ref.partyAssistProfessors || []).map(p => ({ value: p.id, label: p.display_name })) },
+    { key: 'active', label: 'Active', type: 'toggle' },
+    { key: 'payment_through_us', label: 'Payment Through Us', type: 'toggle' },
+    { key: 'roster_received', label: 'Roster Received', type: 'toggle' },
+    { key: 'roster_confirmed', label: 'Roster Confirmed', type: 'toggle' },
+    { key: 'flyer_required', label: 'Flyer Required', type: 'toggle' },
+    { key: 'demo_required', label: 'Demo Required', type: 'toggle' },
+    { key: 'invoice_needed', label: 'Invoice Needed', type: 'toggle' },
+    { key: 'lead_professor_pay', label: 'Lead Prof Pay', type: 'number' },
+    { key: 'tb_required', label: 'TB Required', type: 'toggle' },
+    { key: 'livescan_required', label: 'Livescan Required', type: 'toggle' },
+    { key: 'virtus_required', label: 'Virtus Required', type: 'toggle' },
+  ];
 
   const handleSort = (col) => {
     if (sort === col) setDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -89,6 +108,8 @@ export default function ProgramsPage() {
 
   return (
     <AppShell>
+      <BulkEditBar count={selection.count} selected={selection.selected} onClear={selection.clearAll}
+        table="program" queryKey="programs" fields={bulkFields} />
       <PageHeader title="Programs" action={
         <div className="flex gap-2">
           <button type="button" onClick={() => exportToCsv('programs.csv', programs, [
@@ -164,6 +185,10 @@ export default function ProgramsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
+                    <th className="w-8 px-2 py-3">
+                      <input type="checkbox" checked={selection.isAllSelected} onChange={selection.toggleAll}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                    </th>
                     {v('nickname') && <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Program</SortTh>}
                     {v('status') && <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>}
                     {v('location') && <SortTh col="location" sort={sort} dir={dir} onSort={handleSort}>Location</SortTh>}
@@ -180,7 +205,11 @@ export default function ProgramsPage() {
                   {programs.length === 0 ? (
                     <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No programs found</td></tr>
                   ) : programs.map((p, i) => (
-                    <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                    <tr key={p.id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${selection.isSelected(p.id) ? '!bg-[#1e3a5f]/5' : ''}`}>
+                      <td className="w-8 px-2 py-2.5">
+                        <input type="checkbox" checked={selection.isSelected(p.id)} onChange={() => selection.toggle(p.id)}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                      </td>
                       {v('nickname') && <td className="px-4 py-2.5">
                         <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>
                       </td>}
