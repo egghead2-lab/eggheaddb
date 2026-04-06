@@ -19,6 +19,7 @@ const toolsRoutes = require('./routes/tools');
 const scheduleRoutes = require('./routes/schedule');
 const payrollRoutes = require('./routes/payroll');
 const reportsRoutes = require('./routes/reports');
+const onboardingRoutes = require('./routes/onboarding');
 const assignmentBoardRoutes = require('./routes/assignment-board');
 const lessonsRoutes = require('./routes/lessons');
 const classesRoutes = require('./routes/classes');
@@ -88,6 +89,7 @@ app.use('/api/schedule', scheduleRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/assignment-board', assignmentBoardRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 
 // Error handler
 app.use(errorHandler);

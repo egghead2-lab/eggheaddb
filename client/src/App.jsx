@@ -38,6 +38,10 @@ import HolidayDetailPage from './pages/HolidayDetailPage';
 import ParentsPage from './pages/ParentsPage';
 import ParentDetailPage from './pages/ParentDetailPage';
 import AreasPage from './pages/AreasPage';
+import CandidatesPage from './pages/CandidatesPage';
+import CandidateDetailPage from './pages/CandidateDetailPage';
+import OnboardingRequirementsPage from './pages/OnboardingRequirementsPage';
+import OnboardingTemplatesPage from './pages/OnboardingTemplatesPage';
 
 export default function App() {
   return (
@@ -79,6 +83,11 @@ export default function App() {
       <Route path="/schedule" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/schedule/:id" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
+      <Route path="/candidates" element={<ProtectedRoute><CandidatesPage /></ProtectedRoute>} />
+      <Route path="/candidates/new" element={<ProtectedRoute><CandidateDetailPage /></ProtectedRoute>} />
+      <Route path="/candidates/:id" element={<ProtectedRoute><CandidateDetailPage /></ProtectedRoute>} />
+      <Route path="/onboarding-requirements" element={<ProtectedRoute><OnboardingRequirementsPage /></ProtectedRoute>} />
+      <Route path="/onboarding-templates" element={<ProtectedRoute><OnboardingTemplatesPage /></ProtectedRoute>} />
       <Route path="/payroll" element={<ProtectedRoute><PayrollDashboardPage /></ProtectedRoute>} />
       <Route path="/payroll/runs" element={<ProtectedRoute><PayrollRunsPage /></ProtectedRoute>} />
       <Route path="/payroll/misc-pay" element={<ProtectedRoute><MiscPayPage /></ProtectedRoute>} />
