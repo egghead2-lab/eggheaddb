@@ -24,6 +24,7 @@ import FmDailyLogPage from './pages/FmDailyLogPage';
 import GustoCodesPage from './pages/GustoCodesPage';
 import PayrollRunsPage from './pages/PayrollRunsPage';
 import ReportBuilderPage from './pages/ReportBuilderPage';
+import TeamDashboardPage from './pages/TeamDashboardPage';
 import SessionPayPage from './pages/SessionPayPage';
 import OnboardingPayPage from './pages/OnboardingPayPage';
 import MileagePage from './pages/MileagePage';
@@ -87,6 +88,7 @@ export default function App() {
       <Route path="/payroll/onboarding-pay" element={<ProtectedRoute><OnboardingPayPage /></ProtectedRoute>} />
       <Route path="/payroll/mileage" element={<ProtectedRoute><MileagePage /></ProtectedRoute>} />
       <Route path="/report-builder" element={<ProtectedRoute><ReportBuilderPage /></ProtectedRoute>} />
+      <Route path="/team-dashboard" element={<ProtectedRoute><TeamDashboardPage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

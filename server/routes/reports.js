@@ -471,4 +471,43 @@ router.get('/dashboard/my', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/dashboard/user/:userId — admin view: see a specific user's reports
+router.get('/dashboard/user/:userId', authenticate, async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const [[user]] = await pool.query(
+      `SELECT u.id, u.first_name, u.last_name, r.role_name FROM user u LEFT JOIN role r ON r.id = u.role_id WHERE u.id = ?`, [userId]
+    );
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+
+    const [[userRole]] = await pool.query('SELECT id FROM role WHERE role_name = ? AND active = 1', [user.role_name]);
+
+    const [reports] = await pool.query(
+      `SELECT DISTINCT r.* FROM report r
+       LEFT JOIN report_role rr ON rr.report_id = r.id
+       LEFT JOIN report_user ru ON ru.report_id = r.id
+       WHERE r.active = 1 AND (rr.role_id = ? OR ru.user_id = ?)
+       ORDER BY r.sort_order, r.name`,
+      [userRole?.id || 0, userId]
+    );
+
+    const results = [];
+    for (const report of reports) {
+      const entity = ENTITIES[report.entity];
+      if (!entity) continue;
+      const filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
+      const { where, params } = buildWhereFromFilters(report.entity, filters);
+      try {
+        const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}) AS sub`;
+        const [[{ cnt }]] = await pool.query(countQuery, params);
+        results.push({ ...report, filters, count: cnt });
+      } catch {
+        results.push({ ...report, filters, count: 0, error: true });
+      }
+    }
+
+    res.json({ success: true, user, data: results });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

@@ -7,3 +7,4 @@ export const updateReport = (id, data) => api.put(`/reports/${id}`, data).then(r
 export const deleteReport = (id) => api.delete(`/reports/${id}`).then(r => r.data);
 export const runReport = (id) => api.get(`/reports/${id}/run`).then(r => r.data);
 export const getMyDashboard = () => api.get('/reports/dashboard/my').then(r => r.data);
+export const getUserDashboard = (userId) => api.get(`/reports/dashboard/user/${userId}`).then(r => r.data);
