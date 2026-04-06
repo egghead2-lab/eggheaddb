@@ -112,7 +112,7 @@ export default function ReportBuilderPage() {
                     <div key={i} className="flex gap-2 items-center mb-2">
                       <select value={f.field} onChange={e => updateFilter(i, 'field', e.target.value)}
                         className="rounded border border-gray-300 px-2 py-1 text-sm flex-1">
-                        {entityFields.map(ef => <option key={ef.key} value={ef.key}>{ef.key}</option>)}
+                        {entityFields.map(ef => <option key={ef.key} value={ef.key}>{ef.label || ef.key}</option>)}
                       </select>
                       <select value={f.operator} onChange={e => updateFilter(i, 'operator', e.target.value)}
                         className="rounded border border-gray-300 px-2 py-1 text-sm w-28">
