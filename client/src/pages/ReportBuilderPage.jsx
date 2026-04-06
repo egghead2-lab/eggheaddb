@@ -29,7 +29,7 @@ export default function ReportBuilderPage() {
   const [previewData, setPreviewData] = useState(null);
 
   // Form
-  const [form, setForm] = useState({ name: '', description: '', entity: '', display_mode: 'task', kpi_format: 'count', filters: [], role_ids: [] });
+  const [form, setForm] = useState({ name: '', description: '', entity: '', display_mode: 'task', kpi_format: 'count', filters: [], role_ids: [], user_ids: [] });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const { data: entitiesData } = useQuery({ queryKey: ['report-entities'], queryFn: getEntities });
@@ -41,10 +41,17 @@ export default function ReportBuilderPage() {
   const { data: rolesData } = useQuery({ queryKey: ['roles'], queryFn: getRoles });
   const roles = rolesData?.data || [];
 
+  const { data: usersData } = useQuery({
+    queryKey: ['all-users-for-reports'],
+    queryFn: () => import('../api/client').then(m => m.default.get('/users?limit=100').then(r => r.data)),
+    staleTime: 5 * 60 * 1000,
+  });
+  const allUsers = usersData?.data || [];
+
   const createMutation = useMutation({ mutationFn: (d) => createReport(d), onSuccess: () => { qc.invalidateQueries(['reports']); setShowCreate(false); resetForm(); } });
   const deleteMutation = useMutation({ mutationFn: (id) => deleteReport(id), onSuccess: () => qc.invalidateQueries(['reports']) });
 
-  const resetForm = () => setForm({ name: '', description: '', entity: '', display_mode: 'task', kpi_format: 'count', filters: [], role_ids: [] });
+  const resetForm = () => setForm({ name: '', description: '', entity: '', display_mode: 'task', kpi_format: 'count', filters: [], role_ids: [], user_ids: [] });
 
   const addFilter = () => {
     const entityFields = entities[form.entity]?.fields || [];
@@ -61,11 +68,21 @@ export default function ReportBuilderPage() {
     set('role_ids', form.role_ids.includes(roleId) ? form.role_ids.filter(id => id !== roleId) : [...form.role_ids, roleId]);
   };
 
+  const toggleUser = (userId) => {
+    set('user_ids', form.user_ids.includes(userId) ? form.user_ids.filter(id => id !== userId) : [...form.user_ids, userId]);
+  };
+
   const handlePreview = async (id) => {
     if (previewId === id) { setPreviewId(null); setPreviewData(null); return; }
-    const res = await runReport(id);
-    setPreviewData(res);
-    setPreviewId(id);
+    try {
+      const res = await runReport(id);
+      setPreviewData(res);
+      setPreviewId(id);
+    } catch (err) {
+      console.error('Report run failed:', err);
+      setPreviewData({ data: [], count: 0, error: err.message });
+      setPreviewId(id);
+    }
   };
 
   const entityFields = entities[form.entity]?.fields || [];
@@ -157,12 +174,25 @@ export default function ReportBuilderPage() {
 
             {/* Role assignment */}
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-2">Assign to Roles (who sees this)</label>
+              <label className="text-xs font-medium text-gray-700 block mb-2">Assign to Roles</label>
               <div className="flex flex-wrap gap-2">
                 {roles.map(r => (
                   <label key={r.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input type="checkbox" checked={form.role_ids.includes(r.id)} onChange={() => toggleRole(r.id)} className="accent-[#1e3a5f]" />
                     {r.role_name}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* User assignment */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-2">Assign to Specific People</label>
+              <div className="flex flex-wrap gap-2">
+                {allUsers.map(u => (
+                  <label key={u.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="checkbox" checked={form.user_ids.includes(u.id)} onChange={() => toggleUser(u.id)} className="accent-[#1e3a5f]" />
+                    {u.first_name} {u.last_name}
                   </label>
                 ))}
               </div>
@@ -184,7 +214,7 @@ export default function ReportBuilderPage() {
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Entity</th>
                   <th className="text-center px-3 py-2 font-medium text-gray-600">Type</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Filters</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">Created By</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Assigned To</th>
                   <th className="text-center px-3 py-2 font-medium text-gray-600 w-24">Actions</th>
                 </tr>
               </thead>
@@ -201,7 +231,11 @@ export default function ReportBuilderPage() {
                       }`}>{r.display_mode === 'both' ? 'Task + KPI' : r.display_mode === 'kpi' ? 'KPI' : 'Task'}</span>
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-500">{(r.filters || []).length} filter{(r.filters || []).length !== 1 ? 's' : ''}</td>
-                    <td className="px-3 py-2 text-gray-500 text-xs">{r.created_by || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500">
+                      {(r.role_ids || []).length > 0 && <span>{r.role_ids.length} role{r.role_ids.length !== 1 ? 's' : ''}</span>}
+                      {(r.user_ids || []).length > 0 && <span>{r.role_ids?.length ? ', ' : ''}{r.user_ids.length} user{r.user_ids.length !== 1 ? 's' : ''}</span>}
+                      {!(r.role_ids?.length || r.user_ids?.length) && '—'}
+                    </td>
                     <td className="px-3 py-2 text-center">
                       <div className="flex gap-2 justify-center">
                         <button onClick={() => handlePreview(r.id)} className="text-xs text-[#1e3a5f] hover:underline">{previewId === r.id ? 'Hide' : 'Run'}</button>

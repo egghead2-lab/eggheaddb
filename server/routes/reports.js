@@ -286,18 +286,20 @@ router.get('/entities', authenticate, (req, res) => {
 router.get('/', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT r.*, GROUP_CONCAT(rr.role_id) AS role_ids
-       FROM report r LEFT JOIN report_role rr ON rr.report_id = r.id
+      `SELECT r.*, GROUP_CONCAT(DISTINCT rr.role_id) AS role_ids, GROUP_CONCAT(DISTINCT ru.user_id) AS user_ids
+       FROM report r
+       LEFT JOIN report_role rr ON rr.report_id = r.id
+       LEFT JOIN report_user ru ON ru.report_id = r.id
        WHERE r.active = 1 GROUP BY r.id ORDER BY r.sort_order, r.name`
     );
-    res.json({ success: true, data: rows.map(r => ({ ...r, role_ids: r.role_ids ? r.role_ids.split(',').map(Number) : [], filters: typeof r.filters === 'string' ? JSON.parse(r.filters) : r.filters })) });
+    res.json({ success: true, data: rows.map(r => ({ ...r, role_ids: r.role_ids ? r.role_ids.split(',').map(Number) : [], user_ids: r.user_ids ? r.user_ids.split(',').map(Number) : [], filters: typeof r.filters === 'string' ? JSON.parse(r.filters) : r.filters })) });
   } catch (err) { next(err); }
 });
 
 // POST /api/reports — create a report
 router.post('/', authenticate, async (req, res, next) => {
   try {
-    const { name, description, entity, filters, display_mode, kpi_format, kpi_field, role_ids } = req.body;
+    const { name, description, entity, filters, display_mode, kpi_format, kpi_field, role_ids, user_ids } = req.body;
     if (!name || !entity) return res.status(400).json({ success: false, error: 'Name and entity required' });
 
     const [result] = await pool.query(
@@ -307,9 +309,10 @@ router.post('/', authenticate, async (req, res, next) => {
     );
 
     if (Array.isArray(role_ids)) {
-      for (const rid of role_ids) {
-        await pool.query('INSERT IGNORE INTO report_role (report_id, role_id) VALUES (?, ?)', [result.insertId, rid]);
-      }
+      for (const rid of role_ids) await pool.query('INSERT IGNORE INTO report_role (report_id, role_id) VALUES (?, ?)', [result.insertId, rid]);
+    }
+    if (Array.isArray(user_ids)) {
+      for (const uid of user_ids) await pool.query('INSERT IGNORE INTO report_user (report_id, user_id) VALUES (?, ?)', [result.insertId, uid]);
     }
 
     res.json({ success: true, id: result.insertId });
@@ -334,6 +337,10 @@ router.put('/:id', authenticate, async (req, res, next) => {
     if (Array.isArray(role_ids)) {
       await pool.query('DELETE FROM report_role WHERE report_id = ?', [req.params.id]);
       for (const rid of role_ids) await pool.query('INSERT IGNORE INTO report_role (report_id, role_id) VALUES (?, ?)', [req.params.id, rid]);
+    }
+    if (Array.isArray(user_ids)) {
+      await pool.query('DELETE FROM report_user WHERE report_id = ?', [req.params.id]);
+      for (const uid of user_ids) await pool.query('INSERT IGNORE INTO report_user (report_id, user_id) VALUES (?, ?)', [req.params.id, uid]);
     }
 
     res.json({ success: true });
@@ -382,11 +389,14 @@ router.get('/dashboard/my', authenticate, async (req, res, next) => {
       [reports] = await pool.query('SELECT * FROM report WHERE active = 1 ORDER BY sort_order, name');
     } else {
       const [[userRole]] = await pool.query('SELECT id FROM role WHERE role_name = ? AND active = 1', [role]);
-      if (!userRole) return res.json({ success: true, data: [] });
+      const userId = req.user?.userId;
       [reports] = await pool.query(
-        `SELECT r.* FROM report r JOIN report_role rr ON rr.report_id = r.id
-         WHERE r.active = 1 AND rr.role_id = ? ORDER BY r.sort_order, r.name`,
-        [userRole.id]
+        `SELECT DISTINCT r.* FROM report r
+         LEFT JOIN report_role rr ON rr.report_id = r.id
+         LEFT JOIN report_user ru ON ru.report_id = r.id
+         WHERE r.active = 1 AND (rr.role_id = ? OR ru.user_id = ?)
+         ORDER BY r.sort_order, r.name`,
+        [userRole?.id || 0, userId || 0]
       );
     }
 
