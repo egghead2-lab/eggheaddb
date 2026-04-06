@@ -273,6 +273,57 @@ function buildWhereFromFilters(entity, filters) {
 // API ROUTES
 // ============================================================
 
+// GET /api/reports/field-options — get distinct values for a field
+router.get('/field-options', authenticate, async (req, res, next) => {
+  try {
+    const { entity, field } = req.query;
+    const def = ENTITIES[entity];
+    if (!def) return res.json({ success: true, data: [] });
+    const fieldDef = def.fields[field];
+    if (!fieldDef) return res.json({ success: true, data: [] });
+
+    // For DB-backed selects, query distinct values
+    const optionQueries = {
+      'class_status': "SELECT DISTINCT class_status_name AS val FROM class_status WHERE active = 1 ORDER BY val",
+      'program_type': "SELECT DISTINCT program_type_name AS val FROM program_type WHERE active = 1 ORDER BY val",
+      'class_type': "SELECT DISTINCT class_type_name AS val FROM class_type WHERE active = 1 ORDER BY val",
+      'area': "SELECT DISTINCT geographic_area_name AS val FROM geographic_area WHERE active = 1 ORDER BY val",
+      'professor_status': "SELECT DISTINCT professor_status_name AS val FROM professor_status WHERE active = 1 ORDER BY val",
+    };
+
+    if (fieldDef.type === 'select' && typeof fieldDef.options === 'string' && optionQueries[fieldDef.options]) {
+      const [rows] = await pool.query(optionQueries[fieldDef.options]);
+      return res.json({ success: true, data: rows.map(r => r.val) });
+    }
+    if (fieldDef.type === 'select' && Array.isArray(fieldDef.options)) {
+      return res.json({ success: true, data: fieldDef.options });
+    }
+
+    // For text fields that have finite values, query distinct from the base query
+    const textFieldQueries = {
+      // Programs
+      'class_name': "SELECT DISTINCT class_name AS val FROM class WHERE active = 1 ORDER BY val",
+      'class_code': "SELECT DISTINCT class_code AS val FROM class WHERE active = 1 AND class_code IS NOT NULL ORDER BY val",
+      'lead_professor': "SELECT DISTINCT CONCAT(professor_nickname, ' ', last_name) AS val FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active','Substitute') ORDER BY val",
+      'assistant_professor': "SELECT DISTINCT CONCAT(professor_nickname, ' ', last_name) AS val FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active','Substitute') ORDER BY val",
+      'scheduling_coordinator': "SELECT DISTINCT CONCAT(u.first_name, ' ', u.last_name) AS val FROM user u JOIN role r ON r.id = u.role_id WHERE u.active = 1 AND r.role_name = 'Scheduling Coordinator' ORDER BY val",
+      'field_manager': "SELECT DISTINCT CONCAT(u.first_name, ' ', u.last_name) AS val FROM user u JOIN role r ON r.id = u.role_id WHERE u.active = 1 AND r.role_name = 'Field Manager' ORDER BY val",
+      'client_manager': "SELECT DISTINCT CONCAT(u.first_name, ' ', u.last_name) AS val FROM user u JOIN role r ON r.id = u.role_id WHERE u.active = 1 AND r.role_name = 'Client Manager' ORDER BY val",
+      'location': "SELECT DISTINCT nickname AS val FROM location WHERE active = 1 AND (location_type_id IS NULL OR location_type_id != 5) ORDER BY val",
+      'contractor': "SELECT DISTINCT contractor_name AS val FROM contractor WHERE active = 1 ORDER BY val",
+      'city': "SELECT DISTINCT city_name AS val FROM city WHERE city_name IS NOT NULL ORDER BY val",
+      'bin_names': "SELECT DISTINCT bin_name AS val FROM bin WHERE active = 1 ORDER BY val",
+    };
+
+    if (textFieldQueries[field]) {
+      const [rows] = await pool.query(textFieldQueries[field]);
+      return res.json({ success: true, data: rows.map(r => r.val).filter(Boolean) });
+    }
+
+    res.json({ success: true, data: [] });
+  } catch (err) { next(err); }
+});
+
 // GET /api/reports/entities — list available entities and their fields
 router.get('/entities', authenticate, (req, res) => {
   const out = {};

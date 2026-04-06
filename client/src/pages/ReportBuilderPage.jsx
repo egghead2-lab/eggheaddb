@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getEntities, getReports, createReport, updateReport, deleteReport, runReport } from '../api/reports';
+import { getEntities, getReports, createReport, updateReport, deleteReport, runReport, getFieldOptions } from '../api/reports';
 import { getRoles } from '../api/reference';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -185,8 +185,8 @@ export default function ReportBuilderPage() {
                           <option value="not_sent">Not Sent</option>
                         </select>
                       ) : (
-                        <input value={f.value} onChange={e => updateFilter(i, 'value', e.target.value)}
-                          className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" placeholder="Value…" />
+                        <DynamicValueInput entity={form.entity} field={f.field} value={f.value}
+                          onChange={val => updateFilter(i, 'value', val)} />
                       )}
                       <button onClick={() => removeFilter(i)} className="text-red-400 hover:text-red-600 text-sm">×</button>
                     </div>
@@ -303,4 +303,28 @@ export default function ReportBuilderPage() {
       </div>
     </AppShell>
   );
+}
+
+function DynamicValueInput({ entity, field, value, onChange }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['field-options', entity, field],
+    queryFn: () => getFieldOptions(entity, field),
+    staleTime: 5 * 60 * 1000,
+    enabled: !!entity && !!field,
+  });
+  const options = data?.data || [];
+
+  if (isLoading) return <input value={value} onChange={e => onChange(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" placeholder="Loading..." />;
+
+  if (options.length > 0) {
+    return (
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="rounded border border-gray-300 px-2 py-1 text-sm flex-1">
+        <option value="">Select...</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+
+  return <input value={value} onChange={e => onChange(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" placeholder="Value..." />;
 }

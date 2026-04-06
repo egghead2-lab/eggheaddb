@@ -1,5 +1,6 @@
 import api from './client';
 export const getEntities = () => api.get('/reports/entities').then(r => r.data);
+export const getFieldOptions = (entity, field) => api.get('/reports/field-options', { params: { entity, field } }).then(r => r.data);
 export const getReports = () => api.get('/reports').then(r => r.data);
 export const createReport = (data) => api.post('/reports', data).then(r => r.data);
 export const updateReport = (id, data) => api.put(`/reports/${id}`, data).then(r => r.data);
