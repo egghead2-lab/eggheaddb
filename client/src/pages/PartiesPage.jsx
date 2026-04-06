@@ -12,6 +12,24 @@ import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { SortTh } from '../components/ui/SortTh';
 import { formatDate, formatTimeRange, formatCurrency } from '../lib/utils';
+import { useColumnPrefs } from '../hooks/useColumnPrefs';
+import { ColumnPicker } from '../components/ui/ColumnPicker';
+
+const COLUMNS = [
+  { key: 'date', label: 'Date' },
+  { key: 'time', label: 'Time' },
+  { key: 'professor', label: 'Lead Prof' },
+  { key: 'assistant', label: 'Assist Prof' },
+  { key: 'location', label: 'Location' },
+  { key: 'contact', label: 'Contact' },
+  { key: 'email', label: 'Email' },
+  { key: 'format', label: 'Format' },
+  { key: 'theme', label: 'Theme' },
+  { key: 'kids', label: '#Kids' },
+  { key: 'total', label: 'Total' },
+  { key: 'charged', label: 'Charged' },
+  { key: 'status', label: 'Status' },
+];
 
 export default function PartiesPage() {
   const [search, setSearch] = useState('');
@@ -51,6 +69,9 @@ export default function PartiesPage() {
     page,
   };
 
+  const colPrefs = useColumnPrefs('parties', COLUMNS);
+  const v = (key) => colPrefs.isColumnVisible(key);
+
   const { data, isLoading } = useQuery({
     queryKey: ['parties', filters],
     queryFn: () => getParties(filters),
@@ -66,7 +87,10 @@ export default function PartiesPage() {
   return (
     <AppShell>
       <PageHeader title="Parties" action={
-        <Link to="/parties/new"><Button>+ New Party</Button></Link>
+        <div className="flex gap-2">
+          <Link to="/parties/new"><Button>+ New Party</Button></Link>
+          <ColumnPicker {...colPrefs} />
+        </div>
       }>
         <Select value={timeframe} onChange={e => { setTimeframe(e.target.value); setPage(1); }} className="w-44">
           <option value="current">Current & Future</option>
@@ -107,64 +131,64 @@ export default function PartiesPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
-                    <SortTh col="date" sort={sort} dir={dir} onSort={handleSort}>Date</SortTh>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">Time</th>
-                    <SortTh col="professor" sort={sort} dir={dir} onSort={handleSort}>Lead Prof</SortTh>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">Assist Prof</th>
-                    <SortTh col="location" sort={sort} dir={dir} onSort={handleSort}>Location</SortTh>
-                    <SortTh col="contact" sort={sort} dir={dir} onSort={handleSort}>Contact</SortTh>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-700">Email</th>
-                    <SortTh col="type" sort={sort} dir={dir} onSort={handleSort}>Format</SortTh>
-                    <SortTh col="theme" sort={sort} dir={dir} onSort={handleSort}>Theme</SortTh>
-                    <th className="text-right px-4 py-3 font-semibold text-gray-700">#Kids</th>
-                    <th className="text-right px-4 py-3 font-semibold text-gray-700">Total</th>
-                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Charged</th>
-                    <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>
+                    {v('date') && <SortTh col="date" sort={sort} dir={dir} onSort={handleSort}>Date</SortTh>}
+                    {v('time') && <th className="text-left px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">Time</th>}
+                    {v('professor') && <SortTh col="professor" sort={sort} dir={dir} onSort={handleSort}>Lead Prof</SortTh>}
+                    {v('assistant') && <th className="text-left px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">Assist Prof</th>}
+                    {v('location') && <SortTh col="location" sort={sort} dir={dir} onSort={handleSort}>Location</SortTh>}
+                    {v('contact') && <SortTh col="contact" sort={sort} dir={dir} onSort={handleSort}>Contact</SortTh>}
+                    {v('email') && <th className="text-left px-4 py-3 font-semibold text-gray-700">Email</th>}
+                    {v('format') && <SortTh col="type" sort={sort} dir={dir} onSort={handleSort}>Format</SortTh>}
+                    {v('theme') && <SortTh col="theme" sort={sort} dir={dir} onSort={handleSort}>Theme</SortTh>}
+                    {v('kids') && <th className="text-right px-4 py-3 font-semibold text-gray-700">#Kids</th>}
+                    {v('total') && <th className="text-right px-4 py-3 font-semibold text-gray-700">Total</th>}
+                    {v('charged') && <th className="text-center px-4 py-3 font-semibold text-gray-700">Charged</th>}
+                    {v('status') && <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {parties.length === 0 ? (
-                    <tr><td colSpan={13} className="text-center py-12 text-gray-400">No parties found</td></tr>
+                    <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No parties found</td></tr>
                   ) : parties.map((p, i) => (
                     <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
+                      {v('date') && <td className="px-4 py-2.5 whitespace-nowrap">
                         <Link to={`/parties/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">
                           {p.party_date ? formatDate(p.party_date) : <span className="text-gray-400 italic">No date</span>}
                         </Link>
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">
+                      </td>}
+                      {v('time') && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">
                         {formatTimeRange(p.party_start, p.class_length_minutes)}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
+                      </td>}
+                      {v('professor') && <td className="px-4 py-2.5 whitespace-nowrap">
                         {p.lead_professor_id
                           ? <Link to={`/professors/${p.lead_professor_id}`} className="text-[#1e3a5f] hover:underline">{p.lead_professor_nickname}</Link>
                           : <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
+                      </td>}
+                      {v('assistant') && <td className="px-4 py-2.5 whitespace-nowrap">
                         {p.assistant_professor_id
                           ? <Link to={`/professors/${p.assistant_professor_id}`} className="text-[#1e3a5f] hover:underline">{p.assistant_professor_nickname}</Link>
                           : <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600">
+                      </td>}
+                      {v('location') && <td className="px-4 py-2.5 text-gray-600">
                         <div>{p.party_location_text || p.location_nickname || '—'}</div>
                         {!p.party_location_text && (p.city_name || p.zip_code) && (
                           <div className="text-xs text-gray-400">{[p.city_name, p.zip_code].filter(Boolean).join(' ')}</div>
                         )}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
+                      </td>}
+                      {v('contact') && <td className="px-4 py-2.5 whitespace-nowrap">
                         {p.contact_id
                           ? <Link to={`/parents/${p.contact_id}`} className="text-[#1e3a5f] hover:underline">{p.contact_name?.trim()}</Link>
                           : <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs">{p.contact_email || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_format_name || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_theme || p.class_name || '—'}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-700">{p.total_kids_attended ?? '—'}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(p.total_party_cost)}</td>
-                      <td className="px-4 py-2.5 text-center">
+                      </td>}
+                      {v('email') && <td className="px-4 py-2.5 text-gray-600 text-xs">{p.contact_email || '—'}</td>}
+                      {v('format') && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_format_name || '—'}</td>}
+                      {v('theme') && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_theme || p.class_name || '—'}</td>}
+                      {v('kids') && <td className="px-4 py-2.5 text-right text-gray-700">{p.total_kids_attended ?? '—'}</td>}
+                      {v('total') && <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(p.total_party_cost)}</td>}
+                      {v('charged') && <td className="px-4 py-2.5 text-center">
                         {p.charge_confirmed ? <span className="text-green-600 font-medium">✓</span> : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5"><Badge status={p.class_status_name} /></td>
+                      </td>}
+                      {v('status') && <td className="px-4 py-2.5"><Badge status={p.class_status_name} /></td>}
                     </tr>
                   ))}
                 </tbody>

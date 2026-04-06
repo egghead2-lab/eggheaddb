@@ -14,6 +14,20 @@ import { formatCurrency } from '../lib/utils';
 import { TRAINING_FIELDS } from '../lib/constants';
 import { exportToCsv } from '../lib/exportCsv';
 import { SortTh } from '../components/ui/SortTh';
+import { useColumnPrefs } from '../hooks/useColumnPrefs';
+import { ColumnPicker } from '../components/ui/ColumnPicker';
+
+const COLUMNS = [
+  { key: 'nickname', label: 'Preferred Name' },
+  { key: 'status', label: 'Status' },
+  { key: 'area', label: 'Area' },
+  { key: 'sc_owner', label: 'SC Owner' },
+  { key: 'trained', label: 'Trained In' },
+  { key: 'base_pay', label: 'Base Pay' },
+  { key: 'programs', label: 'Programs' },
+  { key: 'compliance', label: 'Compliance' },
+  { key: 'actions', label: 'Actions' },
+];
 
 export default function ProfessorsPage() {
   const [search, setSearch] = useState('');
@@ -43,6 +57,9 @@ export default function ProfessorsPage() {
     page,
   };
 
+  const colPrefs = useColumnPrefs('professors', COLUMNS);
+  const v = (key) => colPrefs.isColumnVisible(key);
+
   const { data, isLoading } = useQuery({
     queryKey: ['professors', filters],
     queryFn: () => getProfessors(filters),
@@ -66,6 +83,7 @@ export default function ProfessorsPage() {
             { label: 'Programs', key: 'active_program_count' },
           ])} className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">Export CSV</button>
           <Link to="/professors/new"><Button>+ New Professor</Button></Link>
+          <ColumnPicker {...colPrefs} />
         </div>
       }>
         <Input
@@ -106,47 +124,47 @@ export default function ProfessorsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
-                    <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Preferred Name</SortTh>
-                    <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>
-                    <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-700">SC Owner</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-700">Trained In</th>
-                    <SortTh col="base_pay" sort={sort} dir={dir} onSort={handleSort} align="right">Base Pay</SortTh>
-                    <SortTh col="programs" sort={sort} dir={dir} onSort={handleSort} align="center">Programs</SortTh>
-                    <th className="text-center px-4 py-3 font-semibold text-gray-700">Compliance</th>
-                    <th className="w-16"></th>
+                    {v('nickname') && <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Preferred Name</SortTh>}
+                    {v('status') && <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>}
+                    {v('area') && <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>}
+                    {v('sc_owner') && <th className="text-left px-4 py-3 font-semibold text-gray-700">SC Owner</th>}
+                    {v('trained') && <th className="text-left px-4 py-3 font-semibold text-gray-700">Trained In</th>}
+                    {v('base_pay') && <SortTh col="base_pay" sort={sort} dir={dir} onSort={handleSort} align="right">Base Pay</SortTh>}
+                    {v('programs') && <SortTh col="programs" sort={sort} dir={dir} onSort={handleSort} align="center">Programs</SortTh>}
+                    {v('compliance') && <th className="text-center px-4 py-3 font-semibold text-gray-700">Compliance</th>}
+                    {v('actions') && <th className="w-16"></th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {professors.length === 0 ? (
-                    <tr><td colSpan={9} className="text-center py-12 text-gray-400">No professors found</td></tr>
+                    <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No professors found</td></tr>
                   ) : professors.map((p, i) => (
                     <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className="px-4 py-2.5">
+                      {v('nickname') && <td className="px-4 py-2.5">
                         <Link to={`/professors/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">
                           {p.professor_nickname}
                         </Link>
-                      </td>
-                      <td className="px-4 py-2.5"><Badge status={p.professor_status_name} /></td>
-                      <td className="px-4 py-2.5 text-gray-600">{p.geographic_area_name || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{p.scheduling_coordinator || '—'}</td>
-                      <td className="px-4 py-2.5">
+                      </td>}
+                      {v('status') && <td className="px-4 py-2.5"><Badge status={p.professor_status_name} /></td>}
+                      {v('area') && <td className="px-4 py-2.5 text-gray-600">{p.geographic_area_name || '—'}</td>}
+                      {v('sc_owner') && <td className="px-4 py-2.5 text-gray-600">{p.scheduling_coordinator || '—'}</td>}
+                      {v('trained') && <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {TRAINING_FIELDS.filter(t => p[t.key]).map(t => (
                             <span key={t.key} title={t.label} className="inline-block px-1.5 py-0.5 text-xs bg-[#1e3a5f]/10 text-[#1e3a5f] rounded font-medium cursor-help">{t.short}</span>
                           ))}
                         </div>
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(p.base_pay)}</td>
-                      <td className="px-3 py-2.5 text-center text-gray-600">{p.active_program_count || 0}</td>
-                      <td className="px-4 py-2.5 text-center text-xs font-medium">
+                      </td>}
+                      {v('base_pay') && <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(p.base_pay)}</td>}
+                      {v('programs') && <td className="px-3 py-2.5 text-center text-gray-600">{p.active_program_count || 0}</td>}
+                      {v('compliance') && <td className="px-4 py-2.5 text-center text-xs font-medium">
                         <span className={`mr-1.5 ${p.tb_test ? 'text-green-600' : 'text-gray-300'}`}>TB</span>
                         <span className={`mr-1.5 ${p.livescan_count > 0 ? 'text-green-600' : 'text-gray-300'}`}>LS</span>
                         <span className={p.virtus ? 'text-green-600' : 'text-gray-300'}>V</span>
-                      </td>
-                      <td className="px-2 py-2.5 text-center">
+                      </td>}
+                      {v('actions') && <td className="px-2 py-2.5 text-center">
                         <Link to={`/schedule/${p.id}`} className="text-xs text-[#1e3a5f] hover:underline" title="View schedule">Schedule</Link>
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>

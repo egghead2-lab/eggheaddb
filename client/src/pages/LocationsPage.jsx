@@ -12,6 +12,18 @@ import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { SortTh } from '../components/ui/SortTh';
 import { exportToCsv } from '../lib/exportCsv';
+import { useColumnPrefs } from '../hooks/useColumnPrefs';
+import { ColumnPicker } from '../components/ui/ColumnPicker';
+
+const COLUMNS = [
+  { key: 'nickname', label: 'Nickname' },
+  { key: 'area', label: 'Area' },
+  { key: 'client_manager', label: 'Client Manager' },
+  { key: 'contractor', label: 'Contractor' },
+  { key: 'retained', label: 'Retained' },
+  { key: 'classes', label: 'Classes' },
+  { key: 'compliance', label: 'Compliance' },
+];
 
 export default function LocationsPage() {
   const [search, setSearch] = useState('');
@@ -68,6 +80,9 @@ export default function LocationsPage() {
     updateMutation.mutate({ id: locId, data: { [field]: value } });
   };
 
+  const colPrefs = useColumnPrefs('locations', COLUMNS);
+  const v = (key) => colPrefs.isColumnVisible(key);
+
   const reset = () => { setSearch(''); setActive(''); setArea(''); setContractor(''); setPage(1); };
   const hasFilters = search || active || area || contractor;
 
@@ -82,6 +97,7 @@ export default function LocationsPage() {
             { label: 'Classes', key: 'class_count' },
           ])} className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">Export CSV</button>
           <Link to="/locations/new"><Button>+ New Location</Button></Link>
+          <ColumnPicker {...colPrefs} />
         </div>
       }>
         <Input placeholder="Search by name…" value={search}
@@ -117,28 +133,28 @@ export default function LocationsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
-                    <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Nickname</SortTh>
-                    <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>
-                    <th className="text-left px-3 py-3 font-semibold text-gray-700">Client Manager</th>
-                    <SortTh col="contractor" sort={sort} dir={dir} onSort={handleSort}>Contractor</SortTh>
-                    <th className="text-center px-2 py-3 font-semibold text-gray-700 w-20">Retained</th>
-                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Classes</th>
-                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-24">Compliance</th>
+                    {v('nickname') && <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Nickname</SortTh>}
+                    {v('area') && <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>}
+                    {v('client_manager') && <th className="text-left px-3 py-3 font-semibold text-gray-700">Client Manager</th>}
+                    {v('contractor') && <SortTh col="contractor" sort={sort} dir={dir} onSort={handleSort}>Contractor</SortTh>}
+                    {v('retained') && <th className="text-center px-2 py-3 font-semibold text-gray-700 w-20">Retained</th>}
+                    {v('classes') && <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Classes</th>}
+                    {v('compliance') && <th className="text-center px-3 py-3 font-semibold text-gray-700 w-24">Compliance</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {locations.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">No locations found</td></tr>
+                    <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No locations found</td></tr>
                   ) : locations.map((l) => (
                     <tr key={l.id} className={l.retained ? 'bg-blue-50/30' : ''}>
-                      <td className="px-4 py-2">
+                      {v('nickname') && <td className="px-4 py-2">
                         <Link to={`/locations/${l.id}`} className="font-medium text-[#1e3a5f] hover:underline">{l.nickname}</Link>
                         {l.school_name && l.school_name !== l.nickname && (
                           <div className="text-xs text-gray-400 truncate max-w-[250px]">{l.school_name}</div>
                         )}
-                      </td>
-                      <td className="px-3 py-2 text-gray-600 text-xs">{l.geographic_area_name || '—'}</td>
-                      <td className="px-3 py-1">
+                      </td>}
+                      {v('area') && <td className="px-3 py-2 text-gray-600 text-xs">{l.geographic_area_name || '—'}</td>}
+                      {v('client_manager') && <td className="px-3 py-1">
                         <select
                           defaultValue={l.client_manager_user_id || ''}
                           onChange={e => inlineUpdate(l.id, 'client_manager_user_id', e.target.value || null)}
@@ -147,9 +163,9 @@ export default function LocationsPage() {
                           <option value="">{l.client_manager || '—'}</option>
                           {cmUsers.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
                         </select>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600 text-xs">{l.contractor_id ? <Link to={`/contractors/${l.contractor_id}`} className="text-[#1e3a5f] hover:underline">{l.contractor_name}</Link> : '—'}</td>
-                      <td className="px-2 py-2 text-center">
+                      </td>}
+                      {v('contractor') && <td className="px-3 py-2 text-gray-600 text-xs">{l.contractor_id ? <Link to={`/contractors/${l.contractor_id}`} className="text-[#1e3a5f] hover:underline">{l.contractor_name}</Link> : '—'}</td>}
+                      {v('retained') && <td className="px-2 py-2 text-center">
                         <input
                           type="checkbox"
                           checked={!!l.retained}
@@ -157,13 +173,13 @@ export default function LocationsPage() {
                           className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                           title={l.retained ? 'Retained client' : 'Not retained'}
                         />
-                      </td>
-                      <td className="px-3 py-2 text-center text-gray-700">{l.class_count || 0}</td>
-                      <td className="px-3 py-2 text-center text-xs font-medium">
+                      </td>}
+                      {v('classes') && <td className="px-3 py-2 text-center text-gray-700">{l.class_count || 0}</td>}
+                      {v('compliance') && <td className="px-3 py-2 text-center text-xs font-medium">
                         <span className={`mr-1.5 ${l.tb_required ? 'text-amber-600' : 'text-gray-300'}`}>TB</span>
                         <span className={`mr-1.5 ${l.livescan_required ? 'text-amber-600' : 'text-gray-300'}`}>LS</span>
                         <span className={l.virtus_required ? 'text-amber-600' : 'text-gray-300'}>V</span>
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>

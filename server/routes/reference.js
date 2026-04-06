@@ -3,6 +3,31 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/column-prefs/:pageKey
+router.get('/column-prefs/:pageKey', authenticate, async (req, res, next) => {
+  try {
+    const [[row]] = await pool.query(
+      'SELECT visible_columns FROM user_column_preference WHERE user_id = ? AND page_key = ?',
+      [req.user.id, req.params.pageKey]
+    );
+    res.json({ success: true, data: row ? JSON.parse(row.visible_columns) : null });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/column-prefs/:pageKey
+router.put('/column-prefs/:pageKey', authenticate, async (req, res, next) => {
+  try {
+    const { columns } = req.body;
+    if (!Array.isArray(columns)) return res.status(400).json({ success: false, error: 'columns must be an array' });
+    await pool.query(
+      `INSERT INTO user_column_preference (user_id, page_key, visible_columns)
+       VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE visible_columns = VALUES(visible_columns)`,
+      [req.user.id, req.params.pageKey, JSON.stringify(columns)]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/search?q=
 router.get('/search', authenticate, async (req, res, next) => {
   try {

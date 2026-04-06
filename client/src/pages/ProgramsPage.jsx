@@ -13,6 +13,21 @@ import { Spinner } from '../components/ui/Spinner';
 import { formatDate, formatTime, getProgramDay } from '../lib/utils';
 import { exportToCsv } from '../lib/exportCsv';
 import { SortTh } from '../components/ui/SortTh';
+import { useColumnPrefs } from '../hooks/useColumnPrefs';
+import { ColumnPicker } from '../components/ui/ColumnPicker';
+
+const COLUMNS = [
+  { key: 'nickname', label: 'Program' },
+  { key: 'status', label: 'Status' },
+  { key: 'location', label: 'Location' },
+  { key: 'type', label: 'Type' },
+  { key: 'day_time', label: 'Day / Time' },
+  { key: 'start_date', label: 'Start' },
+  { key: 'end_date', label: 'End' },
+  { key: 'professor', label: 'Lead Prof' },
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'enrolled', label: 'Enrolled' },
+];
 
 export default function ProgramsPage() {
   const [search, setSearch] = useState('');
@@ -48,6 +63,9 @@ export default function ProgramsPage() {
     page,
   };
 
+  const colPrefs = useColumnPrefs('programs', COLUMNS);
+  const v = (key) => colPrefs.isColumnVisible(key);
+
   const { data, isLoading } = useQuery({
     queryKey: ['programs', filters],
     queryFn: () => getPrograms(filters),
@@ -80,6 +98,7 @@ export default function ProgramsPage() {
             { label: 'Enrolled', key: 'number_enrolled' }, { label: 'Start', key: 'first_session_date' }, { label: 'End', key: 'last_session_date' },
           ])} className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">Export CSV</button>
           <Link to="/programs/new"><Button>+ New Program</Button></Link>
+          <ColumnPicker {...colPrefs} />
         </div>
       }>
         <Select value={timeframe} onChange={e => { setTimeframe(e.target.value); setPage(1); }} className="w-44">
@@ -145,31 +164,31 @@ export default function ProgramsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
-                    <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Program</SortTh>
-                    <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>
-                    <SortTh col="location" sort={sort} dir={dir} onSort={handleSort}>Location</SortTh>
-                    <SortTh col="type" sort={sort} dir={dir} onSort={handleSort}>Type</SortTh>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-700">Day / Time</th>
-                    <SortTh col="start_date" sort={sort} dir={dir} onSort={handleSort}>Start</SortTh>
-                    <SortTh col="end_date" sort={sort} dir={dir} onSort={handleSort}>End</SortTh>
-                    <SortTh col="professor" sort={sort} dir={dir} onSort={handleSort}>Lead Prof</SortTh>
-                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Sessions</th>
-                    <th className="text-right px-4 py-3 font-semibold text-gray-700">Enrolled</th>
+                    {v('nickname') && <SortTh col="nickname" sort={sort} dir={dir} onSort={handleSort}>Program</SortTh>}
+                    {v('status') && <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>}
+                    {v('location') && <SortTh col="location" sort={sort} dir={dir} onSort={handleSort}>Location</SortTh>}
+                    {v('type') && <SortTh col="type" sort={sort} dir={dir} onSort={handleSort}>Type</SortTh>}
+                    {v('day_time') && <th className="text-left px-4 py-3 font-semibold text-gray-700">Day / Time</th>}
+                    {v('start_date') && <SortTh col="start_date" sort={sort} dir={dir} onSort={handleSort}>Start</SortTh>}
+                    {v('end_date') && <SortTh col="end_date" sort={sort} dir={dir} onSort={handleSort}>End</SortTh>}
+                    {v('professor') && <SortTh col="professor" sort={sort} dir={dir} onSort={handleSort}>Lead Prof</SortTh>}
+                    {v('sessions') && <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Sessions</th>}
+                    {v('enrolled') && <th className="text-right px-4 py-3 font-semibold text-gray-700">Enrolled</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {programs.length === 0 ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-gray-400">No programs found</td></tr>
+                    <tr><td colSpan={colPrefs.visibleKeys.length} className="text-center py-12 text-gray-400">No programs found</td></tr>
                   ) : programs.map((p, i) => (
                     <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className="px-4 py-2.5">
+                      {v('nickname') && <td className="px-4 py-2.5">
                         <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>
-                      </td>
-                      <td className="px-4 py-2.5"><Badge status={p.class_status_name} /></td>
-                      <td className="px-4 py-2.5 text-gray-600">
+                      </td>}
+                      {v('status') && <td className="px-4 py-2.5"><Badge status={p.class_status_name} /></td>}
+                      {v('location') && <td className="px-4 py-2.5 text-gray-600">
                         {p.location_id ? <Link to={`/locations/${p.location_id}`} className="text-[#1e3a5f] hover:underline">{p.location_nickname}</Link> : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600">
+                      </td>}
+                      {v('type') && <td className="px-4 py-2.5 text-gray-600">
                         {p.class_name || p.program_type_name || '—'}
                         {p.class_type_name && (
                           <span className={`ml-1 inline-block px-1 py-0.5 text-[10px] font-medium rounded ${
@@ -180,15 +199,15 @@ export default function ProgramsPage() {
                             'bg-gray-100 text-gray-600'
                           }`}>{p.class_type_name}</span>
                         )}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600">{getProgramDay(p)} {formatTime(p.start_time)}</td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs">{p.first_session_date ? formatDate(p.first_session_date) : '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs">{p.last_session_date ? formatDate(p.last_session_date) : '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{p.lead_professor_id ? <Link to={`/professors/${p.lead_professor_id}`} className="text-[#1e3a5f] hover:underline">{p.lead_professor_nickname}</Link> : '—'}</td>
-                      <td className="px-3 py-2.5 text-center text-gray-600">{p.session_count || 0}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-700">
+                      </td>}
+                      {v('day_time') && <td className="px-4 py-2.5 text-gray-600">{getProgramDay(p)} {formatTime(p.start_time)}</td>}
+                      {v('start_date') && <td className="px-4 py-2.5 text-gray-600 text-xs">{p.first_session_date ? formatDate(p.first_session_date) : '—'}</td>}
+                      {v('end_date') && <td className="px-4 py-2.5 text-gray-600 text-xs">{p.last_session_date ? formatDate(p.last_session_date) : '—'}</td>}
+                      {v('professor') && <td className="px-4 py-2.5 text-gray-600">{p.lead_professor_id ? <Link to={`/professors/${p.lead_professor_id}`} className="text-[#1e3a5f] hover:underline">{p.lead_professor_nickname}</Link> : '—'}</td>}
+                      {v('sessions') && <td className="px-3 py-2.5 text-center text-gray-600">{p.session_count || 0}</td>}
+                      {v('enrolled') && <td className="px-4 py-2.5 text-right text-gray-700">
                         {p.number_enrolled != null ? `${p.number_enrolled} / ${p.maximum_students || '—'}` : '—'}
-                      </td>
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
