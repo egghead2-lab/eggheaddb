@@ -138,6 +138,36 @@ export default function ReportBuilderPage() {
             </div>
             <Input label="Description" value={form.description} onChange={e => set('description', e.target.value)} />
 
+            {/* Assignment — prominent */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Who Sees This Report?</h4>
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">By Role (everyone with this role)</label>
+                <div className="flex flex-wrap gap-2">
+                  {roles.map(r => (
+                    <label key={r.id} className="flex items-center gap-1.5 text-sm cursor-pointer bg-white px-2 py-1 rounded border border-gray-200">
+                      <input type="checkbox" checked={form.role_ids.includes(r.id)} onChange={() => toggleRole(r.id)} className="accent-[#1e3a5f]" />
+                      {r.role_name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">By Person (specific individuals)</label>
+                <div className="flex flex-wrap gap-2">
+                  {allUsers.map(u => (
+                    <label key={u.id} className="flex items-center gap-1.5 text-sm cursor-pointer bg-white px-2 py-1 rounded border border-gray-200">
+                      <input type="checkbox" checked={form.user_ids.includes(u.id)} onChange={() => toggleUser(u.id)} className="accent-[#1e3a5f]" />
+                      {u.first_name} {u.last_name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {!form.role_ids.length && !form.user_ids.length && (
+                <p className="text-xs text-amber-600">No one assigned — only Admin/CEO will see this report</p>
+              )}
+            </div>
+
             {/* Filters */}
             {form.entity && (
               <div>
@@ -195,35 +225,14 @@ export default function ReportBuilderPage() {
               </div>
             )}
 
-            {/* Role assignment */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-2">Assign to Roles</label>
-              <div className="flex flex-wrap gap-2">
-                {roles.map(r => (
-                  <label key={r.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="checkbox" checked={form.role_ids.includes(r.id)} onChange={() => toggleRole(r.id)} className="accent-[#1e3a5f]" />
-                    {r.role_name}
-                  </label>
-                ))}
-              </div>
+            <div className="flex items-center gap-3">
+              <Button onClick={handleSave} disabled={!form.name || !form.entity || createMutation.isPending || updateMutation.isPending}>
+                {(createMutation.isPending || updateMutation.isPending) ? 'Saving…' : editingId ? 'Save Changes' : 'Create Report'}
+              </Button>
+              {createMutation.isSuccess && <span className="text-sm text-green-600 font-medium">Report created!</span>}
+              {updateMutation.isSuccess && <span className="text-sm text-green-600 font-medium">Changes saved!</span>}
+              {(createMutation.isError || updateMutation.isError) && <span className="text-sm text-red-600">Save failed</span>}
             </div>
-
-            {/* User assignment */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-2">Assign to Specific People</label>
-              <div className="flex flex-wrap gap-2">
-                {allUsers.map(u => (
-                  <label key={u.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="checkbox" checked={form.user_ids.includes(u.id)} onChange={() => toggleUser(u.id)} className="accent-[#1e3a5f]" />
-                    {u.first_name} {u.last_name}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <Button onClick={handleSave} disabled={!form.name || !form.entity || createMutation.isPending || updateMutation.isPending}>
-              {(createMutation.isPending || updateMutation.isPending) ? 'Saving…' : editingId ? 'Save Changes' : 'Create Report'}
-            </Button>
           </div>
         )}
 

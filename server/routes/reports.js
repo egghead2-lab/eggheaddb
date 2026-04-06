@@ -373,7 +373,7 @@ router.post('/', authenticate, async (req, res, next) => {
 // PUT /api/reports/:id
 router.put('/:id', authenticate, async (req, res, next) => {
   try {
-    const { name, description, entity, filters, display_mode, kpi_format, kpi_field, role_ids, active } = req.body;
+    const { name, description, entity, filters, display_mode, kpi_format, kpi_field, role_ids, user_ids, active } = req.body;
     const fields = [], values = [];
     if (name !== undefined) { fields.push('name = ?'); values.push(name); }
     if (description !== undefined) { fields.push('description = ?'); values.push(description); }
