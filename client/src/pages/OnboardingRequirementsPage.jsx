@@ -7,6 +7,9 @@ import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 
 const TYPES = ['task', 'document', 'training', 'compliance'];
+const ROLES = ['scheduler', 'field_manager', 'recruiter', 'onboarder', 'trainer'];
+const ROLE_LABELS = { scheduler: 'Scheduler', field_manager: 'Field Manager', recruiter: 'Recruiter', onboarder: 'Onboarder', trainer: 'Trainer' };
+const ROLE_COLORS = { scheduler: 'bg-blue-100 text-blue-700', field_manager: 'bg-emerald-100 text-emerald-700', recruiter: 'bg-teal-100 text-teal-700', onboarder: 'bg-pink-100 text-pink-700', trainer: 'bg-orange-100 text-orange-700' };
 const TYPE_COLORS = {
   task: 'bg-gray-100 text-gray-700', document: 'bg-blue-100 text-blue-700',
   training: 'bg-purple-100 text-purple-700', compliance: 'bg-amber-100 text-amber-700',
@@ -15,7 +18,7 @@ const TYPE_COLORS = {
 export default function OnboardingRequirementsPage() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [newReq, setNewReq] = useState({ title: '', description: '', category: '', type: 'task', requires_document: false });
+  const [newReq, setNewReq] = useState({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '' });
 
   const { data, isLoading } = useQuery({
     queryKey: ['onboarding-requirements'],
@@ -24,7 +27,7 @@ export default function OnboardingRequirementsPage() {
 
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/onboarding/requirements', data),
-    onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setNewReq({ title: '', description: '', category: '', type: 'task', requires_document: false }); setShowAdd(false); },
+    onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setNewReq({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '' }); setShowAdd(false); },
   });
 
   const deleteMutation = useMutation({
@@ -58,6 +61,11 @@ export default function OnboardingRequirementsPage() {
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm">
                 {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
+              <select value={newReq.assigned_role} onChange={e => setNewReq({ ...newReq, assigned_role: e.target.value })}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm">
+                <option value="">No role assigned</option>
+                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              </select>
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={newReq.requires_document} onChange={e => setNewReq({ ...newReq, requires_document: e.target.checked })} />
                 Requires document upload
@@ -81,13 +89,14 @@ export default function OnboardingRequirementsPage() {
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Title</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Category</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Type</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Assigned Role</th>
                   <th className="text-center px-4 py-3 font-semibold text-gray-700 w-20">Doc</th>
                   <th className="w-16"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {requirements.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-gray-400">No requirements defined</td></tr>
+                  <tr><td colSpan={6} className="text-center py-12 text-gray-400">No requirements defined</td></tr>
                 ) : requirements.map(r => (
                   <tr key={r.id}>
                     <td className="px-4 py-2.5">
@@ -97,6 +106,13 @@ export default function OnboardingRequirementsPage() {
                     <td className="px-4 py-2.5 text-gray-600 text-xs">{r.category || '—'}</td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${TYPE_COLORS[r.type]}`}>{r.type}</span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {r.assigned_role ? (
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[r.assigned_role] || 'bg-gray-100 text-gray-600'}`}>
+                          {ROLE_LABELS[r.assigned_role] || r.assigned_role}
+                        </span>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-2.5 text-center">{r.requires_document ? '📄' : '—'}</td>
                     <td className="px-4 py-2.5 text-center">

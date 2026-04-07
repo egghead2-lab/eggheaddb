@@ -43,6 +43,7 @@ import CandidateDetailPage from './pages/CandidateDetailPage';
 import OnboardingRequirementsPage from './pages/OnboardingRequirementsPage';
 import OnboardingTemplatesPage from './pages/OnboardingTemplatesPage';
 import EmailTemplatesPage from './pages/EmailTemplatesPage';
+import ReportFieldConfigPage from './pages/ReportFieldConfigPage';
 import CandidatePortalPage from './pages/CandidatePortalPage';
 import SubManagementPage from './pages/SubManagementPage';
 
@@ -102,6 +103,7 @@ export default function App() {
       <Route path="/payroll/mileage" element={<ProtectedRoute><MileagePage /></ProtectedRoute>} />
       <Route path="/report-builder" element={<ProtectedRoute><ReportBuilderPage /></ProtectedRoute>} />
       <Route path="/team-dashboard" element={<ProtectedRoute><TeamDashboardPage /></ProtectedRoute>} />
+      <Route path="/report-fields" element={<ProtectedRoute><ReportFieldConfigPage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
       <Route path="/sub-management" element={<ProtectedRoute><SubManagementPage /></ProtectedRoute>} />
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />

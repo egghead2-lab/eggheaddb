@@ -14,9 +14,27 @@ import { Spinner } from '../components/ui/Spinner';
 import { formatDate, formatCurrency } from '../lib/utils';
 
 const OPERATORS = {
-  text: [{ value: '=', label: 'equals' }, { value: 'contains', label: 'contains' }, { value: 'starts_with', label: 'starts with' }, { value: 'not', label: 'not equal' }],
-  number: [{ value: '=', label: '=' }, { value: '>', label: '>' }, { value: '<', label: '<' }, { value: '>=', label: '>=' }, { value: '<=', label: '<=' }],
-  select: [{ value: '=', label: 'is' }],
+  text: [
+    { value: '=', label: 'is' }, { value: 'not', label: 'is not' },
+    { value: 'contains', label: 'contains' }, { value: 'starts_with', label: 'starts with' },
+    { value: 'is_empty', label: 'is empty' }, { value: 'is_not_empty', label: 'is not empty' },
+  ],
+  number: [
+    { value: '=', label: '=' }, { value: '!=', label: '!=' },
+    { value: '>', label: '>' }, { value: '<', label: '<' },
+    { value: '>=', label: '>=' }, { value: '<=', label: '<=' },
+    { value: 'is_empty', label: 'is empty' }, { value: 'is_not_empty', label: 'is not empty' },
+  ],
+  select: [
+    { value: '=', label: 'is' }, { value: 'not', label: 'is not' },
+    { value: 'is_empty', label: 'is empty' }, { value: 'is_not_empty', label: 'is not empty' },
+  ],
+  date: [
+    { value: '=', label: 'is' }, { value: '!=', label: 'is not' },
+    { value: '>', label: 'after' }, { value: '<', label: 'before' },
+    { value: '>=', label: 'on or after' }, { value: '<=', label: 'on or before' },
+    { value: 'is_empty', label: 'is empty' }, { value: 'is_not_empty', label: 'is not empty' },
+  ],
   boolean: [{ value: '=', label: 'is' }],
   timeframe: [{ value: '=', label: 'is' }],
   invoice: [{ value: '=', label: 'is' }],
@@ -188,7 +206,9 @@ export default function ReportBuilderPage() {
                         className="rounded border border-gray-300 px-2 py-1 text-sm w-28">
                         {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
-                      {fieldDef?.type === 'boolean' ? (
+                      {f.operator === 'is_empty' || f.operator === 'is_not_empty' ? (
+                        <span className="text-xs text-gray-400 flex-1 py-1">(no value needed)</span>
+                      ) : fieldDef?.type === 'boolean' ? (
                         <select value={f.value} onChange={e => updateFilter(i, 'value', e.target.value)}
                           className="rounded border border-gray-300 px-2 py-1 text-sm flex-1">
                           <option value="1">Yes</option>
@@ -214,6 +234,9 @@ export default function ReportBuilderPage() {
                           <option value="sent">Sent</option>
                           <option value="not_sent">Not Sent</option>
                         </select>
+                      ) : fieldDef?.type === 'date' ? (
+                        <input type="date" value={f.value || ''} onChange={e => updateFilter(i, 'value', e.target.value)}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" />
                       ) : (
                         <DynamicValueInput entity={form.entity} field={f.field} value={f.value}
                           onChange={val => updateFilter(i, 'value', val)} />

@@ -18,6 +18,7 @@ export default function CandidatesPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [area, setArea] = useState('');
+  const [viewMode, setViewMode] = useState('mine'); // 'mine' or 'all'
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('created');
   const [dir, setDir] = useState('desc');
@@ -33,7 +34,8 @@ export default function CandidatesPage() {
 
   const filters = {
     search: search || undefined, status: status || undefined,
-    area: area || undefined, sort, dir, page,
+    area: area || undefined, assignee: viewMode === 'mine' ? 'me' : undefined,
+    sort, dir, page,
   };
 
   const { data, isLoading } = useQuery({
@@ -47,10 +49,21 @@ export default function CandidatesPage() {
     staleTime: 30 * 1000,
   });
 
+  const { data: myTasksData } = useQuery({
+    queryKey: ['my-onboarding-tasks', viewMode],
+    queryFn: () => api.get(`/onboarding/my-tasks?all=${viewMode === 'all'}`).then(r => r.data),
+    staleTime: 30 * 1000,
+  });
+
   const candidates = data?.data || [];
   const total = data?.total || 0;
   const limit = data?.limit || 50;
   const dash = dashData?.data || {};
+  const myTasks = myTasksData?.data || {};
+  const myOpenReqs = (myTasks.requirements || []).length;
+  const myOpenTasks = (myTasks.tasks || []).length;
+  const today = new Date().toISOString().split('T')[0];
+  const myOverdueReqs = (myTasks.requirements || []).filter(r => r.due_date && r.due_date < today).length;
 
   const reset = () => { setSearch(''); setStatus(''); setArea(''); setPage(1); };
   const hasFilters = search || status || area;
@@ -58,7 +71,19 @@ export default function CandidatesPage() {
   return (
     <AppShell>
       <PageHeader title="Onboarding" action={
-        <Link to="/candidates/new"><Button>+ New Candidate</Button></Link>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => { setViewMode('mine'); setPage(1); }}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewMode === 'mine' ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              My Candidates
+            </button>
+            <button onClick={() => { setViewMode('all'); setPage(1); }}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewMode === 'all' ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              All
+            </button>
+          </div>
+          <Link to="/candidates/new"><Button>+ New Candidate</Button></Link>
+        </div>
       }>
         <Input placeholder="Search by name or email…" value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }} className="w-60" />
@@ -79,8 +104,8 @@ export default function CandidatesPage() {
           {[
             { label: 'Pending', value: dash.pending, color: 'text-amber-600', bg: 'bg-amber-50' },
             { label: 'In Progress', value: dash.inProgress, color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: 'Overdue Reqs', value: dash.overdueReqs, color: 'text-red-600', bg: 'bg-red-50' },
-            { label: 'Open Tasks', value: dash.openTasks, color: 'text-violet-600', bg: 'bg-violet-50' },
+            { label: viewMode === 'mine' ? 'My Overdue Reqs' : 'Overdue Reqs', value: viewMode === 'mine' ? myOverdueReqs : dash.overdueReqs, color: 'text-red-600', bg: 'bg-red-50' },
+            { label: viewMode === 'mine' ? 'My Open Tasks' : 'Open Tasks', value: viewMode === 'mine' ? myOpenReqs + myOpenTasks : dash.openTasks, color: 'text-violet-600', bg: 'bg-violet-50' },
           ].map(kpi => (
             <div key={kpi.label} className={`${kpi.bg} rounded-lg p-4 border border-gray-100`}>
               <div className={`text-2xl font-bold ${kpi.color}`}>{kpi.value ?? '—'}</div>

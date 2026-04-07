@@ -371,6 +371,11 @@ export default function CandidateDetailPage() {
                           {formatDate(r.due_date)}
                         </span>
                       )}
+                      {r.assigned_role && (
+                        <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
+                          { scheduler: 'bg-blue-50 text-blue-600', field_manager: 'bg-emerald-50 text-emerald-600', recruiter: 'bg-teal-50 text-teal-600', onboarder: 'bg-pink-50 text-pink-600', trainer: 'bg-orange-50 text-orange-600' }[r.assigned_role] || 'bg-gray-100 text-gray-500'
+                        }`}>{r.assigned_role.replace('_', ' ')}</span>
+                      )}
                       {r.assigned_to_name && <span className="text-[10px] text-gray-400">{r.assigned_to_name}</span>}
                     </div>
                   ))}

@@ -24,7 +24,11 @@ router.get('/candidates', async (req, res, next) => {
     if (search) { clauses.push('(c.full_name LIKE ? OR c.email LIKE ?)'); const s = `%${search}%`; params.push(s, s); }
     if (status) { clauses.push('c.status = ?'); params.push(status); }
     if (area) { clauses.push('c.geographic_area_id = ?'); params.push(area); }
-    if (assignee) { clauses.push('(c.onboarder_user_id = ? OR c.trainer_user_id = ? OR c.recruiter_user_id = ?)'); params.push(assignee, assignee, assignee); }
+    if (assignee) {
+      const uid = assignee === 'me' ? req.user.userId : assignee;
+      clauses.push('(c.onboarder_user_id = ? OR c.trainer_user_id = ? OR c.recruiter_user_id = ? OR c.scheduling_coordinator_user_id = ? OR c.field_manager_user_id = ?)');
+      params.push(uid, uid, uid, uid, uid);
+    }
 
     const where = `WHERE ${clauses.join(' AND ')}`;
     const sortMap = { name: 'c.full_name', status: 'c.status', area: 'ga.geographic_area_name', first_class: 'c.first_class_date', created: 'c.ts_inserted' };
@@ -294,7 +298,7 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
 router.put('/candidate-requirements/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const fields = ['completed', 'status', 'due_date', 'assigned_to_user_id', 'notes'];
+    const fields = ['completed', 'status', 'due_date', 'assigned_to_user_id', 'assigned_role', 'notes'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
 
@@ -374,11 +378,11 @@ router.get('/requirements', async (req, res, next) => {
 // POST /api/onboarding/requirements
 router.post('/requirements', async (req, res, next) => {
   try {
-    const { title, description, category, type, requires_document, sort_order } = req.body;
+    const { title, description, category, type, requires_document, sort_order, assigned_role, email_template_id } = req.body;
     if (!title) return res.status(400).json({ success: false, error: 'Title required' });
     const [result] = await pool.query(
-      'INSERT INTO onboarding_requirement (title, description, category, type, requires_document, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
-      [title, description || null, category || null, type || 'task', requires_document ? 1 : 0, sort_order || 0]
+      'INSERT INTO onboarding_requirement (title, description, category, type, requires_document, sort_order, assigned_role, email_template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, description || null, category || null, type || 'task', requires_document ? 1 : 0, sort_order || 0, assigned_role || null, email_template_id || null]
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
@@ -388,7 +392,7 @@ router.post('/requirements', async (req, res, next) => {
 router.put('/requirements/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const fields = ['title', 'description', 'category', 'type', 'requires_document', 'sort_order', 'active'];
+    const fields = ['title', 'description', 'category', 'type', 'requires_document', 'sort_order', 'active', 'assigned_role', 'email_template_id'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
@@ -502,9 +506,28 @@ router.post('/candidates/:id/apply-template', async (req, res, next) => {
     );
     const existingSet = new Set(existingReqs.map(r => r.requirement_id));
 
-    // Get candidate's accepted date for due_date calculation
-    const [[candidate]] = await pool.query('SELECT accepted_at FROM candidate WHERE id = ?', [id]);
+    // Get candidate info for due_date calculation and role-based assignment
+    const [[candidate]] = await pool.query(
+      'SELECT accepted_at, onboarder_user_id, trainer_user_id, recruiter_user_id, scheduling_coordinator_user_id, field_manager_user_id FROM candidate WHERE id = ?', [id]
+    );
     const baseDate = candidate?.accepted_at ? new Date(candidate.accepted_at) : new Date();
+
+    // Map roles to candidate's assigned users
+    const roleToUser = {
+      onboarder: candidate?.onboarder_user_id,
+      trainer: candidate?.trainer_user_id,
+      recruiter: candidate?.recruiter_user_id,
+      scheduler: candidate?.scheduling_coordinator_user_id,
+      field_manager: candidate?.field_manager_user_id,
+    };
+
+    // Get requirement details for role assignment
+    const reqIds = items.map(i => i.requirement_id);
+    const [reqDetails] = reqIds.length > 0
+      ? await pool.query('SELECT id, assigned_role FROM onboarding_requirement WHERE id IN (?)', [reqIds])
+      : [[]];
+    const reqRoleMap = {};
+    reqDetails.forEach(r => { reqRoleMap[r.id] = r.assigned_role; });
 
     let added = 0;
     for (const item of items) {
@@ -515,9 +538,11 @@ router.post('/candidates/:id/apply-template', async (req, res, next) => {
         d.setDate(d.getDate() + item.due_offset_days);
         dueDate = d.toISOString().split('T')[0];
       }
+      const role = reqRoleMap[item.requirement_id] || null;
+      const assignedUserId = role ? roleToUser[role] || null : null;
       await pool.query(
-        'INSERT INTO candidate_requirement (candidate_id, requirement_id, due_date) VALUES (?, ?, ?)',
-        [id, item.requirement_id, dueDate]
+        'INSERT INTO candidate_requirement (candidate_id, requirement_id, due_date, assigned_role, assigned_to_user_id) VALUES (?, ?, ?, ?, ?)',
+        [id, item.requirement_id, dueDate, role, assignedUserId]
       );
       added++;
     }
@@ -529,6 +554,45 @@ router.post('/candidates/:id/apply-template', async (req, res, next) => {
     );
 
     res.json({ success: true, added });
+  } catch (err) { next(err); }
+});
+
+// GET /api/onboarding/my-tasks — all open requirements + tasks assigned to the logged-in user
+router.get('/my-tasks', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const showAll = req.query.all === 'true';
+    const userFilter = showAll ? '' : 'AND cr.assigned_to_user_id = ?';
+    const userParams = showAll ? [] : [userId];
+
+    const [reqs] = await pool.query(
+      `SELECT cr.id, cr.completed, cr.status, cr.due_date, cr.assigned_role, cr.notes,
+              r.title, r.description, r.type,
+              c.id AS candidate_id, c.full_name AS candidate_name, c.first_class_date,
+              CONCAT(u.first_name, ' ', u.last_name) AS assigned_to_name
+       FROM candidate_requirement cr
+       JOIN onboarding_requirement r ON r.id = cr.requirement_id
+       JOIN candidate c ON c.id = cr.candidate_id AND c.active = 1
+       LEFT JOIN user u ON u.id = cr.assigned_to_user_id
+       WHERE cr.completed = 0 ${userFilter}
+       ORDER BY cr.due_date IS NULL, cr.due_date, c.first_class_date`, userParams
+    );
+
+    const taskFilter = showAll ? '' : 'AND ct.assigned_to_user_id = ?';
+    const taskParams = showAll ? [] : [userId];
+
+    const [tasks] = await pool.query(
+      `SELECT ct.id, ct.title, ct.description, ct.due_date, ct.completed,
+              c.id AS candidate_id, c.full_name AS candidate_name,
+              CONCAT(u.first_name, ' ', u.last_name) AS assigned_to_name
+       FROM candidate_task ct
+       JOIN candidate c ON c.id = ct.candidate_id AND c.active = 1
+       LEFT JOIN user u ON u.id = ct.assigned_to_user_id
+       WHERE ct.completed = 0 ${taskFilter}
+       ORDER BY ct.due_date IS NULL, ct.due_date`, taskParams
+    );
+
+    res.json({ success: true, data: { requirements: reqs, tasks } });
   } catch (err) { next(err); }
 });
 

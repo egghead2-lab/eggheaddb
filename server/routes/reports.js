@@ -45,38 +45,64 @@ const ENTITIES = {
     LEFT JOIN user cmgr ON cmgr.id = ga.client_manager_user_id
     WHERE prog.active = 1`,
     fields: {
+      // Core
       status: { label: 'Program Status', type: 'select', options: 'class_status' },
       program_type: { label: 'Program Type', type: 'select', options: 'program_type' },
       class_type: { label: 'Class Type (Subject)', type: 'select', options: 'class_type' },
       area: { label: 'Geographic Area', type: 'select', options: 'area' },
       class_name: { label: 'Class/Module Name', type: 'text', col: 'cl.class_name' },
       class_code: { label: 'Class Code', type: 'text', col: 'cl.class_code' },
+      location: { label: 'Location', type: 'text', col: 'loc.nickname' },
+      contractor: { label: 'Contractor', type: 'text', col: 'con.contractor_name' },
+      live: { label: 'Live (not virtual)', type: 'boolean', col: 'prog.live' },
+      timeframe: { label: 'Timeframe', type: 'timeframe' },
+      // Dates
+      first_session_date: { label: 'First Session Date', type: 'date', col: 'prog.first_session_date' },
+      last_session_date: { label: 'Last Session Date', type: 'date', col: 'prog.last_session_date' },
+      // People
       lead_professor: { label: 'Lead Professor', type: 'text', col: "CONCAT(lp.professor_nickname, ' ', lp.last_name)" },
       assistant_professor: { label: 'Assistant Professor', type: 'text', col: "CONCAT(ap.professor_nickname, ' ', ap.last_name)" },
       has_assistant: { label: 'Has Assistant', type: 'boolean', col: 'prog.assistant_professor_id IS NOT NULL', raw: true },
       scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'text', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
       field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)" },
       client_manager: { label: 'Client Manager', type: 'text', col: "CONCAT(cmgr.first_name, ' ', cmgr.last_name)" },
-      location: { label: 'Location', type: 'text', col: 'loc.nickname' },
-      contractor: { label: 'Contractor', type: 'text', col: 'con.contractor_name' },
-      timeframe: { label: 'Timeframe', type: 'timeframe' },
-      invoice_status: { label: 'Invoice Status', type: 'invoice' },
-      session_count: { label: 'Session Count', type: 'number', col: 'prog.session_count' },
-      enrolled: { label: 'Students Enrolled', type: 'number', col: 'prog.number_enrolled' },
-      max_students: { label: 'Max Students', type: 'number', col: 'prog.maximum_students' },
+      // Financials
       parent_cost: { label: 'Parent Cost', type: 'number', col: 'prog.parent_cost' },
       our_cut: { label: 'Our Cut', type: 'number', col: 'prog.our_cut' },
+      lab_fee: { label: 'Lab Fee', type: 'number', col: 'prog.lab_fee' },
+      lead_professor_pay: { label: 'Lead Prof Pay', type: 'number', col: 'prog.lead_professor_pay' },
+      assistant_professor_pay: { label: 'Asst Prof Pay', type: 'number', col: 'prog.assistant_professor_pay' },
       payment_through_us: { label: 'Payment Through Us', type: 'boolean', col: 'prog.payment_through_us' },
+      invoice_status: { label: 'Invoice Status', type: 'invoice' },
+      invoice_needed: { label: 'Invoice Needed', type: 'boolean', col: 'prog.invoice_needed' },
+      invoice_paid: { label: 'Invoice Paid', type: 'boolean', col: 'prog.invoice_paid' },
+      // Enrollment
+      session_count: { label: 'Session Count', type: 'number', col: 'prog.session_count' },
+      class_length_minutes: { label: 'Class Length (min)', type: 'number', col: 'prog.class_length_minutes' },
+      enrolled: { label: 'Students Enrolled', type: 'number', col: 'prog.number_enrolled' },
+      min_students: { label: 'Min Students', type: 'number', col: 'prog.minimum_students' },
+      max_students: { label: 'Max Students', type: 'number', col: 'prog.maximum_students' },
+      // Roster & Prep
+      roster_received: { label: 'Roster Received', type: 'boolean', col: 'prog.roster_received' },
+      roster_confirmed: { label: 'Roster Confirmed', type: 'boolean', col: 'prog.roster_confirmed' },
       registration_opened: { label: 'Registration Opened', type: 'boolean', col: 'prog.registration_opened_online' },
       location_retained: { label: 'Retained Client', type: 'boolean', col: 'loc.retained' },
+      // Compliance
       tb_required: { label: 'TB Required', type: 'boolean', col: 'prog.tb_required' },
       livescan_required: { label: 'Livescan Required', type: 'boolean', col: 'prog.livescan_required' },
       virtus_required: { label: 'Virtus Required', type: 'boolean', col: 'prog.virtus_required' },
-      flyer_required: { label: 'Flyer Required', type: 'boolean', col: 'prog.flyer_required' },
-      demo_required: { label: 'Demo Required', type: 'boolean', col: 'prog.demo_required' },
       lead_virtus: { label: 'Lead Prof Has Virtus', type: 'boolean', col: 'lp.virtus' },
       lead_tb: { label: 'Lead Prof Has TB', type: 'boolean', col: 'lp.tb_test' },
       lead_has_livescan_at_location: { label: 'Lead Prof Livescanned at Location', type: 'number', col: '(SELECT COUNT(*) FROM livescan ls WHERE ls.professor_id = lp.id AND ls.active = 1 AND ls.location_id = loc.id)' },
+      // Marketing
+      flyer_required: { label: 'Flyer Required', type: 'boolean', col: 'prog.flyer_required' },
+      demo_required: { label: 'Demo Required', type: 'boolean', col: 'prog.demo_required' },
+      open_blast_sent: { label: 'Open Blast Sent', type: 'boolean', col: 'prog.open_blast_sent' },
+      two_week_blast_sent: { label: '2 Week Blast Sent', type: 'boolean', col: 'prog.two_week_blast_sent' },
+      one_week_blast_sent: { label: '1 Week Blast Sent', type: 'boolean', col: 'prog.one_week_blast_sent' },
+      final_blast_sent: { label: 'Final Blast Sent', type: 'boolean', col: 'prog.final_blast_sent' },
+      parent_feedback_requested: { label: 'Parent Feedback Requested', type: 'boolean', col: 'prog.parent_feedback_requested' },
+      // Days
       day_monday: { label: 'Runs Monday', type: 'boolean', col: 'prog.monday' },
       day_tuesday: { label: 'Runs Tuesday', type: 'boolean', col: 'prog.tuesday' },
       day_wednesday: { label: 'Runs Wednesday', type: 'boolean', col: 'prog.wednesday' },
@@ -113,13 +139,24 @@ const ENTITIES = {
     LEFT JOIN user sc ON sc.id = p.scheduling_coordinator_owner_id
     WHERE p.active = 1`,
     fields: {
+      // Core
       status: { label: 'Professor Status', type: 'select', options: 'professor_status' },
       area: { label: 'Geographic Area', type: 'select', options: 'area' },
+      onboard_status: { label: 'Onboard Status', type: 'text', col: 'os.onboard_status_name' },
       scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'text', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
       city: { label: 'City', type: 'text', col: 'c.city_name' },
-      program_count: { label: 'Active Program Count', type: 'number', col: 'program_count' },
+      email: { label: 'Email', type: 'text', col: 'p.email' },
+      phone: { label: 'Phone', type: 'text', col: 'p.phone_number' },
+      // Pay
       base_pay: { label: 'Base Pay', type: 'number', col: 'p.base_pay' },
+      assist_pay: { label: 'Assist Pay', type: 'number', col: 'p.assist_pay' },
+      party_pay: { label: 'Party Pay', type: 'number', col: 'p.party_pay' },
+      camp_pay: { label: 'Camp Pay', type: 'number', col: 'p.camp_pay' },
+      pickup_pay: { label: 'Pickup Pay', type: 'number', col: 'p.pickup_pay' },
       rating: { label: 'Rating', type: 'number', col: 'p.rating' },
+      // Programs
+      program_count: { label: 'Active Program Count', type: 'number', col: 'program_count' },
+      // Training
       science_trained: { label: 'Science Trained', type: 'boolean', col: 'p.science_trained_id' },
       engineering_trained: { label: 'Engineering Trained', type: 'boolean', col: 'p.engineering_trained_id' },
       party_trained: { label: 'Show Party Trained', type: 'boolean', col: 'p.show_party_trained_id' },
@@ -127,12 +164,18 @@ const ENTITIES = {
       demo_trained: { label: 'Demo Trained', type: 'boolean', col: 'p.demo_trained_id' },
       studysmart_trained: { label: 'StudySmart Trained', type: 'boolean', col: 'p.studysmart_trained_id' },
       camp_trained: { label: 'Camp Trained', type: 'boolean', col: 'p.camp_trained_id' },
+      robotics_trained: { label: 'Robotics Trained', type: 'boolean', col: 'p.robotics_trained_id' },
+      // Compliance
       virtus: { label: 'Has Virtus', type: 'boolean', col: 'p.virtus' },
       tb_test: { label: 'Has TB Test', type: 'boolean', col: 'p.tb_test' },
       livescan_count: { label: 'Livescan Count', type: 'number', col: 'livescan_count' },
       bin_count: { label: 'Bin Count', type: 'number', col: 'bin_count' },
       has_bin: { label: 'Has Any Bin', type: 'number', col: 'bin_count' },
       bin_names: { label: 'Bin Names (contains)', type: 'text', col: 'bin_names' },
+      // Dates
+      hire_date: { label: 'Hire Date', type: 'date', col: 'p.hire_date' },
+      birthday: { label: 'Birthday', type: 'date', col: 'p.birthday' },
+      number_of_subs: { label: 'Subs Claimed', type: 'number', col: 'p.number_of_subs_claimed' },
     },
     defaultSort: 'p.professor_nickname ASC',
     countField: 'p.id',
@@ -163,22 +206,40 @@ const ENTITIES = {
     LEFT JOIN user sc ON sc.id = ga.scheduling_coordinator_user_id
     WHERE loc.active = 1 AND (loc.location_type_id IS NULL OR loc.location_type_id != 5)`,
     fields: {
+      // Core
       area: { label: 'Geographic Area', type: 'select', options: 'area' },
+      location_type: { label: 'Location Type', type: 'text', col: 'lt.location_type_name' },
       contractor: { label: 'Contractor', type: 'text', col: 'con.contractor_name' },
+      school_name: { label: 'School Name', type: 'text', col: 'loc.school_name' },
+      address: { label: 'Address', type: 'text', col: 'loc.address' },
+      phone: { label: 'Location Phone', type: 'text', col: 'loc.location_phone' },
+      // People
       client_manager: { label: 'Client Manager', type: 'text', col: "COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm.first_name, ' ', cm.last_name))" },
       field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)" },
       scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'text', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
+      point_of_contact: { label: 'Point of Contact', type: 'text', col: 'loc.point_of_contact' },
+      poc_email: { label: 'Contact Email', type: 'text', col: 'loc.poc_email' },
+      poc_phone: { label: 'Contact Phone', type: 'text', col: 'loc.poc_phone' },
+      // Status
       retained: { label: 'Retained Client', type: 'boolean', col: 'loc.retained' },
       payment_through_us: { label: 'Payment Through Us', type: 'boolean', col: 'loc.payment_through_us' },
+      jewish: { label: 'Jewish', type: 'boolean', col: 'loc.jewish' },
+      set_dates_ourselves: { label: 'Set Dates Ourselves', type: 'boolean', col: 'loc.set_dates_ourselves' },
+      observes_allowed: { label: 'Observes Allowed', type: 'boolean', col: 'loc.observes_allowed' },
+      // Compliance
       virtus_required: { label: 'Virtus Required', type: 'boolean', col: 'loc.virtus_required' },
       tb_required: { label: 'TB Required', type: 'boolean', col: 'loc.tb_required' },
       livescan_required: { label: 'Livescan Required', type: 'boolean', col: 'loc.livescan_required' },
       contract_required: { label: 'Contract/Permit Required', type: 'boolean', col: 'loc.contract_permit_required' },
+      // Marketing
       flyer_required: { label: 'Flyer Required', type: 'boolean', col: 'loc.flyer_required' },
+      custom_flyer_required: { label: 'Custom Flyer Required', type: 'boolean', col: 'loc.custom_flyer_required' },
       demo_allowed: { label: 'Demo Allowed', type: 'boolean', col: 'loc.demo_allowed' },
+      // Numbers
+      enrollment: { label: 'Location Enrollment', type: 'number', col: 'loc.location_enrollment' },
+      number_of_weeks: { label: 'Number of Weeks', type: 'number', col: 'loc.number_of_weeks' },
       active_program_count: { label: 'Active Program Count', type: 'number', col: 'active_program_count' },
       unpaid_invoice_count: { label: 'Unpaid Invoices', type: 'number', col: 'unpaid_invoice_count' },
-      enrollment: { label: 'Location Enrollment', type: 'number', col: 'loc.location_enrollment' },
     },
     defaultSort: 'loc.nickname ASC',
     countField: 'loc.id',
@@ -233,18 +294,41 @@ function buildWhereFromFilters(entity, filters) {
     const col = fieldDef.col || f.field;
     const op = f.operator || '=';
 
+    // Empty/not-empty checks (work for any type)
+    if (op === 'is_empty') {
+      clauses.push(`(${col} IS NULL OR ${col} = '' OR ${col} = 0)`);
+      continue;
+    }
+    if (op === 'is_not_empty') {
+      clauses.push(`(${col} IS NOT NULL AND ${col} != '' AND ${col} != 0)`);
+      continue;
+    }
+
     if (fieldDef.type === 'boolean') {
       clauses.push(`${col} = ?`);
       params.push(f.value ? 1 : 0);
+    } else if (fieldDef.type === 'date') {
+      const ops = { '=': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
+      clauses.push(`${col} ${ops[op] || '='} ?`);
+      params.push(f.value);
     } else if (fieldDef.type === 'number') {
-      const ops = { '=': '=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
+      const ops = { '=': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
       clauses.push(`${col} ${ops[op] || '='} ?`);
       params.push(parseFloat(f.value));
     } else if (op === 'contains') {
       clauses.push(`${col} LIKE ?`);
       params.push(`%${f.value}%`);
     } else if (op === 'not') {
-      clauses.push(`${col} != ?`);
+      // Resolve select column names the same way as '='
+      let resolvedCol = col;
+      if (fieldDef.type === 'select') {
+        if (fieldDef.options === 'class_status') resolvedCol = 'cs.class_status_name';
+        else if (fieldDef.options === 'program_type') resolvedCol = 'pt.program_type_name';
+        else if (fieldDef.options === 'class_type') resolvedCol = 'ct.class_type_name';
+        else if (fieldDef.options === 'area') resolvedCol = 'ga.geographic_area_name';
+        else if (fieldDef.options === 'professor_status') resolvedCol = 'ps.professor_status_name';
+      }
+      clauses.push(`${resolvedCol} != ?`);
       params.push(f.value);
     } else if (op === 'starts_with') {
       clauses.push(`${col} LIKE ?`);
@@ -324,13 +408,40 @@ router.get('/field-options', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/reports/entities — list available entities and their fields
-router.get('/entities', authenticate, (req, res) => {
-  const out = {};
-  for (const [key, val] of Object.entries(ENTITIES)) {
-    out[key] = { label: val.label, fields: Object.entries(val.fields).map(([k, v]) => ({ key: k, ...v })) };
-  }
-  res.json({ success: true, data: out });
+// GET /api/reports/entities — list available entities and their fields (filtered by config)
+router.get('/entities', authenticate, async (req, res, next) => {
+  try {
+    const [configs] = await pool.query('SELECT entity, field_key, enabled FROM report_field_config');
+    const configMap = {};
+    configs.forEach(c => { configMap[`${c.entity}:${c.field_key}`] = c.enabled; });
+
+    const includeAll = req.query.include_all === 'true'; // admin view shows all fields
+
+    const out = {};
+    for (const [key, val] of Object.entries(ENTITIES)) {
+      const fields = Object.entries(val.fields).map(([k, v]) => {
+        const configKey = `${key}:${k}`;
+        const enabled = configMap[configKey] !== undefined ? !!configMap[configKey] : true; // default enabled
+        return { key: k, ...v, enabled };
+      });
+      out[key] = { label: val.label, fields: includeAll ? fields : fields.filter(f => f.enabled) };
+    }
+    res.json({ success: true, data: out });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/reports/field-config — toggle field visibility for report builder
+router.put('/field-config', authenticate, async (req, res, next) => {
+  try {
+    const { entity, field_key, enabled } = req.body;
+    if (!entity || !field_key) return res.status(400).json({ success: false, error: 'Entity and field_key required' });
+    await pool.query(
+      `INSERT INTO report_field_config (entity, field_key, enabled) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)`,
+      [entity, field_key, enabled ? 1 : 0]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 // GET /api/reports — list saved reports
