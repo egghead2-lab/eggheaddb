@@ -30,10 +30,18 @@ export default function OnboardingRequirementsPage() {
     onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setNewReq({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '', needs_approval: false, due_basis: '', due_days: '' }); setShowAdd(false); },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => api.put(`/onboarding/requirements/${id}`, data),
+    onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setEditingId(null); },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/onboarding/requirements/${id}`),
     onSuccess: () => qc.invalidateQueries(['onboarding-requirements']),
   });
+
+  const [editingId, setEditingId] = useState(null);
+  const [editData, setEditData] = useState({});
 
   const requirements = data?.data || [];
   const categories = [...new Set(requirements.map(r => r.category).filter(Boolean))];
@@ -113,11 +121,55 @@ export default function OnboardingRequirementsPage() {
               <tbody className="divide-y divide-gray-100">
                 {requirements.length === 0 ? (
                   <tr><td colSpan={6} className="text-center py-12 text-gray-400">No requirements defined</td></tr>
-                ) : requirements.map(r => (
-                  <tr key={r.id}>
+                ) : requirements.map(r => editingId === r.id ? (
+                  <tr key={r.id} className="bg-blue-50/30">
+                    <td className="px-3 py-2" colSpan={6}>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <input value={editData.title} onChange={e => setEditData({ ...editData, title: e.target.value })}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm col-span-2" placeholder="Title" />
+                        <input value={editData.description || ''} onChange={e => setEditData({ ...editData, description: e.target.value })}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Description" />
+                        <input value={editData.category || ''} onChange={e => setEditData({ ...editData, category: e.target.value })}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Category" />
+                        <select value={editData.type} onChange={e => setEditData({ ...editData, type: e.target.value })}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm">
+                          {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                        </select>
+                        <select value={editData.assigned_role || ''} onChange={e => setEditData({ ...editData, assigned_role: e.target.value })}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm">
+                          <option value="">No role</option>
+                          {ROLES.map(ro => <option key={ro} value={ro}>{ROLE_LABELS[ro]}</option>)}
+                        </select>
+                        <select value={editData.due_basis || ''} onChange={e => setEditData({ ...editData, due_basis: e.target.value })}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm">
+                          <option value="">No auto due date</option>
+                          <option value="days_after_hire">Days after hire</option>
+                          <option value="days_before_hire">Days before hire</option>
+                          <option value="days_after_start">Days after start</option>
+                          <option value="days_before_start">Days before start</option>
+                        </select>
+                        {editData.due_basis && (
+                          <input type="number" value={editData.due_days || ''} onChange={e => setEditData({ ...editData, due_days: e.target.value })}
+                            placeholder="# days" className="rounded border border-gray-300 px-2 py-1 text-sm w-24" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 mb-2">
+                        <label className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={!!editData.requires_document} onChange={e => setEditData({ ...editData, requires_document: e.target.checked })} /> Requires doc</label>
+                        <label className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={!!editData.needs_approval} onChange={e => setEditData({ ...editData, needs_approval: e.target.checked })} /> Needs approval</label>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => updateMutation.mutate({ id: r.id, data: editData })}
+                          disabled={updateMutation.isPending} className="text-xs bg-[#1e3a5f] text-white px-3 py-1 rounded">Save</button>
+                        <button onClick={() => setEditingId(null)} className="text-xs text-gray-500">Cancel</button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={r.id} className="hover:bg-gray-50/50 cursor-pointer" onClick={() => { setEditingId(r.id); setEditData({ title: r.title, description: r.description, category: r.category, type: r.type, assigned_role: r.assigned_role, requires_document: r.requires_document, needs_approval: r.needs_approval, due_basis: r.due_basis, due_days: r.due_days }); }}>
                     <td className="px-4 py-2.5">
                       <div className="font-medium text-gray-900">{r.title}</div>
                       {r.description && <div className="text-xs text-gray-400">{r.description}</div>}
+                      {r.due_basis && <div className="text-[10px] text-gray-400">{r.due_days} {r.due_basis.replace(/_/g, ' ')}</div>}
                     </td>
                     <td className="px-4 py-2.5 text-gray-600 text-xs">{r.category || '—'}</td>
                     <td className="px-4 py-2.5">
@@ -125,13 +177,14 @@ export default function OnboardingRequirementsPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       {r.assigned_role ? (
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[r.assigned_role] || 'bg-gray-100 text-gray-600'}`}>
-                          {ROLE_LABELS[r.assigned_role] || r.assigned_role}
-                        </span>
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[r.assigned_role] || 'bg-gray-100 text-gray-600'}`}>{ROLE_LABELS[r.assigned_role]}</span>
                       ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-center">{r.requires_document ? '📄' : '—'}</td>
-                    <td className="px-4 py-2.5 text-center">
+                    <td className="px-4 py-2.5 text-center text-xs">
+                      {r.requires_document ? '📄' : ''}{r.needs_approval ? ' ✋' : ''}
+                      {!r.requires_document && !r.needs_approval && '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-center" onClick={e => e.stopPropagation()}>
                       <button onClick={() => { if (confirm(`Delete "${r.title}"?`)) deleteMutation.mutate(r.id); }}
                         className="text-gray-300 hover:text-red-500 text-xs">Delete</button>
                     </td>

@@ -105,6 +105,17 @@ export default function CandidatePortalPage() {
           </div>
         </div>
 
+        {/* Info completion banner */}
+        {!portal.availability?.personal_info_completed && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-3">
+            <span className="text-amber-600 text-xl">!</span>
+            <div>
+              <div className="text-sm font-medium text-amber-800">Please complete your information</div>
+              <div className="text-xs text-amber-600">Fill out your personal info and availability below to get started.</div>
+            </div>
+          </div>
+        )}
+
         {/* Personal Info Form */}
         <PersonalInfoForm portal={portal} />
 
@@ -305,108 +316,99 @@ function PortalRequirementRow({ r, isOverdue, isUpcoming, isPendingApproval, can
 
 function PersonalInfoForm({ portal }) {
   const qc = useQueryClient();
-  const { register, handleSubmit, reset, formState: { isDirty } } = useForm({
+  const avail = portal.availability || {};
+
+  const { register: regProfile, handleSubmit: submitProfile } = useForm({
+    defaultValues: { phone: portal.phone || '', address: portal.address || '', city: portal.city || '', state: portal.state || '', zip: portal.zip || '', shirt_size: portal.shirt_size || '' },
+  });
+  const { register: regAvail, handleSubmit: submitAvail, watch: watchAvail } = useForm({
     defaultValues: {
-      phone: portal.phone || '',
-      address: portal.address || '',
-      city: portal.city || '',
-      state: portal.state || '',
-      zip: portal.zip || '',
-      has_car: portal.has_car ?? '',
-      car_details: portal.car_details || '',
-      shirt_size: portal.shirt_size || '',
-      emergency_contact_name: portal.emergency_contact_name || '',
-      emergency_contact_phone: portal.emergency_contact_phone || '',
-      emergency_contact_relation: portal.emergency_contact_relation || '',
-      availability_notes: portal.availability_notes || '',
+      monday: !!avail.monday, monday_notes: avail.monday_notes || '',
+      tuesday: !!avail.tuesday, tuesday_notes: avail.tuesday_notes || '',
+      wednesday: !!avail.wednesday, wednesday_notes: avail.wednesday_notes || '',
+      thursday: !!avail.thursday, thursday_notes: avail.thursday_notes || '',
+      friday: !!avail.friday, friday_notes: avail.friday_notes || '',
+      additional_notes: avail.additional_notes || '',
     },
   });
 
-  const saveMutation = useMutation({
+  const profileMutation = useMutation({
     mutationFn: (data) => api.put('/onboarding/my-portal/profile', data),
-    onSuccess: () => { qc.invalidateQueries(['my-portal']); },
+    onSuccess: () => qc.invalidateQueries(['my-portal']),
+  });
+  const availMutation = useMutation({
+    mutationFn: (data) => api.put('/onboarding/my-portal/availability', data),
+    onSuccess: () => qc.invalidateQueries(['my-portal']),
   });
 
-  const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f]';
+  const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]';
+  const DAYS = [
+    { key: 'monday', label: 'Monday' }, { key: 'tuesday', label: 'Tuesday' },
+    { key: 'wednesday', label: 'Wednesday' }, { key: 'thursday', label: 'Thursday' },
+    { key: 'friday', label: 'Friday' },
+  ];
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200">
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="font-semibold text-gray-900">Your Information</h2>
-        {saveMutation.isSuccess && <span className="text-xs text-green-600">Saved!</span>}
-      </div>
-      <form onSubmit={handleSubmit(d => saveMutation.mutate(d))} className="p-4 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-            <input {...register('phone')} className={inputCls} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Shirt Size</label>
-            <input {...register('shirt_size')} placeholder="S, M, L, XL…" className={inputCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
-            <input {...register('address')} className={inputCls} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">City</label>
-            <input {...register('city')} className={inputCls} />
-          </div>
+    <div className="space-y-6">
+      {/* Personal Info */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Your Information</h2>
+          {profileMutation.isSuccess && <span className="text-xs text-green-600">Saved!</span>}
+        </div>
+        <form onSubmit={submitProfile(d => profileMutation.mutate(d))} className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">State</label>
-              <input {...register('state')} maxLength={2} className={inputCls} />
+            <div><label className="block text-xs font-medium text-gray-600 mb-1">Phone</label><input {...regProfile('phone')} className={inputCls} /></div>
+            <div><label className="block text-xs font-medium text-gray-600 mb-1">Shirt Size</label><input {...regProfile('shirt_size')} placeholder="S, M, L, XL…" className={inputCls} /></div>
+            <div className="col-span-2"><label className="block text-xs font-medium text-gray-600 mb-1">Address</label><input {...regProfile('address')} className={inputCls} /></div>
+            <div><label className="block text-xs font-medium text-gray-600 mb-1">City</label><input {...regProfile('city')} className={inputCls} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">State</label><input {...regProfile('state')} maxLength={2} className={inputCls} /></div>
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Zip</label><input {...regProfile('zip')} className={inputCls} /></div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Zip</label>
-              <input {...register('zip')} className={inputCls} />
-            </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Do you have a car?</label>
-            <select {...register('has_car')} className={inputCls}>
-              <option value="">Select…</option>
-              <option value="1">Yes</option>
-              <option value="0">No</option>
-            </select>
+          <div className="flex justify-end">
+            <button type="submit" disabled={profileMutation.isPending}
+              className="px-4 py-2 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152a47] disabled:opacity-50">
+              {profileMutation.isPending ? 'Saving…' : 'Save Info'}
+            </button>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Car Details</label>
-            <input {...register('car_details')} placeholder="Make, model, year" className={inputCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Availability Notes</label>
-            <textarea {...register('availability_notes')} rows={2} placeholder="Days/times you're available to teach"
-              className={inputCls} />
-          </div>
-        </div>
+        </form>
+      </div>
 
-        <div className="border-t border-gray-100 pt-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Emergency Contact</div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-              <input {...register('emergency_contact_name')} className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-              <input {...register('emergency_contact_phone')} className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Relationship</label>
-              <input {...register('emergency_contact_relation')} className={inputCls} />
-            </div>
+      {/* Availability */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-900">Availability</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Check each day you're available. General hours are 2:00 - 6:00 PM. Add time restrictions if needed.</p>
           </div>
+          {availMutation.isSuccess && <span className="text-xs text-green-600">Saved!</span>}
         </div>
-
-        <div className="flex justify-end">
-          <button type="submit" disabled={saveMutation.isPending}
-            className="px-4 py-2 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152a47] disabled:opacity-50 transition-colors">
-            {saveMutation.isPending ? 'Saving…' : 'Save Info'}
-          </button>
-        </div>
-      </form>
+        <form onSubmit={submitAvail(d => availMutation.mutate(d))} className="p-4 space-y-3">
+          {DAYS.map(day => (
+            <div key={day.key} className="flex items-center gap-3">
+              <label className="flex items-center gap-2 w-32 shrink-0 cursor-pointer">
+                <input type="checkbox" {...regAvail(day.key)}
+                  className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                <span className="text-sm font-medium text-gray-700">{day.label}</span>
+              </label>
+              <input {...regAvail(`${day.key}_notes`)} placeholder="Time restrictions (e.g. only after 3pm)"
+                className={`flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${watchAvail(day.key) ? '' : 'opacity-40'}`} />
+            </div>
+          ))}
+          <div className="pt-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Additional notes</label>
+            <textarea {...regAvail('additional_notes')} rows={2} placeholder="Any other availability details…" className={inputCls} />
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" disabled={availMutation.isPending}
+              className="px-4 py-2 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152a47] disabled:opacity-50">
+              {availMutation.isPending ? 'Saving…' : 'Save Availability'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

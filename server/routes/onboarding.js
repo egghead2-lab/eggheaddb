@@ -131,7 +131,9 @@ router.get('/candidates/:id', async (req, res, next) => {
        WHERE cat.candidate_id = ?`, [id]
     );
 
-    res.json({ success: true, data: { ...candidate, requirements, tasks, appliedTemplates } });
+    const [[availability]] = await pool.query('SELECT * FROM candidate_availability WHERE candidate_id = ?', [id]);
+
+    res.json({ success: true, data: { ...candidate, requirements, tasks, appliedTemplates, availability: availability || null } });
   } catch (err) { next(err); }
 });
 
@@ -404,6 +406,53 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════════════
 // CANDIDATE REQUIREMENTS (checklist)
 // ═══════════════════════════════════════════════════════════════════
+
+// POST /api/onboarding/candidate-requirements-add — add a single requirement to a candidate
+router.post('/candidate-requirements-add', async (req, res, next) => {
+  try {
+    const { candidate_id, requirement_id } = req.body;
+    if (!candidate_id || !requirement_id) return res.status(400).json({ success: false, error: 'candidate_id and requirement_id required' });
+
+    // Get requirement details
+    const [[reqDef]] = await pool.query('SELECT assigned_role, needs_approval, due_basis, due_days FROM onboarding_requirement WHERE id = ?', [requirement_id]);
+    if (!reqDef) return res.status(404).json({ success: false, error: 'Requirement not found' });
+
+    // Get candidate for role mapping and dates
+    const [[candidate]] = await pool.query(
+      'SELECT accepted_at, first_class_date, onboarder_user_id, trainer_user_id, recruiter_user_id, scheduling_coordinator_user_id, field_manager_user_id FROM candidate WHERE id = ?',
+      [candidate_id]
+    );
+    const roleToUser = {
+      onboarder: candidate?.onboarder_user_id, trainer: candidate?.trainer_user_id,
+      recruiter: candidate?.recruiter_user_id, scheduler: candidate?.scheduling_coordinator_user_id,
+      field_manager: candidate?.field_manager_user_id,
+    };
+
+    // Calculate due date
+    let dueDate = null;
+    if (reqDef.due_days && reqDef.due_basis) {
+      const hireDate = candidate?.accepted_at ? new Date(candidate.accepted_at) : new Date();
+      const startDate = candidate?.first_class_date ? new Date(candidate.first_class_date) : null;
+      let ref = null;
+      if (reqDef.due_basis === 'days_after_hire') { ref = new Date(hireDate); ref.setDate(ref.getDate() + reqDef.due_days); }
+      else if (reqDef.due_basis === 'days_before_hire') { ref = new Date(hireDate); ref.setDate(ref.getDate() - reqDef.due_days); }
+      else if (reqDef.due_basis === 'days_after_start' && startDate) { ref = new Date(startDate); ref.setDate(ref.getDate() + reqDef.due_days); }
+      else if (reqDef.due_basis === 'days_before_start' && startDate) { ref = new Date(startDate); ref.setDate(ref.getDate() - reqDef.due_days); }
+      if (ref) dueDate = ref.toISOString().split('T')[0];
+    }
+
+    const assignedUserId = reqDef.assigned_role ? roleToUser[reqDef.assigned_role] || null : null;
+
+    await pool.query(
+      'INSERT INTO candidate_requirement (candidate_id, requirement_id, due_date, assigned_role, assigned_to_user_id, needs_approval, approval_status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [candidate_id, requirement_id, dueDate, reqDef.assigned_role, assignedUserId, reqDef.needs_approval ? 1 : 0, 'not_needed']
+    );
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.json({ success: true, skipped: true });
+    next(err);
+  }
+});
 
 // PUT /api/onboarding/candidate-requirements/:id
 router.put('/candidate-requirements/:id', async (req, res, next) => {
@@ -1017,13 +1066,16 @@ router.get('/my-portal', async (req, res, next) => {
 
     // Requirements
     const [requirements] = await pool.query(
-      `SELECT cr.id, cr.completed, cr.status, cr.due_date, cr.notes,
-              r.title, r.description, r.category, r.type
+      `SELECT cr.id, cr.completed, cr.status, cr.due_date, cr.notes, cr.needs_approval, cr.approval_status,
+              r.title, r.description, r.category, r.type, r.requires_document
        FROM candidate_requirement cr
        JOIN onboarding_requirement r ON r.id = cr.requirement_id
        WHERE cr.candidate_id = ?
        ORDER BY cr.completed, r.sort_order, r.title`, [candidate.id]
     );
+
+    // Availability
+    const [[availability]] = await pool.query('SELECT * FROM candidate_availability WHERE candidate_id = ?', [candidate.id]);
 
     // Tasks
     const [tasks] = await pool.query(
@@ -1045,7 +1097,7 @@ router.get('/my-portal', async (req, res, next) => {
        ORDER BY cm.ts_inserted ASC`, [candidate.id]
     );
 
-    res.json({ success: true, data: { ...candidate, requirements, tasks, messages } });
+    res.json({ success: true, data: { ...candidate, requirements, tasks, messages, availability: availability || null } });
   } catch (err) { next(err); }
 });
 
@@ -1088,14 +1140,40 @@ router.put('/my-portal/profile', async (req, res, next) => {
     const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
     if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
 
-    const allowed = ['phone', 'address', 'city', 'state', 'zip', 'has_car', 'car_details',
-      'shirt_size', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+    const allowed = ['phone', 'address', 'city', 'state', 'zip', 'shirt_size',
       'availability_notes'];
     const updates = allowed.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
     const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
     await pool.query(`UPDATE candidate SET ${setClauses} WHERE id = ?`, [...values, candidate.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/onboarding/my-portal/availability — candidate saves their availability
+router.put('/my-portal/availability', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    const { monday, monday_notes, tuesday, tuesday_notes, wednesday, wednesday_notes,
+            thursday, thursday_notes, friday, friday_notes, additional_notes } = req.body;
+    await pool.query(
+      `INSERT INTO candidate_availability (candidate_id, monday, monday_notes, tuesday, tuesday_notes,
+        wednesday, wednesday_notes, thursday, thursday_notes, friday, friday_notes, additional_notes, personal_info_completed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+       ON DUPLICATE KEY UPDATE monday=VALUES(monday), monday_notes=VALUES(monday_notes),
+        tuesday=VALUES(tuesday), tuesday_notes=VALUES(tuesday_notes),
+        wednesday=VALUES(wednesday), wednesday_notes=VALUES(wednesday_notes),
+        thursday=VALUES(thursday), thursday_notes=VALUES(thursday_notes),
+        friday=VALUES(friday), friday_notes=VALUES(friday_notes),
+        additional_notes=VALUES(additional_notes), personal_info_completed=1`,
+      [candidate.id, monday?1:0, monday_notes||null, tuesday?1:0, tuesday_notes||null,
+       wednesday?1:0, wednesday_notes||null, thursday?1:0, thursday_notes||null,
+       friday?1:0, friday_notes||null, additional_notes||null]
+    );
     res.json({ success: true });
   } catch (err) { next(err); }
 });

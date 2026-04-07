@@ -220,9 +220,16 @@ export default function CandidateDetailPage() {
           {/* Internal Notes — status update feed (hidden from candidates) */}
           {!isNew && <CandidateNotesSection candidateId={id} />}
 
+          {/* ══ CHECKLIST — the main event ══ */}
+          {!isNew && (
+            <ChecklistSection requirements={requirements} templates={templates} appliedTemplates={appliedTemplates}
+              candidateId={id} today={today} reqMutation={reqMutation} approveMutation={approveMutation}
+              applyTemplateMutation={applyTemplateMutation} allRequirements={[]} users={users} />
+          )}
+
           {/* Login Credentials */}
           {!isNew && (
-            <Section title="Login Credentials" defaultOpen={true}>
+            <Section title="Login Credentials" defaultOpen={false}>
               {candidate.user_id ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-6">
@@ -243,120 +250,26 @@ export default function CandidateDetailPage() {
                   </div>
                   {generatedPassword && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-amber-800">New Password (copy now — it won't be shown again)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-amber-800">New Password (copy now)</span>
+                      <div className="flex items-center gap-2 mt-1">
                         <code className="text-sm font-mono bg-white px-2 py-1 rounded border border-amber-200 select-all">{generatedPassword}</code>
-                        <button type="button" onClick={() => { navigator.clipboard.writeText(generatedPassword); }}
+                        <button type="button" onClick={() => navigator.clipboard.writeText(generatedPassword)}
                           className="text-xs text-amber-700 hover:text-amber-900 underline">Copy</button>
                       </div>
                     </div>
                   )}
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => { if (confirm('Generate a new password? The current password will stop working.')) regenPasswordMutation.mutate(); }}
-                      className="text-xs text-[#1e3a5f] hover:underline">Regenerate Password</button>
-                    {regenPasswordMutation.isPending && <span className="text-xs text-gray-400">Generating…</span>}
-                  </div>
+                  <button type="button" onClick={() => { if (confirm('Generate a new password?')) regenPasswordMutation.mutate(); }}
+                    className="text-xs text-[#1e3a5f] hover:underline">
+                    {regenPasswordMutation.isPending ? 'Generating…' : 'Reset Password'}
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-sm text-gray-500">No login credentials have been generated yet.</p>
-                  <Button type="button" size="sm" onClick={() => generateLoginMutation.mutate()}
-                    disabled={generateLoginMutation.isPending}>
+                  <p className="text-sm text-gray-500">No login credentials generated yet.</p>
+                  <Button type="button" size="sm" onClick={() => generateLoginMutation.mutate()} disabled={generateLoginMutation.isPending}>
                     {generateLoginMutation.isPending ? 'Generating…' : 'Generate Login'}
                   </Button>
-                  {generateLoginMutation.isError && (
-                    <p className="text-sm text-red-600">{generateLoginMutation.error?.response?.data?.error || 'Failed to generate login'}</p>
-                  )}
-                </div>
-              )}
-            </Section>
-          )}
-
-          {/* Checklist */}
-          {!isNew && (
-            <Section title={`Checklist (${requirements.filter(r => r.completed).length}/${requirements.length})`} defaultOpen={true}>
-              {/* Apply template */}
-              <div className="flex items-center gap-2 mb-3">
-                <select onChange={e => { if (e.target.value) applyTemplateMutation.mutate(e.target.value); e.target.value = ''; }}
-                  className="rounded border border-gray-300 px-2 py-1 text-xs bg-white">
-                  <option value="">Apply template…</option>
-                  {templates.filter(t => !appliedTemplates.some(at => at.template_id === t.id))
-                    .map(t => <option key={t.id} value={t.id}>{t.name} ({t.item_count} items)</option>)}
-                </select>
-                {applyTemplateMutation.isSuccess && <span className="text-xs text-green-600">Applied!</span>}
-              </div>
-
-              {requirements.length === 0 ? (
-                <p className="text-sm text-gray-400">No requirements assigned. Apply a template to get started.</p>
-              ) : (
-                <div className="space-y-1">
-                  {[...requirements].sort((a, b) => {
-                    // Sort: overdue first, then by due date, completed last
-                    if (a.completed && !b.completed) return 1;
-                    if (!a.completed && b.completed) return -1;
-                    const aOverdue = a.due_date && a.due_date < today && !a.completed;
-                    const bOverdue = b.due_date && b.due_date < today && !b.completed;
-                    if (aOverdue && !bOverdue) return -1;
-                    if (!aOverdue && bOverdue) return 1;
-                    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
-                    if (a.due_date && !b.due_date) return -1;
-                    return 0;
-                  }).map(r => {
-                    const isOverdue = r.due_date && r.due_date < today && !r.completed;
-                    const isFuture = r.due_date && r.due_date > today && !r.completed;
-                    const daysUntilDue = r.due_date ? Math.ceil((new Date(r.due_date) - new Date(today)) / 86400000) : null;
-                    const isUpcoming = daysUntilDue !== null && daysUntilDue > 7 && !r.completed;
-                    const isPendingApproval = r.approval_status === 'pending_approval';
-                    return (
-                      <div key={r.id} className={`flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
-                        r.completed ? 'bg-green-50/50' :
-                        isPendingApproval ? 'bg-amber-50/60 border border-amber-200' :
-                        isOverdue ? 'bg-red-50/50 border border-red-200' :
-                        isUpcoming ? 'bg-gray-50/50 opacity-60' :
-                        'bg-gray-50'
-                      }`}>
-                        <input type="checkbox" checked={!!r.completed}
-                          onChange={() => reqMutation.mutate({ reqId: r.id, data: { completed: r.completed ? 0 : 1, status: r.completed ? 'not_started' : 'complete' } })}
-                          className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-sm ${r.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{r.title}</span>
-                            {r.needs_approval === 1 && <span className="text-[9px] px-1 py-0.5 bg-violet-100 text-violet-700 rounded font-medium">Approval</span>}
-                            {r.requires_document === 1 && <span className="text-[9px] px-1 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Doc</span>}
-                          </div>
-                          {r.description && <div className="text-xs text-gray-400 truncate">{r.description}</div>}
-                          {isPendingApproval && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs text-amber-700 font-medium">Pending approval</span>
-                              <button type="button" onClick={() => approveMutation.mutate({ reqId: r.id, action: 'approve' })}
-                                className="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700">Approve</button>
-                              <button type="button" onClick={() => approveMutation.mutate({ reqId: r.id, action: 'reject' })}
-                                className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600">Reject</button>
-                            </div>
-                          )}
-                        </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
-                          r.type === 'document' ? 'bg-blue-100 text-blue-700' :
-                          r.type === 'training' ? 'bg-purple-100 text-purple-700' :
-                          r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>{r.type}</span>
-                        {r.assigned_role && (
-                          <span className={`text-[10px] px-1 py-0.5 rounded font-medium shrink-0 ${
-                            { scheduler: 'bg-blue-50 text-blue-600', field_manager: 'bg-emerald-50 text-emerald-600', recruiter: 'bg-teal-50 text-teal-600', onboarder: 'bg-pink-50 text-pink-600', trainer: 'bg-orange-50 text-orange-600' }[r.assigned_role] || 'bg-gray-100 text-gray-500'
-                          }`}>{r.assigned_role.replace('_', ' ')}</span>
-                        )}
-                        {r.due_date && (
-                          <span className={`text-[10px] shrink-0 ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
-                            {isOverdue ? `Overdue (${formatDate(r.due_date)})` : formatDate(r.due_date)}
-                          </span>
-                        )}
-                        {r.assigned_to_name && <span className="text-[10px] text-gray-400 shrink-0">{r.assigned_to_name}</span>}
-                      </div>
-                    );
-                  })}
+                  {generateLoginMutation.isError && <p className="text-sm text-red-600">{generateLoginMutation.error?.response?.data?.error || 'Failed'}</p>}
                 </div>
               )}
             </Section>
@@ -479,6 +392,216 @@ export default function CandidateDetailPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+// ── Checklist Section (rebuilt) ──────────────────────────────────────
+
+const ROLE_LABELS = { scheduler: 'Scheduler', field_manager: 'Field Mgr', recruiter: 'Recruiter', onboarder: 'Onboarder', trainer: 'Trainer' };
+const ROLE_COLORS = { scheduler: 'bg-blue-100 text-blue-700', field_manager: 'bg-emerald-100 text-emerald-700', recruiter: 'bg-teal-100 text-teal-700', onboarder: 'bg-pink-100 text-pink-700', trainer: 'bg-orange-100 text-orange-700' };
+
+function ChecklistSection({ requirements, templates, appliedTemplates, candidateId, today, reqMutation, approveMutation, applyTemplateMutation, users }) {
+  const qc = useQueryClient();
+  const [sortBy, setSortBy] = useState('urgency'); // urgency, due_date, owner, type
+  const [filterRole, setFilterRole] = useState('');
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showAddReq, setShowAddReq] = useState(false);
+  const [addReqId, setAddReqId] = useState('');
+
+  const { data: allReqsData } = useQuery({
+    queryKey: ['onboarding-requirements'],
+    queryFn: () => api.get('/onboarding/requirements').then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+  const allReqs = allReqsData?.data || [];
+  const existingReqIds = new Set(requirements.map(r => r.requirement_id));
+
+  const addSingleReq = useMutation({
+    mutationFn: (data) => api.post('/onboarding/candidate-requirements-add', data),
+    onSuccess: () => { qc.invalidateQueries(['candidate', candidateId]); setAddReqId(''); setShowAddReq(false); },
+  });
+
+  let filtered = [...requirements];
+  if (!showCompleted) filtered = filtered.filter(r => !r.completed);
+  if (filterRole) filtered = filtered.filter(r => r.assigned_role === filterRole);
+
+  // Sort
+  filtered.sort((a, b) => {
+    if (sortBy === 'due_date') {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return a.due_date.localeCompare(b.due_date);
+    }
+    if (sortBy === 'owner') return (a.assigned_role || 'z').localeCompare(b.assigned_role || 'z');
+    if (sortBy === 'type') return (a.type || '').localeCompare(b.type || '');
+    // Default: urgency (overdue first, then by due date)
+    const aOvr = a.due_date && a.due_date < today;
+    const bOvr = b.due_date && b.due_date < today;
+    if (aOvr && !bOvr) return -1;
+    if (!aOvr && bOvr) return 1;
+    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+    if (a.due_date) return -1;
+    return 0;
+  });
+
+  const completedCount = requirements.filter(r => r.completed).length;
+  const overdueCount = requirements.filter(r => !r.completed && r.due_date && r.due_date < today).length;
+  const pendingApprovalCount = requirements.filter(r => r.approval_status === 'pending_approval').length;
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-bold text-gray-900">Requirements</h2>
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-gray-500">{completedCount}/{requirements.length} complete</span>
+              {overdueCount > 0 && <span className="text-red-600 font-medium">{overdueCount} overdue</span>}
+              {pendingApprovalCount > 0 && <span className="text-amber-600 font-medium">{pendingApprovalCount} pending approval</span>}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <select onChange={e => { if (e.target.value) applyTemplateMutation.mutate(e.target.value); e.target.value = ''; }}
+              className="rounded border border-gray-300 px-2 py-1.5 text-xs bg-white">
+              <option value="">Apply template…</option>
+              {templates.filter(t => !appliedTemplates.some(at => at.template_id === t.id))
+                .map(t => <option key={t.id} value={t.id}>{t.name} ({t.item_count})</option>)}
+            </select>
+            <button type="button" onClick={() => setShowAddReq(!showAddReq)}
+              className="text-xs bg-[#1e3a5f] text-white px-3 py-1.5 rounded hover:bg-[#152a47] font-medium">
+              + Add
+            </button>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        {requirements.length > 0 && (
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${completedCount === requirements.length ? 'bg-green-500' : 'bg-[#1e3a5f]'}`}
+              style={{ width: `${Math.round((completedCount / requirements.length) * 100)}%` }} />
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="flex items-center gap-3 mt-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-400">Sort:</span>
+            {[['urgency','Urgency'],['due_date','Due Date'],['owner','Owner'],['type','Type']].map(([k,l]) => (
+              <button key={k} type="button" onClick={() => setSortBy(k)}
+                className={`text-xs px-2 py-0.5 rounded ${sortBy === k ? 'bg-[#1e3a5f] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>{l}</button>
+            ))}
+          </div>
+          <div className="w-px h-4 bg-gray-200" />
+          <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="text-xs rounded border border-gray-200 px-2 py-1 bg-white">
+            <option value="">All roles</option>
+            {Object.entries(ROLE_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer ml-auto">
+            <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} className="w-3 h-3 rounded" />
+            Show completed
+          </label>
+        </div>
+      </div>
+
+      {/* Add requirement */}
+      {showAddReq && (
+        <div className="px-5 py-3 bg-blue-50/50 border-b border-gray-200 flex items-center gap-2">
+          <select value={addReqId} onChange={e => setAddReqId(e.target.value)} className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm">
+            <option value="">Select a requirement to add…</option>
+            {allReqs.filter(r => !existingReqIds.has(r.id)).map(r => (
+              <option key={r.id} value={r.id}>{r.title} ({r.type}{r.assigned_role ? ` · ${ROLE_LABELS[r.assigned_role]}` : ''})</option>
+            ))}
+          </select>
+          <button type="button" onClick={() => { if (addReqId) addSingleReq.mutate({ candidate_id: candidateId, requirement_id: Number(addReqId) }); }}
+            disabled={!addReqId || addSingleReq.isPending} className="text-xs bg-[#1e3a5f] text-white px-3 py-1.5 rounded disabled:opacity-40">
+            {addSingleReq.isPending ? 'Adding…' : 'Add'}</button>
+          <button type="button" onClick={() => setShowAddReq(false)} className="text-xs text-gray-500">Cancel</button>
+        </div>
+      )}
+
+      {/* Requirement rows */}
+      <div className="divide-y divide-gray-100">
+        {filtered.length === 0 ? (
+          <div className="px-5 py-8 text-center text-gray-400">
+            {requirements.length === 0 ? 'No requirements yet. Apply a template or add individually.' : 'No requirements match the current filters.'}
+          </div>
+        ) : filtered.map(r => {
+          const isOverdue = r.due_date && r.due_date < today && !r.completed;
+          const daysUntilDue = r.due_date ? Math.ceil((new Date(r.due_date) - new Date(today)) / 86400000) : null;
+          const isUpcoming = daysUntilDue !== null && daysUntilDue > 7;
+          const isPendingApproval = r.approval_status === 'pending_approval';
+          return (
+            <div key={r.id} className={`flex items-center gap-4 px-5 py-3 transition-colors ${
+              r.completed ? 'bg-green-50/30' :
+              isPendingApproval ? 'bg-amber-50/40' :
+              isOverdue ? 'bg-red-50/40' :
+              isUpcoming ? 'opacity-50' : ''
+            }`}>
+              <input type="checkbox" checked={!!r.completed}
+                onChange={() => reqMutation.mutate({ reqId: r.id, data: { completed: r.completed ? 0 : 1, status: r.completed ? 'not_started' : 'complete' } })}
+                className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer shrink-0" />
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`font-medium ${r.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{r.title}</span>
+                  {r.needs_approval === 1 && <span className="text-[10px] px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded font-medium">Approval</span>}
+                  {r.requires_document === 1 && <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Document</span>}
+                </div>
+                {r.description && <div className="text-sm text-gray-400 mt-0.5">{r.description}</div>}
+                {isPendingApproval && (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-sm text-amber-700 font-medium">Awaiting approval</span>
+                    <button type="button" onClick={() => approveMutation.mutate({ reqId: r.id, action: 'approve' })}
+                      className="text-xs bg-green-600 text-white px-2.5 py-1 rounded hover:bg-green-700 font-medium">Approve</button>
+                    <button type="button" onClick={() => approveMutation.mutate({ reqId: r.id, action: 'reject' })}
+                      className="text-xs bg-red-500 text-white px-2.5 py-1 rounded hover:bg-red-600 font-medium">Reject</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Type */}
+              <span className={`text-xs px-2 py-1 rounded font-medium shrink-0 ${
+                r.type === 'document' ? 'bg-blue-100 text-blue-700' :
+                r.type === 'training' ? 'bg-purple-100 text-purple-700' :
+                r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
+                'bg-gray-100 text-gray-600'
+              }`}>{r.type}</span>
+
+              {/* Owner */}
+              <div className="w-24 shrink-0 text-right">
+                {r.assigned_role ? (
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${ROLE_COLORS[r.assigned_role] || 'bg-gray-100 text-gray-500'}`}>
+                    {ROLE_LABELS[r.assigned_role]}
+                  </span>
+                ) : <span className="text-xs text-gray-300">—</span>}
+              </div>
+
+              {/* Due date */}
+              <div className="w-28 shrink-0 text-right">
+                {r.due_date ? (
+                  <div>
+                    <div className={`text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-gray-600'}`}>
+                      {formatDate(r.due_date)}
+                    </div>
+                    {isOverdue && <div className="text-[10px] text-red-500 font-bold">OVERDUE</div>}
+                    {daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= 7 && !r.completed && (
+                      <div className="text-[10px] text-amber-600">{daysUntilDue === 0 ? 'Due today' : `${daysUntilDue}d left`}</div>
+                    )}
+                  </div>
+                ) : <span className="text-xs text-gray-300">No date</span>}
+              </div>
+
+              {/* Assignee */}
+              <div className="w-24 shrink-0 text-right">
+                <span className="text-xs text-gray-400">{r.assigned_to_name || '—'}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
