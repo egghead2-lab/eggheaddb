@@ -1,6 +1,8 @@
 export function formatDate(date) {
   if (!date) return '—';
-  return new Date(date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
+  // Parse as UTC to avoid timezone shift on date-only values (e.g. "2026-04-08T00:00:00.000Z")
+  const d = new Date(date);
+  return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', timeZone: 'UTC' });
 }
 
 export function formatTime(time) {

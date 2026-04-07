@@ -320,6 +320,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
       pool.query(`SELECT id, class_name FROM class WHERE active = 1 AND program_type_id = 4 AND class_name NOT LIKE 'Party / %' ORDER BY class_name`),
       pool.query(`SELECT p.id, p.professor_nickname, p.last_name, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND p.show_party_trained_id = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
       pool.query(`SELECT p.id, p.professor_nickname, p.last_name, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
+      pool.query(`SELECT id, reason_name FROM substitute_reason WHERE active = 1 ORDER BY sort_order, reason_name`),
     ];
 
     const results = await Promise.all(queries);
@@ -350,6 +351,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
         partyThemes: results[20][0],
         partyLeadProfessors: results[21][0],
         partyAssistProfessors: results[22][0],
+        substituteReasons: results[23][0],
       },
     });
   } catch (err) {
@@ -454,6 +456,53 @@ router.get('/classes', authenticate, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SUBSTITUTE REASONS
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/substitute-reasons
+router.get('/substitute-reasons', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM substitute_reason WHERE active = 1 ORDER BY sort_order, reason_name');
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/substitute-reasons
+router.post('/substitute-reasons', authenticate, async (req, res, next) => {
+  try {
+    const { reason_name } = req.body;
+    if (!reason_name?.trim()) return res.status(400).json({ success: false, error: 'Reason name required' });
+    const [result] = await pool.query(
+      'INSERT INTO substitute_reason (reason_name, sort_order) VALUES (?, (SELECT COALESCE(MAX(s.sort_order), 0) + 1 FROM substitute_reason s))',
+      [reason_name.trim()]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/substitute-reasons/:id
+router.put('/substitute-reasons/:id', authenticate, async (req, res, next) => {
+  try {
+    const { reason_name, sort_order } = req.body;
+    const sets = [];
+    const vals = [];
+    if (reason_name !== undefined) { sets.push('reason_name = ?'); vals.push(reason_name.trim()); }
+    if (sort_order !== undefined) { sets.push('sort_order = ?'); vals.push(sort_order); }
+    if (sets.length === 0) return res.status(400).json({ success: false, error: 'Nothing to update' });
+    await pool.query(`UPDATE substitute_reason SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/substitute-reasons/:id (soft)
+router.delete('/substitute-reasons/:id', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE substitute_reason SET active = 0 WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

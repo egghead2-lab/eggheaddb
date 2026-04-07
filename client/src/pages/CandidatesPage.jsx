@@ -103,12 +103,14 @@ export default function CandidatesPage() {
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Onboarder / Trainer</th>
                     <th className="text-center px-3 py-3 font-semibold text-gray-700 w-24">Checklist</th>
                     <th className="text-center px-3 py-3 font-semibold text-gray-700 w-20">Tasks</th>
+                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-20">Login</th>
+                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Msgs</th>
                     <SortTh col="first_class" sort={sort} dir={dir} onSort={handleSort}>First Class</SortTh>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {candidates.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">No candidates found</td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-gray-400">No candidates found</td></tr>
                   ) : candidates.map((c, i) => {
                     const progress = c.total_reqs > 0 ? Math.round(((c.total_reqs - c.open_reqs) / c.total_reqs) * 100) : 0;
                     return (
@@ -138,6 +140,21 @@ export default function CandidatesPage() {
                         <td className="px-3 py-2.5 text-center">
                           {c.open_tasks > 0 ? (
                             <span className="inline-block px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 rounded font-medium">{c.open_tasks}</span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {c.has_login ? (
+                            <div>
+                              <span className="text-green-600 text-xs font-medium">Active</span>
+                              {c.last_login_at && (
+                                <div className="text-[10px] text-gray-400">{new Date(c.last_login_at).toLocaleDateString()}</div>
+                              )}
+                            </div>
+                          ) : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {c.candidate_messages > 0 ? (
+                            <span className="inline-block px-1.5 py-0.5 text-xs bg-violet-100 text-violet-800 rounded font-medium">{c.candidate_messages}</span>
                           ) : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-gray-600 text-xs">

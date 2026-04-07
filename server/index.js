@@ -23,6 +23,7 @@ const onboardingRoutes = require('./routes/onboarding');
 const assignmentBoardRoutes = require('./routes/assignment-board');
 const lessonsRoutes = require('./routes/lessons');
 const classesRoutes = require('./routes/classes');
+const subManagementRoutes = require('./routes/sub-management');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -90,6 +91,7 @@ app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/assignment-board', assignmentBoardRoutes);
 app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/sub-management', subManagementRoutes);
 
 // Error handler
 app.use(errorHandler);

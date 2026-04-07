@@ -5,7 +5,7 @@ import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 
 export default function LoginPage() {
-  const { isAuthenticated, login, loginPending } = useAuth();
+  const { user, isAuthenticated, login, loginPending } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const error = params.get('error');
@@ -22,8 +22,8 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/');
-  }, [isAuthenticated]);
+    if (isAuthenticated) navigate(user?.role === 'Candidate' ? '/candidate-portal' : '/');
+  }, [isAuthenticated, user]);
 
   const handleGoogleLogin = () => {
     const base = import.meta.env.VITE_API_URL || 'http://localhost:3002';
@@ -34,8 +34,8 @@ export default function LoginPage() {
     e.preventDefault();
     setFormError('');
     try {
-      await login(form);
-      navigate('/');
+      const res = await login(form);
+      navigate(res?.data?.role === 'Candidate' ? '/candidate-portal' : '/');
     } catch (err) {
       setFormError(err.response?.data?.error || 'Login failed');
     }
@@ -88,7 +88,7 @@ export default function LoginPage() {
 
         {/* Professor Login */}
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Professor Login</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Professor / Candidate Login</p>
           <form onSubmit={handlePasswordLogin} className="space-y-3">
             <Input
               label="Username or Email"

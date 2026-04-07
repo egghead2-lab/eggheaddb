@@ -142,7 +142,11 @@ router.get('/:id', authenticate, async (req, res, next) => {
     );
 
     const [daysOff] = await pool.query(
-      `SELECT * FROM day_off WHERE professor_id = ? ORDER BY date_requested DESC`,
+      `SELECT d.*, sr.reason_name
+       FROM day_off d
+       LEFT JOIN substitute_reason sr ON sr.id = d.substitute_reason_id
+       WHERE d.professor_id = ? AND d.active = 1
+       ORDER BY d.date_requested DESC`,
       [id]
     );
 
@@ -157,14 +161,21 @@ router.get('/:id', authenticate, async (req, res, next) => {
     );
 
     const [upcomingSessions] = await pool.query(
-      `SELECT s.session_date, s.session_time, prog.program_nickname, prog.location_id, loc.nickname AS location_nickname
+      `SELECT s.session_date, s.session_time,
+              s.professor_id AS session_professor_id,
+              s.assistant_id AS session_assistant_id,
+              prog.program_nickname, prog.location_id,
+              prog.lead_professor_id, prog.assistant_professor_id,
+              cs.class_status_name,
+              loc.nickname AS location_nickname
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        WHERE s.active = 1 AND s.session_date >= CURDATE()
          AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
        ORDER BY s.session_date ASC, s.session_time ASC
-       LIMIT 10`,
+       LIMIT 20`,
       [id, id, id, id]
     );
 
@@ -232,10 +243,10 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
     const fields = [
       'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email',
-      'phone_number', 'address', 'city_id', 'general_notes', 'emergency_contact',
-      'emergency_contact_number', 'birthday', 'hire_date', 'termination_date',
-      'termination_rason', 'schedule_link', 'base_pay', 'assist_pay', 'pickup_pay',
-      'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
+      'phone_number', 'address', 'city_id', 'general_notes', 'availability_notes',
+      'emergency_contact', 'emergency_contact_number', 'birthday', 'hire_date',
+      'termination_date', 'termination_rason', 'schedule_link', 'base_pay', 'assist_pay',
+      'pickup_pay', 'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
       'show_party_trained_id', 'slime_party_trained_id', 'demo_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
       'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
@@ -295,6 +306,144 @@ router.delete('/:id/livescans/:lsId', authenticate, async (req, res, next) => {
     const { lsId } = req.params;
     await pool.query(`UPDATE livescan SET active = 0, ts_updated = NOW() WHERE id = ?`, [lsId]);
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// AVAILABILITY
+// ═══════════════════════════════════════════════════════════════════
+
+// PUT /api/professors/:id/availability — bulk save all 7 days
+// Body: { days: [{ weekday_id, available, time_from, time_to, notes }] }
+router.put('/:id/availability', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { days } = req.body;
+    if (!days || !Array.isArray(days)) return res.status(400).json({ success: false, error: 'days array required' });
+
+    // Deactivate all existing
+    await pool.query('UPDATE availability SET active = 0 WHERE professor_id = ?', [id]);
+
+    // Insert active days
+    for (const day of days) {
+      if (!day.available) continue;
+      await pool.query(
+        'INSERT INTO availability (professor_id, weekday_id, time_from, time_to, notes, active) VALUES (?, ?, ?, ?, ?, 1)',
+        [id, day.weekday_id, day.time_from || null, day.time_to || null, day.notes || '']
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SUBSTITUTE DATES (day_off)
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /api/professors/:id/sub-dates — add single date
+router.post('/:id/sub-dates', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { date_requested, substitute_reason_id, notes } = req.body;
+    if (!date_requested) return res.status(400).json({ success: false, error: 'Date required' });
+
+    // Check for duplicate
+    const [existing] = await pool.query(
+      'SELECT id FROM day_off WHERE professor_id = ? AND date_requested = ? AND active = 1', [id, date_requested]
+    );
+    if (existing.length > 0) return res.status(400).json({ success: false, error: 'Date already exists' });
+
+    const [result] = await pool.query(
+      `INSERT INTO day_off (professor_id, date_requested, substitute_reason_id, notes) VALUES (?, ?, ?, ?)`,
+      [id, date_requested, substitute_reason_id || null, notes || null]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// POST /api/professors/:id/sub-dates/range — add a range of dates
+router.post('/:id/sub-dates/range', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { start_date, end_date, substitute_reason_id, notes } = req.body;
+    if (!start_date || !end_date) return res.status(400).json({ success: false, error: 'Start and end dates required' });
+
+    const start = new Date(start_date + 'T12:00:00');
+    const end = new Date(end_date + 'T12:00:00');
+    if (end < start) return res.status(400).json({ success: false, error: 'End date must be after start date' });
+
+    // Get existing dates to avoid duplicates
+    const [existing] = await pool.query(
+      'SELECT date_requested FROM day_off WHERE professor_id = ? AND date_requested BETWEEN ? AND ? AND active = 1',
+      [id, start_date, end_date]
+    );
+    const existingSet = new Set(existing.map(e => e.date_requested.toISOString().split('T')[0]));
+
+    let added = 0;
+    const current = new Date(start);
+    while (current <= end) {
+      const dateStr = current.toISOString().split('T')[0];
+      // Skip weekends (Sat=6, Sun=0)
+      const dow = current.getDay();
+      if (dow !== 0 && dow !== 6 && !existingSet.has(dateStr)) {
+        await pool.query(
+          'INSERT INTO day_off (professor_id, date_requested, substitute_reason_id, notes) VALUES (?, ?, ?, ?)',
+          [id, dateStr, substitute_reason_id || null, notes || null]
+        );
+        added++;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+
+    res.json({ success: true, added });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/professors/:id/sub-dates/:dateId — update reason/notes
+router.put('/:id/sub-dates/:dateId', authenticate, async (req, res, next) => {
+  try {
+    const { dateId } = req.params;
+    const { substitute_reason_id, notes } = req.body;
+    await pool.query(
+      'UPDATE day_off SET substitute_reason_id = ?, notes = ?, ts_updated = NOW() WHERE id = ?',
+      [substitute_reason_id || null, notes || null, dateId]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/professors/:id/sub-dates/:dateId — soft delete single
+router.delete('/:id/sub-dates/:dateId', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE day_off SET active = 0, ts_updated = NOW() WHERE id = ?', [req.params.dateId]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/professors/:id/sub-dates/bulk-delete — delete multiple dates
+router.post('/:id/sub-dates/bulk-delete', authenticate, async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !ids.length) return res.status(400).json({ success: false, error: 'No IDs provided' });
+    await pool.query('UPDATE day_off SET active = 0, ts_updated = NOW() WHERE id IN (?) AND professor_id = ?',
+      [ids, req.params.id]);
+    res.json({ success: true, deleted: ids.length });
+  } catch (err) { next(err); }
+});
+
+// GET /api/professors/:id/sub-dates — get all sub dates (for schedule page)
+router.get('/:id/sub-dates', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT d.*, sr.reason_name
+       FROM day_off d
+       LEFT JOIN substitute_reason sr ON sr.id = d.substitute_reason_id
+       WHERE d.professor_id = ? AND d.active = 1
+       ORDER BY d.date_requested DESC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 

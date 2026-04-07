@@ -70,9 +70,9 @@ router.get('/google/callback', async (req, res, next) => {
 
     const user = users[0];
 
-    // Store google_id and refresh token (refresh token only sent on first consent)
+    // Store google_id, refresh token, and record login time
     await pool.query(
-      `UPDATE user SET google_id = ?, google_refresh_token = COALESCE(?, google_refresh_token) WHERE id = ?`,
+      `UPDATE user SET google_id = ?, google_refresh_token = COALESCE(?, google_refresh_token), last_login_at = NOW() WHERE id = ?`,
       [googleId, tokens.refresh_token || null, user.id]
     );
 
@@ -142,6 +142,9 @@ router.post('/login', async (req, res, next) => {
       : password === user.password;
 
     if (!passwordMatch) return res.status(401).json({ success: false, error: 'Invalid credentials' });
+
+    // Record last login
+    await pool.query('UPDATE user SET last_login_at = NOW() WHERE id = ?', [user.id]);
 
     const fullName = `${user.first_name} ${user.last_name}`.trim();
     const payload = { userId: user.id, name: fullName, role: user.role_name || 'user', areas: [] };

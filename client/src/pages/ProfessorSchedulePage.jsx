@@ -65,8 +65,19 @@ function ProgramTable({ programs, profId, isLead, viewOnly }) {
   );
 }
 
-function SessionTable({ sessions, profId, viewOnly }) {
+function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
   const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+  const getSubStatus = (s) => {
+    const dateStr = (s.session_date || '').split('T')[0];
+    if (!subDateSet?.has(dateStr)) return 'none';
+    const actualLead = s.session_professor_id || s.lead_professor_id;
+    const actualAssist = s.session_assistant_id || s.assistant_professor_id;
+    const stillOnSession = String(actualLead) === String(profId) || String(actualAssist) === String(profId);
+    return stillOnSession ? 'requested' : 'covered';
+  };
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <table className="w-full text-sm">
@@ -78,6 +89,7 @@ function SessionTable({ sessions, profId, viewOnly }) {
             <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
             <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
             <th className="text-left px-3 py-2 font-medium text-gray-600">Lesson</th>
+            {showStatus && <th className="text-center px-3 py-2 font-medium text-gray-600">Status</th>}
             <th className="text-right px-3 py-2 font-medium text-gray-600">Your Pay</th>
           </tr>
         </thead>
@@ -86,11 +98,24 @@ function SessionTable({ sessions, profId, viewOnly }) {
             const dateStr = (s.session_date || '').split('T')[0];
             const dow = dateStr ? new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }) : '—';
             const isToday = dateStr === today;
-            const lead = String(s.lead_professor_id) === String(profId);
+            const isTomorrow = dateStr === tomorrow;
+            const subStatus = getSubStatus(s);
+            const actualLead = s.session_professor_id || s.lead_professor_id;
+            const lead = String(actualLead) === String(profId);
             const pay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
             return (
-              <tr key={s.id} className={`${isToday ? 'bg-blue-50 font-medium' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                <td className="px-3 py-2">{formatDate(dateStr)}</td>
+              <tr key={s.id} className={`${
+                subStatus === 'requested' ? 'bg-amber-50' :
+                isToday ? 'bg-blue-50 font-medium' :
+                isTomorrow ? 'bg-blue-50/40' :
+                i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+              }`}>
+                <td className="px-3 py-2">
+                  {formatDate(dateStr)}
+                  {isToday && <span className="ml-1 text-[10px] font-medium text-blue-600 bg-blue-100 px-1 py-0.5 rounded">TODAY</span>}
+                  {isTomorrow && <span className="ml-1 text-[10px] font-medium text-blue-500 bg-blue-50 px-1 py-0.5 rounded">TOMORROW</span>}
+                  {subStatus === 'requested' && <span className="ml-1 text-[10px] font-medium text-amber-700 bg-amber-100 px-1 py-0.5 rounded">SUB REQUESTED</span>}
+                </td>
                 <td className="px-3 py-2 text-gray-500">{dow}</td>
                 <td className="px-3 py-2 text-gray-600">{s.session_time ? formatTime(s.session_time) : '—'}</td>
                 <td className="px-3 py-2">
@@ -98,6 +123,13 @@ function SessionTable({ sessions, profId, viewOnly }) {
                 </td>
                 <td className="px-3 py-2 text-gray-600">{s.location_nickname || '—'}</td>
                 <td className="px-3 py-2 text-gray-500">{s.lesson_name || '—'}</td>
+                {showStatus && <td className="px-3 py-2 text-center">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    s.class_status_name === 'Confirmed' ? 'bg-green-100 text-green-700' :
+                    s.class_status_name === 'Unconfirmed' ? 'bg-amber-100 text-amber-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>{s.class_status_name || '—'}</span>
+                </td>}
                 <td className="px-3 py-2 text-right font-medium text-green-700">
                   {pay > 0 ? formatCurrency(pay) : <span className="text-gray-300">—</span>}
                   {s.not_billed ? <span className="text-xs text-red-400 ml-1">(unbilled)</span> : ''}
@@ -137,6 +169,8 @@ export default function ProfessorSchedulePage() {
   const sessions = sched.sessions || [];
   const parties = sched.parties || [];
   const availability = sched.availability || [];
+  const subDates = sched.subDates || [];
+  const subDateSet = new Set(subDates.map(d => (d.date_requested || '').split('T')[0]));
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -144,8 +178,19 @@ export default function ProfessorSchedulePage() {
   const currentPrograms = programs.filter(p => !p.last_session_date || p.last_session_date.split('T')[0] >= today);
   const pastPrograms = programs.filter(p => p.last_session_date && p.last_session_date.split('T')[0] < today);
 
-  // Split sessions
-  const upcomingSessions = sessions.filter(s => (s.session_date || '').split('T')[0] >= today);
+  // For each session, determine this professor's sub status
+  // 'none' = no sub requested, 'requested' = sub requested but still on session, 'covered' = replaced by someone else
+  const getSubStatus = (s) => {
+    const dateStr = (s.session_date || '').split('T')[0];
+    if (!subDateSet.has(dateStr)) return 'none';
+    // Who's actually teaching? Session override takes priority, fallback to program default
+    const actualLead = s.session_professor_id || s.lead_professor_id;
+    const actualAssist = s.session_assistant_id || s.assistant_professor_id;
+    const stillOnSession = String(actualLead) === String(profId) || String(actualAssist) === String(profId);
+    return stillOnSession ? 'requested' : 'covered';
+  };
+  // Hide sessions where this prof has been fully replaced; keep "sub requested" ones visible
+  const upcomingSessions = sessions.filter(s => (s.session_date || '').split('T')[0] >= today && getSubStatus(s) !== 'covered');
   const pastSessions = sessions.filter(s => (s.session_date || '').split('T')[0] < today).reverse();
 
   // Pay totals
@@ -267,6 +312,55 @@ export default function ProfessorSchedulePage() {
             </Section>
           </div>
 
+          {/* Upcoming Sessions — top of schedule */}
+          <Section title={`Upcoming Sessions (${upcomingSessions.length})${totalUpcomingPay > 0 ? ' — ' + formatCurrency(totalUpcomingPay) + ' total' : ''}`} defaultOpen={true}>
+            {upcomingSessions.length === 0 ? (
+              <p className="text-sm text-gray-400">No upcoming sessions</p>
+            ) : (
+              <SessionTable sessions={upcomingSessions} profId={profId} viewOnly={viewOnly} subDateSet={subDateSet} showStatus={true} />
+            )}
+          </Section>
+
+          {/* Substitute Dates */}
+          {subDates.length > 0 && (() => {
+            const futSub = subDates.filter(d => (d.date_requested || '').split('T')[0] >= today)
+              .sort((a, b) => (a.date_requested || '').localeCompare(b.date_requested || ''));
+            const pastSub = subDates.filter(d => (d.date_requested || '').split('T')[0] < today)
+              .sort((a, b) => (b.date_requested || '').localeCompare(a.date_requested || ''));
+            return (
+              <Section title={`Substitute Dates (${futSub.length} upcoming)`} defaultOpen={futSub.length > 0}>
+                {futSub.length > 0 && (
+                  <div className="space-y-0.5 mb-3">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Upcoming</div>
+                    {futSub.map(d => (
+                      <div key={d.id} className="flex items-center gap-3 px-3 py-1.5 rounded bg-amber-50/50 text-sm">
+                        <span className="w-24 font-medium text-gray-700">{formatDate((d.date_requested || '').split('T')[0])}</span>
+                        <span className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{d.reason_name || 'No reason'}</span>
+                        {d.notes && <span className="text-xs text-gray-400 truncate">{d.notes}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {pastSub.length > 0 && (
+                  <details className="group">
+                    <summary className="text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600">
+                      Past ({pastSub.length})
+                    </summary>
+                    <div className="space-y-0.5 mt-1">
+                      {pastSub.map(d => (
+                        <div key={d.id} className="flex items-center gap-3 px-3 py-1 rounded bg-gray-50 text-sm text-gray-400">
+                          <span className="w-24">{formatDate((d.date_requested || '').split('T')[0])}</span>
+                          <span className="text-xs">{d.reason_name || '—'}</span>
+                          {d.notes && <span className="text-xs truncate">{d.notes}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </Section>
+            );
+          })()}
+
           {/* Current Classes */}
           <Section title={`Current Classes (${currentPrograms.length})`} defaultOpen={true}>
             {currentPrograms.length === 0 ? (
@@ -276,19 +370,10 @@ export default function ProfessorSchedulePage() {
             )}
           </Section>
 
-          {/* Upcoming Sessions */}
-          <Section title={`Upcoming Sessions (${upcomingSessions.length})${totalUpcomingPay > 0 ? ' — ' + formatCurrency(totalUpcomingPay) + ' total' : ''}`} defaultOpen={true}>
-            {upcomingSessions.length === 0 ? (
-              <p className="text-sm text-gray-400">No upcoming sessions</p>
-            ) : (
-              <SessionTable sessions={upcomingSessions} profId={profId} viewOnly={viewOnly} />
-            )}
-          </Section>
-
           {/* Past Sessions */}
           {pastSessions.length > 0 && (
             <Section title={`Past Sessions (${pastSessions.length})${totalPastPay > 0 ? ' — ' + formatCurrency(totalPastPay) + ' earned' : ''}`} defaultOpen={false}>
-              <SessionTable sessions={pastSessions} profId={profId} viewOnly={viewOnly} />
+              <SessionTable sessions={pastSessions} profId={profId} viewOnly={viewOnly} subDateSet={subDateSet} />
             </Section>
           )}
 

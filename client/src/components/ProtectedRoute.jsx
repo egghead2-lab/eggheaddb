@@ -25,6 +25,12 @@ export function ProtectedRoute({ children }) {
 
   const role = user.role;
 
+  // Candidates can only access the candidate portal
+  if (role === 'Candidate') {
+    if (location.pathname === '/candidate-portal') return children;
+    return <Navigate to="/candidate-portal" replace />;
+  }
+
   // Admin/CEO always pass
   if (ADMIN_ROLES.includes(role)) return children;
 

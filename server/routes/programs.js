@@ -643,13 +643,12 @@ router.post('/:id/roster/add', authenticate, async (req, res, next) => {
       [id, student_id, age || null, notes || null]
     );
 
-    // Update enrolled count
-    await pool.query(
-      `UPDATE program SET number_enrolled = (SELECT COUNT(*) FROM program_roster WHERE program_id = ? AND active = 1), ts_updated = NOW() WHERE id = ?`,
-      [id, id]
+    // Count active roster (not dropped)
+    const [[{ roster_count }]] = await pool.query(
+      `SELECT COUNT(*) AS roster_count FROM program_roster WHERE program_id = ? AND active = 1 AND date_dropped IS NULL`, [id]
     );
 
-    res.json({ success: true, id: result.insertId });
+    res.json({ success: true, id: result.insertId, roster_count });
   } catch (err) {
     next(err);
   }
@@ -665,13 +664,12 @@ router.delete('/:id/roster/:rosterId', authenticate, async (req, res, next) => {
       [rosterId, id]
     );
 
-    // Update enrolled count
-    await pool.query(
-      `UPDATE program SET number_enrolled = (SELECT COUNT(*) FROM program_roster WHERE program_id = ? AND active = 1), ts_updated = NOW() WHERE id = ?`,
-      [id, id]
+    // Count active roster (not dropped)
+    const [[{ roster_count }]] = await pool.query(
+      `SELECT COUNT(*) AS roster_count FROM program_roster WHERE program_id = ? AND active = 1 AND date_dropped IS NULL`, [id]
     );
 
-    res.json({ success: true });
+    res.json({ success: true, roster_count });
   } catch (err) {
     next(err);
   }
@@ -698,7 +696,15 @@ router.put('/:id/roster/:rosterId', authenticate, async (req, res, next) => {
       [...values, rosterId, id]
     );
 
-    res.json({ success: true });
+    // Return current roster count vs stored number_enrolled so client can detect mismatch
+    const [[{ roster_count }]] = await pool.query(
+      `SELECT COUNT(*) AS roster_count FROM program_roster WHERE program_id = ? AND active = 1 AND date_dropped IS NULL`, [id]
+    );
+    const [[{ number_enrolled }]] = await pool.query(
+      `SELECT number_enrolled FROM program WHERE id = ?`, [id]
+    );
+
+    res.json({ success: true, roster_count, number_enrolled });
   } catch (err) {
     next(err);
   }

@@ -261,19 +261,38 @@ export default function ProgramDetailPage() {
           )}
 
           {/* Roster — now includes enrollment info */}
-          {!isNew && (
-            <Section title={`Roster (${(prog.roster || []).filter(r => !r.date_dropped).length}${prog.maximum_students ? ' / ' + prog.maximum_students : ''} students)`} defaultOpen={true}>
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <Input label="Min Students" type="number" {...register('minimum_students')} />
-                <Input label="Max Students" type="number" {...register('maximum_students')} />
-              </div>
-              <RosterPanel
-                programId={id}
-                roster={prog.roster || []}
-                maxStudents={watch('maximum_students') || prog.maximum_students}
-              />
-            </Section>
-          )}
+          {!isNew && (() => {
+            const rosterCount = (prog.roster || []).filter(r => !r.date_dropped).length;
+            const enrolledVal = parseInt(watch('number_enrolled')) || 0;
+            const mismatch = rosterCount > 0 && enrolledVal !== rosterCount;
+            return (
+              <Section title={`Roster (${rosterCount}${prog.maximum_students ? ' / ' + prog.maximum_students : ''} students)`} defaultOpen={true}>
+                <div className="grid grid-cols-4 gap-3 mb-3">
+                  <div>
+                    <Input label="Enrolled #" type="number" {...register('number_enrolled')} />
+                    {mismatch && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium">
+                          Roster has {rosterCount} — enrolled shows {enrolledVal}
+                        </span>
+                        <button type="button" onClick={() => setValue('number_enrolled', rosterCount, { shouldDirty: true })}
+                          className="text-[10px] text-[#1e3a5f] hover:underline font-medium">Sync</button>
+                      </div>
+                    )}
+                  </div>
+                  <Input label="Min Students" type="number" {...register('minimum_students')} />
+                  <Input label="Max Students" type="number" {...register('maximum_students')} />
+                </div>
+                <RosterPanel
+                  programId={id}
+                  roster={prog.roster || []}
+                  maxStudents={watch('maximum_students') || prog.maximum_students}
+                  numberEnrolled={enrolledVal}
+                  onEnrolledSync={(count) => setValue('number_enrolled', count, { shouldDirty: true })}
+                />
+              </Section>
+            );
+          })()}
 
           {/* Compliance */}
           <Section title="Compliance Requirements">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -26,6 +26,9 @@ export default function CandidateDetailPage() {
   const [hireNickname, setHireNickname] = useState('');
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', due_date: '', assigned_to_user_id: '' });
+  const [generatedPassword, setGeneratedPassword] = useState(null);
+  const [msgBody, setMsgBody] = useState('');
+  const messagesEndRef = useRef(null);
 
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
@@ -48,6 +51,14 @@ export default function CandidateDetailPage() {
     queryFn: () => api.get('/onboarding/templates').then(r => r.data),
   });
   const templates = templatesData?.data || [];
+
+  const { data: messagesData } = useQuery({
+    queryKey: ['candidate-messages', id],
+    queryFn: () => api.get(`/onboarding/candidates/${id}/messages`).then(r => r.data),
+    enabled: !isNew && !!id,
+    refetchInterval: 30000,
+  });
+  const messages = messagesData?.data || [];
 
   const { register, handleSubmit, reset, setValue, watch, formState: { isDirty } } = useForm();
 
@@ -94,6 +105,26 @@ export default function CandidateDetailPage() {
     onSuccess: () => qc.invalidateQueries(['candidate', id]),
   });
 
+  const sendMessageMutation = useMutation({
+    mutationFn: (body) => api.post(`/onboarding/candidates/${id}/messages`, { body }),
+    onSuccess: () => { setMsgBody(''); qc.invalidateQueries(['candidate-messages', id]); },
+  });
+
+  const generateLoginMutation = useMutation({
+    mutationFn: () => api.post(`/onboarding/candidates/${id}/generate-login`).then(r => r.data),
+    onSuccess: (res) => { setGeneratedPassword(res.password); qc.invalidateQueries(['candidate', id]); },
+  });
+
+  const regenPasswordMutation = useMutation({
+    mutationFn: () => api.post(`/onboarding/candidates/${id}/regenerate-password`).then(r => r.data),
+    onSuccess: (res) => { setGeneratedPassword(res.password); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/onboarding/candidates/${id}`),
+    onSuccess: () => { qc.invalidateQueries(['candidates']); navigate('/candidates'); },
+  });
+
   const hireMutation = useMutation({
     mutationFn: () => api.post(`/onboarding/candidates/${id}/hire`, { professor_nickname: hireNickname }),
     onSuccess: (res) => { qc.invalidateQueries(['candidate', id]); setShowHire(false); },
@@ -124,7 +155,14 @@ export default function CandidateDetailPage() {
             </div>
           </div>
           {!isNew && candidate.status !== 'hired' && (
-            <Button type="button" onClick={() => setShowHire(true)}>Hire as Professor</Button>
+            <div className="flex items-center gap-2">
+              <button type="button"
+                onClick={() => { if (confirm(`Remove ${candidate.full_name}? This will deactivate their candidate record${candidate.user_id ? ' and disable their login' : ''}.`)) deleteMutation.mutate(); }}
+                className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                {deleteMutation.isPending ? 'Removing…' : 'Uninvite'}
+              </button>
+              <Button type="button" onClick={() => setShowHire(true)}>Hire as Professor</Button>
+            </div>
           )}
         </div>
 
@@ -162,6 +200,60 @@ export default function CandidateDetailPage() {
               </div>
             </div>
           </Section>
+
+          {/* Login Credentials */}
+          {!isNew && (
+            <Section title="Login Credentials" defaultOpen={true}>
+              {candidate.user_id ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-6">
+                    <div>
+                      <label className="text-xs text-gray-500">Username</label>
+                      <div className="text-sm font-mono font-medium text-gray-800">{candidate.login_username}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Role</label>
+                      <div className="text-sm text-gray-600">{candidate.login_role || 'Candidate'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Account Status</label>
+                      <div className={`text-sm font-medium ${candidate.login_active ? 'text-green-600' : 'text-red-600'}`}>
+                        {candidate.login_active ? 'Active' : 'Inactive'}
+                      </div>
+                    </div>
+                  </div>
+                  {generatedPassword && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-amber-800">New Password (copy now — it won't be shown again)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono bg-white px-2 py-1 rounded border border-amber-200 select-all">{generatedPassword}</code>
+                        <button type="button" onClick={() => { navigator.clipboard.writeText(generatedPassword); }}
+                          className="text-xs text-amber-700 hover:text-amber-900 underline">Copy</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => { if (confirm('Generate a new password? The current password will stop working.')) regenPasswordMutation.mutate(); }}
+                      className="text-xs text-[#1e3a5f] hover:underline">Regenerate Password</button>
+                    {regenPasswordMutation.isPending && <span className="text-xs text-gray-400">Generating…</span>}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500">No login credentials have been generated yet.</p>
+                  <Button type="button" size="sm" onClick={() => generateLoginMutation.mutate()}
+                    disabled={generateLoginMutation.isPending}>
+                    {generateLoginMutation.isPending ? 'Generating…' : 'Generate Login'}
+                  </Button>
+                  {generateLoginMutation.isError && (
+                    <p className="text-sm text-red-600">{generateLoginMutation.error?.response?.data?.error || 'Failed to generate login'}</p>
+                  )}
+                </div>
+              )}
+            </Section>
+          )}
 
           {/* Checklist */}
           {!isNew && (
@@ -249,6 +341,46 @@ export default function CandidateDetailPage() {
               ) : (
                 <button type="button" onClick={() => setShowAddTask(true)} className="text-xs text-[#1e3a5f] hover:underline">+ Add task</button>
               )}
+            </Section>
+          )}
+
+          {/* Messages */}
+          {!isNew && (
+            <Section title={`Messages (${messages.length})`} defaultOpen={true}>
+              <div className="space-y-2 max-h-80 overflow-y-auto mb-3">
+                {messages.length === 0 && (
+                  <p className="text-sm text-gray-400 py-2">No messages yet.</p>
+                )}
+                {messages.map(m => (
+                  <div key={m.id} className={`flex ${m.is_from_candidate ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`max-w-[75%] rounded-lg px-3 py-2 ${
+                      m.is_from_candidate
+                        ? 'bg-gray-100 text-gray-800'
+                        : 'bg-[#1e3a5f] text-white'
+                    }`}>
+                      <div className={`text-xs font-medium mb-0.5 ${m.is_from_candidate ? 'text-gray-500' : 'text-white/70'}`}>
+                        {m.is_from_candidate ? 'Candidate' : m.sender_name}
+                      </div>
+                      <div className="text-sm whitespace-pre-wrap">{m.body}</div>
+                      <div className={`text-[10px] mt-1 ${m.is_from_candidate ? 'text-gray-400' : 'text-white/50'}`}>
+                        {new Date(m.ts_inserted).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+              <div className="flex gap-2">
+                <input type="text" value={msgBody} onChange={e => setMsgBody(e.target.value)}
+                  placeholder="Send a message to the candidate…"
+                  onKeyDown={e => { if (e.key === 'Enter' && msgBody.trim()) { e.preventDefault(); sendMessageMutation.mutate(msgBody); } }}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <button type="button" onClick={() => { if (msgBody.trim()) sendMessageMutation.mutate(msgBody); }}
+                  disabled={!msgBody.trim() || sendMessageMutation.isPending}
+                  className="px-4 py-2 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152a47] disabled:opacity-50 transition-colors">
+                  {sendMessageMutation.isPending ? 'Sending…' : 'Send'}
+                </button>
+              </div>
             </Section>
           )}
         </div>

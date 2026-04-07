@@ -42,6 +42,8 @@ import CandidatesPage from './pages/CandidatesPage';
 import CandidateDetailPage from './pages/CandidateDetailPage';
 import OnboardingRequirementsPage from './pages/OnboardingRequirementsPage';
 import OnboardingTemplatesPage from './pages/OnboardingTemplatesPage';
+import CandidatePortalPage from './pages/CandidatePortalPage';
+import SubManagementPage from './pages/SubManagementPage';
 
 export default function App() {
   return (
@@ -99,6 +101,8 @@ export default function App() {
       <Route path="/report-builder" element={<ProtectedRoute><ReportBuilderPage /></ProtectedRoute>} />
       <Route path="/team-dashboard" element={<ProtectedRoute><TeamDashboardPage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
+      <Route path="/sub-management" element={<ProtectedRoute><SubManagementPage /></ProtectedRoute>} />
+      <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -54,16 +54,21 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
       [professorId, professorId]
     );
 
-    // Upcoming sessions for this professor (next 60 days)
+    // Sessions for this professor
     const [sessions] = await pool.query(
       `SELECT s.id, s.session_date, s.session_time, s.professor_pay, s.assistant_pay,
               s.not_billed, s.specific_notes,
-              prog.program_nickname, prog.lead_professor_id,
+              s.professor_id AS session_professor_id,
+              s.assistant_id AS session_assistant_id,
+              prog.program_nickname, prog.lead_professor_id, prog.assistant_professor_id,
+              prog.id AS program_id,
+              cs.class_status_name,
               loc.nickname AS location_nickname,
               cl.class_name,
               l.lesson_name
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN lesson l ON l.id = s.lesson_id
@@ -106,6 +111,16 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
       [professorId]
     );
 
+    // Substitute dates
+    const [subDates] = await pool.query(
+      `SELECT d.id, d.date_requested, d.substitute_reason_id, d.notes, sr.reason_name
+       FROM day_off d
+       LEFT JOIN substitute_reason sr ON sr.id = d.substitute_reason_id
+       WHERE d.professor_id = ? AND d.active = 1
+       ORDER BY d.date_requested DESC`,
+      [professorId]
+    );
+
     res.json({
       success: true,
       data: {
@@ -114,6 +129,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
         sessions,
         parties,
         availability,
+        subDates,
       },
     });
   } catch (err) {

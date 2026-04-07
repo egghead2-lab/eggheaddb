@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { searchStudents, addToRoster, removeFromRoster, updateRosterEntry, updateStudent } from '../api/students';
 import { Input } from './ui/Input';
 
-export function RosterPanel({ programId, roster, maxStudents }) {
+export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, onEnrolledSync }) {
   const [selectedId, setSelectedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -28,18 +28,43 @@ export function RosterPanel({ programId, roster, maxStudents }) {
 
   const addMutation = useMutation({
     mutationFn: (data) => addToRoster(programId, data),
-    onSuccess: () => { invalidate(); setSearchQuery(''); setSearchResults([]); setAddError(''); },
+    onSuccess: (res) => {
+      invalidate(); setSearchQuery(''); setSearchResults([]); setAddError('');
+      // Prompt to sync enrolled count
+      const newCount = res?.roster_count;
+      if (newCount && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
+        if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
+          onEnrolledSync(newCount);
+        }
+      }
+    },
     onError: (err) => setAddError(err?.response?.data?.error || 'Failed to add student'),
   });
 
   const removeMutation = useMutation({
     mutationFn: (rosterId) => removeFromRoster(programId, rosterId),
-    onSuccess: () => { invalidate(); setSelectedId(null); },
+    onSuccess: (res) => {
+      invalidate(); setSelectedId(null);
+      const newCount = res?.roster_count;
+      if (newCount !== undefined && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
+        if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
+          onEnrolledSync(newCount);
+        }
+      }
+    },
   });
 
   const updateRosterMutation = useMutation({
     mutationFn: ({ rosterId, data }) => updateRosterEntry(programId, rosterId, data),
-    onSuccess: invalidate,
+    onSuccess: (res) => {
+      invalidate();
+      const newCount = res?.roster_count;
+      if (newCount !== undefined && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
+        if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
+          onEnrolledSync(newCount);
+        }
+      }
+    },
   });
 
   const updateStudentMutation = useMutation({
@@ -96,7 +121,12 @@ export function RosterPanel({ programId, roster, maxStudents }) {
       <div className={`flex items-center gap-3 mb-3 px-3 py-2 rounded-lg text-sm font-medium ${
         isFull ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
       }`}>
-        <span>Enrolled: {activeCount}{maxStudents ? ` / ${maxStudents}` : ''}</span>
+        <span>Roster: {activeCount}{maxStudents ? ` / ${maxStudents}` : ''}</span>
+        {numberEnrolled !== undefined && activeCount !== numberEnrolled && activeCount > 0 && (
+          <span className="text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded text-xs">
+            Enrolled # is {numberEnrolled}
+          </span>
+        )}
         {droppedStudents.length > 0 && (
           <span className="text-gray-500 font-normal">({droppedStudents.length} dropped)</span>
         )}

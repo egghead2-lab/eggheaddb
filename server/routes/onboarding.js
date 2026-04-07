@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+
+const CANDIDATE_ROLE_ID = 16;
 
 router.use(authenticate);
 
@@ -35,8 +39,13 @@ router.get('/candidates', async (req, res, next) => {
               CONCAT(rec.first_name, ' ', rec.last_name) AS recruiter_name,
               (SELECT COUNT(*) FROM candidate_requirement cr WHERE cr.candidate_id = c.id AND cr.completed = 0) AS open_reqs,
               (SELECT COUNT(*) FROM candidate_requirement cr WHERE cr.candidate_id = c.id) AS total_reqs,
-              (SELECT COUNT(*) FROM candidate_task ct WHERE ct.candidate_id = c.id AND ct.completed = 0) AS open_tasks
+              (SELECT COUNT(*) FROM candidate_task ct WHERE ct.candidate_id = c.id AND ct.completed = 0) AS open_tasks,
+              IF(c.user_id IS NOT NULL, 1, 0) AS has_login,
+              cu.user_name AS login_username,
+              cu.last_login_at,
+              (SELECT COUNT(*) FROM candidate_message cm WHERE cm.candidate_id = c.id AND cm.is_from_candidate = 1) AS candidate_messages
        FROM candidate c
+       LEFT JOIN user cu ON cu.id = c.user_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN user onb ON onb.id = c.onboarder_user_id
        LEFT JOIN user tr ON tr.id = c.trainer_user_id
@@ -65,12 +74,17 @@ router.get('/candidates/:id', async (req, res, next) => {
               ga.geographic_area_name,
               CONCAT(onb.first_name, ' ', onb.last_name) AS onboarder_name,
               CONCAT(tr.first_name, ' ', tr.last_name) AS trainer_name,
-              CONCAT(rec.first_name, ' ', rec.last_name) AS recruiter_name
+              CONCAT(rec.first_name, ' ', rec.last_name) AS recruiter_name,
+              cu.user_name AS login_username,
+              cu.active AS login_active,
+              r.role_name AS login_role
        FROM candidate c
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN user onb ON onb.id = c.onboarder_user_id
        LEFT JOIN user tr ON tr.id = c.trainer_user_id
        LEFT JOIN user rec ON rec.id = c.recruiter_user_id
+       LEFT JOIN user cu ON cu.id = c.user_id
+       LEFT JOIN role r ON r.id = cu.role_id
        WHERE c.id = ?`, [id]
     );
     if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
@@ -141,6 +155,95 @@ router.put('/candidates/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// DELETE /api/onboarding/candidates/:id — soft-delete candidate and deactivate their user account
+router.delete('/candidates/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[candidate]] = await pool.query('SELECT * FROM candidate WHERE id = ?', [id]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
+
+    // Deactivate the candidate
+    await pool.query('UPDATE candidate SET active = 0, status = ? WHERE id = ?',
+      [candidate.status === 'hired' ? 'hired' : 'rejected', id]);
+
+    // Deactivate their user account if one exists
+    if (candidate.user_id) {
+      await pool.query('UPDATE user SET active = 0, ts_updated = NOW() WHERE id = ?', [candidate.user_id]);
+    }
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidates/:id/generate-login — create user account for candidate
+router.post('/candidates/:id/generate-login', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[candidate]] = await pool.query('SELECT * FROM candidate WHERE id = ?', [id]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
+    if (candidate.user_id) return res.status(400).json({ success: false, error: 'Login already exists' });
+
+    // Generate username from name: first.last (lowercase, no spaces)
+    const nameParts = candidate.full_name.trim().toLowerCase().split(/\s+/);
+    let baseUsername = nameParts.length > 1
+      ? `${nameParts[0]}.${nameParts[nameParts.length - 1]}`
+      : nameParts[0];
+    baseUsername = baseUsername.replace(/[^a-z0-9.]/g, '');
+
+    // Check for duplicates and append number if needed
+    let username = baseUsername;
+    let suffix = 1;
+    while (true) {
+      const [existing] = await pool.query('SELECT id FROM user WHERE user_name = ?', [username]);
+      if (existing.length === 0) break;
+      username = `${baseUsername}${suffix}`;
+      suffix++;
+    }
+
+    // Generate random password (8 chars, readable)
+    const rawPassword = crypto.randomBytes(4).toString('hex'); // e.g. "a3f1b2c4"
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    // Split name for user record
+    const first = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1);
+    const last = nameParts.length > 1
+      ? nameParts.slice(1).map(n => n.charAt(0).toUpperCase() + n.slice(1)).join(' ')
+      : '';
+
+    // Create user with Candidate role
+    const [userResult] = await pool.query(
+      `INSERT INTO user (first_name, last_name, email, user_name, password, role_id, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [first, last, candidate.email, username, hashedPassword, CANDIDATE_ROLE_ID]
+    );
+
+    // Link user to candidate
+    await pool.query('UPDATE candidate SET user_id = ? WHERE id = ?', [userResult.insertId, id]);
+
+    res.json({ success: true, user_id: userResult.insertId, username, password: rawPassword });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, error: 'A user with this email already exists' });
+    next(err);
+  }
+});
+
+// POST /api/onboarding/candidates/:id/regenerate-password — reset candidate password
+router.post('/candidates/:id/regenerate-password', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[candidate]] = await pool.query('SELECT user_id FROM candidate WHERE id = ?', [id]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
+    if (!candidate.user_id) return res.status(400).json({ success: false, error: 'No login exists yet' });
+
+    const rawPassword = crypto.randomBytes(4).toString('hex');
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    await pool.query('UPDATE user SET password = ?, ts_updated = NOW() WHERE id = ?', [hashedPassword, candidate.user_id]);
+
+    res.json({ success: true, password: rawPassword });
+  } catch (err) { next(err); }
+});
+
 // POST /api/onboarding/candidates/:id/hire — convert candidate to professor
 router.post('/candidates/:id/hire', async (req, res, next) => {
   try {
@@ -165,6 +268,11 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
     // Link candidate to professor and mark as hired
     await pool.query('UPDATE candidate SET professor_id = ?, status = ? WHERE id = ?',
       [profResult.insertId, 'hired', id]);
+
+    // If candidate has a user account, upgrade role from Candidate to Professor (role_id 15)
+    if (candidate.user_id) {
+      await pool.query('UPDATE user SET role_id = 15, ts_updated = NOW() WHERE id = ?', [candidate.user_id]);
+    }
 
     res.json({ success: true, professor_id: profResult.insertId });
   } catch (err) { next(err); }
@@ -432,6 +540,112 @@ router.get('/dashboard', async (req, res, next) => {
       openReqs: openReqs.cnt, overdueReqs: overdueReqs.cnt,
       openTasks: openTasks.cnt, overdueTasks: overdueTasks.cnt,
     }});
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// CANDIDATE PORTAL (self-service for logged-in candidates)
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/onboarding/my-portal — candidate views their own data
+router.get('/my-portal', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+
+    // Find candidate linked to this user
+    const [[candidate]] = await pool.query(
+      `SELECT c.id, c.full_name, c.email, c.phone, c.status, c.first_class_date,
+              ga.geographic_area_name,
+              CONCAT(onb.first_name, ' ', onb.last_name) AS onboarder_name,
+              CONCAT(tr.first_name, ' ', tr.last_name) AS trainer_name
+       FROM candidate c
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN user onb ON onb.id = c.onboarder_user_id
+       LEFT JOIN user tr ON tr.id = c.trainer_user_id
+       WHERE c.user_id = ? AND c.active = 1`, [userId]
+    );
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    // Requirements
+    const [requirements] = await pool.query(
+      `SELECT cr.id, cr.completed, cr.status, cr.due_date, cr.notes,
+              r.title, r.description, r.category, r.type
+       FROM candidate_requirement cr
+       JOIN onboarding_requirement r ON r.id = cr.requirement_id
+       WHERE cr.candidate_id = ?
+       ORDER BY cr.completed, r.sort_order, r.title`, [candidate.id]
+    );
+
+    // Tasks
+    const [tasks] = await pool.query(
+      `SELECT ct.id, ct.title, ct.description, ct.due_date, ct.completed, ct.completed_at,
+              CONCAT(u.first_name, ' ', u.last_name) AS assigned_to_name
+       FROM candidate_task ct
+       LEFT JOIN user u ON u.id = ct.assigned_to_user_id
+       WHERE ct.candidate_id = ?
+       ORDER BY ct.completed, ct.due_date, ct.ts_inserted`, [candidate.id]
+    );
+
+    // Messages
+    const [messages] = await pool.query(
+      `SELECT cm.id, cm.body, cm.sent_by_user_id, cm.is_from_candidate, cm.ts_inserted,
+              CONCAT(u.first_name, ' ', u.last_name) AS sender_name
+       FROM candidate_message cm
+       LEFT JOIN user u ON u.id = cm.sent_by_user_id
+       WHERE cm.candidate_id = ?
+       ORDER BY cm.ts_inserted ASC`, [candidate.id]
+    );
+
+    res.json({ success: true, data: { ...candidate, requirements, tasks, messages } });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// CANDIDATE MESSAGES
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/onboarding/candidates/:id/messages
+router.get('/candidates/:id/messages', async (req, res, next) => {
+  try {
+    const [messages] = await pool.query(
+      `SELECT cm.id, cm.body, cm.sent_by_user_id, cm.is_from_candidate, cm.ts_inserted,
+              CONCAT(u.first_name, ' ', u.last_name) AS sender_name
+       FROM candidate_message cm
+       LEFT JOIN user u ON u.id = cm.sent_by_user_id
+       WHERE cm.candidate_id = ?
+       ORDER BY cm.ts_inserted ASC`, [req.params.id]
+    );
+    res.json({ success: true, data: messages });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidates/:id/messages — staff sends a message
+router.post('/candidates/:id/messages', async (req, res, next) => {
+  try {
+    const { body } = req.body;
+    if (!body?.trim()) return res.status(400).json({ success: false, error: 'Message body required' });
+    const [result] = await pool.query(
+      `INSERT INTO candidate_message (candidate_id, sent_by_user_id, body, is_from_candidate) VALUES (?, ?, ?, 0)`,
+      [req.params.id, req.user.userId, body.trim()]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/my-portal/messages — candidate sends a message
+router.post('/my-portal/messages', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    const { body } = req.body;
+    if (!body?.trim()) return res.status(400).json({ success: false, error: 'Message body required' });
+    const [result] = await pool.query(
+      `INSERT INTO candidate_message (candidate_id, sent_by_user_id, body, is_from_candidate) VALUES (?, ?, ?, 1)`,
+      [candidate.id, userId, body.trim()]
+    );
+    res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
 });
 

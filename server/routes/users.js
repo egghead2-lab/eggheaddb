@@ -24,6 +24,9 @@ router.get('/', async (req, res, next) => {
     if (role) {
       whereClauses.push(`r.role_name = ?`);
       params.push(role);
+    } else if (req.query.include_candidates !== 'true') {
+      // By default exclude Candidate-role users from staff lists
+      whereClauses.push(`(u.role_id IS NULL OR u.role_id != 16)`);
     }
 
     const where = `WHERE ${whereClauses.join(' AND ')}`;
