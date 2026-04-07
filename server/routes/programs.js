@@ -638,8 +638,8 @@ router.post('/:id/roster/add', authenticate, async (req, res, next) => {
     if (existing) return res.status(400).json({ success: false, error: 'Student is already on this roster' });
 
     const [result] = await pool.query(
-      `INSERT INTO program_roster (program_id, student_id, age, notes, active, ts_inserted, ts_updated)
-       VALUES (?, ?, ?, ?, 1, NOW(), NOW())`,
+      `INSERT INTO program_roster (program_id, student_id, age, notes, date_applied, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, CURDATE(), 1, NOW(), NOW())`,
       [id, student_id, age || null, notes || null]
     );
 

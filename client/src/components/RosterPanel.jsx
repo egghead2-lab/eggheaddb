@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { searchStudents, addToRoster, removeFromRoster, updateRosterEntry, updateStudent } from '../api/students';
+import api from '../api/client';
 import { Input } from './ui/Input';
 
 export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, onEnrolledSync }) {
@@ -9,6 +10,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [editNotes, setEditNotes] = useState('');
   const [editAge, setEditAge] = useState('');
   const [editFirst, setEditFirst] = useState('');
@@ -16,6 +18,10 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
   const [editDateDropped, setEditDateDropped] = useState('');
   const [editWeeksAttended, setEditWeeksAttended] = useState('');
   const [addError, setAddError] = useState('');
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickFirst, setQuickFirst] = useState('');
+  const [quickLast, setQuickLast] = useState('');
+  const searchTimeout = useRef(null);
   const qc = useQueryClient();
 
   const selected = roster.find(r => r.id === selectedId);
@@ -26,17 +32,32 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
 
   const invalidate = () => qc.invalidateQueries(['programs', String(programId)]);
 
+  const promptSync = (newCount) => {
+    if (newCount !== undefined && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
+      if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
+        onEnrolledSync(newCount);
+      }
+    }
+  };
+
   const addMutation = useMutation({
     mutationFn: (data) => addToRoster(programId, data),
     onSuccess: (res) => {
-      invalidate(); setSearchQuery(''); setSearchResults([]); setAddError('');
-      // Prompt to sync enrolled count
-      const newCount = res?.roster_count;
-      if (newCount && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
-        if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
-          onEnrolledSync(newCount);
-        }
-      }
+      invalidate(); setSearchQuery(''); setSearchResults([]); setShowDropdown(false); setAddError('');
+      promptSync(res?.roster_count);
+    },
+    onError: (err) => setAddError(err?.response?.data?.error || 'Failed to add student'),
+  });
+
+  const quickAddMutation = useMutation({
+    mutationFn: async ({ first_name, last_name }) => {
+      const studentRes = await api.post('/students', { first_name, last_name }).then(r => r.data);
+      const rosterRes = await addToRoster(programId, { student_id: studentRes.id });
+      return rosterRes;
+    },
+    onSuccess: (res) => {
+      invalidate(); setQuickFirst(''); setQuickLast(''); setShowQuickAdd(false); setAddError('');
+      promptSync(res?.roster_count);
     },
     onError: (err) => setAddError(err?.response?.data?.error || 'Failed to add student'),
   });
@@ -45,12 +66,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
     mutationFn: (rosterId) => removeFromRoster(programId, rosterId),
     onSuccess: (res) => {
       invalidate(); setSelectedId(null);
-      const newCount = res?.roster_count;
-      if (newCount !== undefined && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
-        if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
-          onEnrolledSync(newCount);
-        }
-      }
+      promptSync(res?.roster_count);
     },
   });
 
@@ -58,12 +74,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
     mutationFn: ({ rosterId, data }) => updateRosterEntry(programId, rosterId, data),
     onSuccess: (res) => {
       invalidate();
-      const newCount = res?.roster_count;
-      if (newCount !== undefined && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
-        if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
-          onEnrolledSync(newCount);
-        }
-      }
+      promptSync(res?.roster_count);
     },
   });
 
@@ -72,17 +83,25 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
     onSuccess: invalidate,
   });
 
-  const handleSearch = async (val) => {
+  const handleSearch = (val) => {
     setSearchQuery(val);
     setAddError('');
-    if (val.length < 2) { setSearchResults([]); return; }
-    setSearching(true);
-    try {
-      const res = await searchStudents(val);
-      const existingIds = new Set(roster.map(r => r.student_id));
-      setSearchResults((res.data || []).filter(s => !existingIds.has(s.id)));
-    } catch { setSearchResults([]); }
-    setSearching(false);
+    if (val.length < 2) { setSearchResults([]); setShowDropdown(false); return; }
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await searchStudents(val);
+        const existingIds = new Set(roster.map(r => r.student_id));
+        setSearchResults((res.data || []).filter(s => !existingIds.has(s.id)));
+        setShowDropdown(true);
+      } catch { setSearchResults([]); }
+      setSearching(false);
+    }, 200);
+  };
+
+  const handleAddFromSearch = (student) => {
+    addMutation.mutate({ student_id: student.id });
   };
 
   const handleSelect = (r) => {
@@ -143,8 +162,6 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                 <h4 className="text-sm font-semibold text-gray-700">Edit Student</h4>
                 <button onClick={() => setSelectedId(null)} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
               </div>
-
-              {/* Status badge */}
               <div>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                   isDropped ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
@@ -164,12 +181,8 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
               <Input label="Age" type="number" value={editAge} onChange={e => setEditAge(e.target.value)} />
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-700">Notes</label>
-                <textarea
-                  value={editNotes}
-                  onChange={e => setEditNotes(e.target.value)}
-                  rows={2}
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
-                />
+                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2}
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
               </div>
 
               <hr className="border-gray-200" />
@@ -217,47 +230,71 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
 
         {/* Right side — roster table + add */}
         <div className="flex-1 min-w-0">
-          {/* Add student search */}
-          <div className="mb-3 relative">
-            <input
-              type="text"
-              placeholder={isFull ? `Class is full (${activeCount}/${maxStudents})` : 'Search to add student…'}
-              value={searchQuery}
-              onChange={e => handleSearch(e.target.value)}
-              disabled={isFull}
-              className={`w-full rounded border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 disabled:bg-gray-100 disabled:text-gray-400 ${
-                isFull ? 'border-red-300 focus:border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]'
-              }`}
-            />
-            {searchQuery && searchResults.length > 0 && (
-              <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                {searchResults.map(s => (
-                  <li
-                    key={s.id}
-                    onClick={() => addMutation.mutate({ student_id: s.id })}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-[#1e3a5f]/10 flex justify-between"
-                  >
-                    <span className="font-medium">{s.first_name} {s.last_name}</span>
-                    {s.parent_first_name && (
-                      <span className="text-gray-400 text-xs">Parent: {s.parent_first_name} {s.parent_last_name}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {searchQuery && searchQuery.length >= 2 && searchResults.length === 0 && !searching && (
-              <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg px-3 py-2 text-sm text-gray-400">
-                No students found
-              </div>
-            )}
-            {addError && (
-              <div className="mt-1 px-3 py-1.5 bg-red-50 border border-red-200 rounded text-sm text-red-700 font-medium">
-                {addError}
-              </div>
+          {/* Add student — search or quick add */}
+          <div className="mb-3 flex gap-2">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                placeholder={isFull ? `Class is full (${activeCount}/${maxStudents})` : 'Search existing student to add…'}
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                onFocus={() => { if (searchResults.length > 0) setShowDropdown(true); }}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+                disabled={isFull}
+                className={`w-full rounded border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 disabled:bg-gray-100 disabled:text-gray-400 ${
+                  isFull ? 'border-red-300' : 'border-gray-300 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]'
+                }`}
+              />
+              {showDropdown && searchResults.length > 0 && (
+                <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {searchResults.map(s => (
+                    <li key={s.id}
+                      onMouseDown={e => { e.preventDefault(); handleAddFromSearch(s); }}
+                      className="px-3 py-2 text-sm cursor-pointer hover:bg-[#1e3a5f]/10 flex justify-between">
+                      <span className="font-medium">{s.first_name} {s.last_name}</span>
+                      {s.parent_first_name && (
+                        <span className="text-gray-400 text-xs">Parent: {s.parent_first_name} {s.parent_last_name}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {showDropdown && searchQuery.length >= 2 && searchResults.length === 0 && !searching && (
+                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg px-3 py-2 text-sm text-gray-400">
+                  No existing students found
+                </div>
+              )}
+            </div>
+            {!isFull && (
+              <button type="button" onClick={() => setShowQuickAdd(v => !v)}
+                className="px-3 py-1.5 text-xs font-medium text-[#1e3a5f] border border-[#1e3a5f]/30 rounded hover:bg-[#1e3a5f]/5 whitespace-nowrap">
+                + New Student
+              </button>
             )}
           </div>
 
-          {/* Active roster table */}
+          {/* Quick add form */}
+          {showQuickAdd && (
+            <div className="mb-3 bg-gray-50 rounded-lg border border-gray-200 p-3 flex items-end gap-2">
+              <Input label="First Name" value={quickFirst} onChange={e => setQuickFirst(e.target.value)} className="w-40" />
+              <Input label="Last Name" value={quickLast} onChange={e => setQuickLast(e.target.value)} className="w-40" />
+              <button type="button" disabled={!quickFirst.trim() || !quickLast.trim() || quickAddMutation.isPending}
+                onClick={() => quickAddMutation.mutate({ first_name: quickFirst.trim(), last_name: quickLast.trim() })}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-[#1e3a5f] rounded hover:bg-[#152a47] disabled:opacity-50">
+                {quickAddMutation.isPending ? 'Adding…' : 'Create & Add'}
+              </button>
+              <button type="button" onClick={() => { setShowQuickAdd(false); setQuickFirst(''); setQuickLast(''); }}
+                className="text-xs text-gray-400 hover:text-gray-600 py-1.5">Cancel</button>
+            </div>
+          )}
+
+          {addError && (
+            <div className="mb-3 px-3 py-1.5 bg-red-50 border border-red-200 rounded text-sm text-red-700 font-medium">
+              {addError}
+            </div>
+          )}
+
+          {/* Roster table */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -276,15 +313,12 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                 ) : (
                   <>
                     {activeStudents.map((r, i) => (
-                      <tr
-                        key={r.id}
-                        onClick={() => handleSelect(r)}
+                      <tr key={r.id} onClick={() => handleSelect(r)}
                         className={`cursor-pointer transition-colors ${
                           selectedId === r.id
                             ? 'bg-[#1e3a5f]/10'
                             : i % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'
-                        }`}
-                      >
+                        }`}>
                         <td className="px-3 py-2 font-medium text-gray-900">{r.last_name}, {r.first_name}</td>
                         <td className="px-3 py-2 text-gray-600">{r.age || '—'}</td>
                         <td className="px-3 py-2 text-gray-600">
@@ -301,13 +335,10 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                       <>
                         <tr><td colSpan={6} className="bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Dropped ({droppedStudents.length})</td></tr>
                         {droppedStudents.map((r) => (
-                          <tr
-                            key={r.id}
-                            onClick={() => handleSelect(r)}
+                          <tr key={r.id} onClick={() => handleSelect(r)}
                             className={`cursor-pointer transition-colors ${
                               selectedId === r.id ? 'bg-[#1e3a5f]/10' : 'bg-red-50/30 hover:bg-red-50'
-                            }`}
-                          >
+                            }`}>
                             <td className="px-3 py-2 font-medium text-gray-500">{r.last_name}, {r.first_name}</td>
                             <td className="px-3 py-2 text-gray-400">{r.age || '—'}</td>
                             <td className="px-3 py-2 text-gray-400">
