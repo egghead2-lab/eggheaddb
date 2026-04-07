@@ -105,14 +105,18 @@ export default function CandidatesPage() {
             { label: 'Pending', value: dash.pending, color: 'text-amber-600', bg: 'bg-amber-50' },
             { label: 'In Progress', value: dash.inProgress, color: 'text-blue-600', bg: 'bg-blue-50' },
             { label: viewMode === 'mine' ? 'My Overdue Reqs' : 'Overdue Reqs', value: viewMode === 'mine' ? myOverdueReqs : dash.overdueReqs, color: 'text-red-600', bg: 'bg-red-50' },
-            { label: 'Pending Approvals', value: dash.pendingApprovals, color: 'text-orange-600', bg: 'bg-orange-50' },
+            { label: 'Pending Approvals', value: dash.pendingApprovals, color: 'text-orange-600', bg: 'bg-orange-50', link: '/pending-approvals' },
             { label: viewMode === 'mine' ? 'My Open Tasks' : 'Open Tasks', value: viewMode === 'mine' ? myOpenReqs + myOpenTasks : dash.openTasks, color: 'text-violet-600', bg: 'bg-violet-50' },
-          ].map(kpi => (
-            <div key={kpi.label} className={`${kpi.bg} rounded-lg p-4 border border-gray-100`}>
-              <div className={`text-2xl font-bold ${kpi.color}`}>{kpi.value ?? '—'}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{kpi.label}</div>
-            </div>
-          ))}
+          ].map(kpi => {
+            const Tag = kpi.link ? Link : 'div';
+            const linkProps = kpi.link ? { to: kpi.link } : {};
+            return (
+              <Tag key={kpi.label} {...linkProps} className={`${kpi.bg} rounded-lg p-4 border border-gray-100 ${kpi.link ? 'hover:shadow-md transition-shadow cursor-pointer' : ''}`}>
+                <div className={`text-2xl font-bold ${kpi.color}`}>{kpi.value ?? '—'}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{kpi.label}</div>
+              </Tag>
+            );
+          })}
         </div>
 
         {isLoading ? (

@@ -133,7 +133,13 @@ router.get('/candidates/:id', async (req, res, next) => {
 
     const [[availability]] = await pool.query('SELECT * FROM candidate_availability WHERE candidate_id = ?', [id]);
 
-    res.json({ success: true, data: { ...candidate, requirements, tasks, appliedTemplates, availability: availability || null } });
+    const [documents] = await pool.query(
+      `SELECT d.*, CONCAT(u.first_name, ' ', u.last_name) AS uploaded_by_name
+       FROM candidate_document d LEFT JOIN user u ON u.id = d.uploaded_by_user_id
+       WHERE d.candidate_id = ? ORDER BY d.ts_inserted DESC`, [id]
+    );
+
+    res.json({ success: true, data: { ...candidate, requirements, tasks, appliedTemplates, availability: availability || null, documents } });
   } catch (err) { next(err); }
 });
 
@@ -833,6 +839,40 @@ router.post('/candidates/:id/apply-template', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/onboarding/pending-approvals — items needing approval
+router.get('/pending-approvals', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const showAll = req.query.all === 'true';
+    const userFilter = showAll ? '' : 'AND cr.assigned_to_user_id = ?';
+    const userParams = showAll ? [] : [userId];
+
+    const [rows] = await pool.query(
+      `SELECT cr.id, cr.due_date, cr.assigned_role, cr.notes AS req_notes,
+              r.title, r.type,
+              c.id AS candidate_id, c.full_name AS candidate_name,
+              CONCAT(u.first_name, ' ', u.last_name) AS assigned_to_name
+       FROM candidate_requirement cr
+       JOIN onboarding_requirement r ON r.id = cr.requirement_id
+       JOIN candidate c ON c.id = cr.candidate_id AND c.active = 1
+       LEFT JOIN user u ON u.id = cr.assigned_to_user_id
+       WHERE cr.approval_status = 'pending_approval' ${userFilter}
+       ORDER BY cr.due_date IS NULL, cr.due_date`, userParams
+    );
+
+    // Attach documents to each
+    for (const row of rows) {
+      const [docs] = await pool.query(
+        'SELECT id, file_name, file_size, mime_type, ts_inserted FROM candidate_document WHERE candidate_requirement_id = ? ORDER BY ts_inserted DESC',
+        [row.id]
+      );
+      row.documents = docs;
+    }
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/onboarding/my-tasks — all open requirements + tasks assigned to the logged-in user
 router.get('/my-tasks', async (req, res, next) => {
   try {
@@ -1174,34 +1214,60 @@ router.put('/my-portal/availability', async (req, res, next) => {
        wednesday?1:0, wednesday_notes||null, thursday?1:0, thursday_notes||null,
        friday?1:0, friday_notes||null, additional_notes||null]
     );
+
+    // Auto-complete "Complete Profile Information" requirement if it exists
+    await pool.query(
+      `UPDATE candidate_requirement cr
+       JOIN onboarding_requirement r ON r.id = cr.requirement_id
+       SET cr.completed = 1, cr.completed_at = NOW(), cr.status = 'complete'
+       WHERE cr.candidate_id = ? AND cr.completed = 0
+         AND (LOWER(r.title) LIKE '%complete%profile%' OR LOWER(r.title) LIKE '%fill out%info%' OR LOWER(r.title) LIKE '%personal info%')`,
+      [candidate.id]
+    );
+
     res.json({ success: true });
   } catch (err) { next(err); }
 });
 
-// POST /api/onboarding/my-portal/documents — candidate uploads a document
-router.post('/my-portal/documents', docUpload.single('file'), async (req, res, next) => {
+// POST /api/onboarding/my-portal/documents — candidate uploads documents (up to 3)
+router.post('/my-portal/documents', docUpload.array('files', 3), async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
     if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
-    if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
+    if (!req.files?.length) return res.status(400).json({ success: false, error: 'No files' });
 
     const { candidate_requirement_id } = req.body;
-    const [result] = await pool.query(
-      `INSERT INTO candidate_document (candidate_id, candidate_requirement_id, file_name, file_size, mime_type, storage_path, uploaded_by_candidate)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      [candidate.id, candidate_requirement_id || null, req.file.originalname, req.file.size, req.file.mimetype, req.file.filename]
-    );
-
-    // If needs approval, set to pending
-    if (candidate_requirement_id) {
-      const [[cr]] = await pool.query('SELECT needs_approval FROM candidate_requirement WHERE id = ?', [candidate_requirement_id]);
-      if (cr?.needs_approval) {
-        await pool.query("UPDATE candidate_requirement SET approval_status = 'pending_approval' WHERE id = ? AND approval_status != 'approved'", [candidate_requirement_id]);
-      }
+    const ids = [];
+    for (const file of req.files) {
+      const [result] = await pool.query(
+        `INSERT INTO candidate_document (candidate_id, candidate_requirement_id, file_name, file_size, mime_type, storage_path, uploaded_by_candidate)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+        [candidate.id, candidate_requirement_id || null, file.originalname, file.size, file.mimetype, file.filename]
+      );
+      ids.push(result.insertId);
     }
+    res.json({ success: true, ids });
+  } catch (err) { next(err); }
+});
 
-    res.json({ success: true, id: result.insertId });
+// POST /api/onboarding/my-portal/submit-requirement — candidate submits requirement for approval (after uploading docs)
+router.post('/my-portal/submit-requirement', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    const { candidate_requirement_id } = req.body;
+    const [[cr]] = await pool.query('SELECT needs_approval, candidate_id FROM candidate_requirement WHERE id = ?', [candidate_requirement_id]);
+    if (!cr || cr.candidate_id !== candidate.id) return res.status(403).json({ success: false, error: 'Not your requirement' });
+
+    if (cr.needs_approval) {
+      await pool.query("UPDATE candidate_requirement SET approval_status = 'pending_approval' WHERE id = ?", [candidate_requirement_id]);
+    } else {
+      await pool.query("UPDATE candidate_requirement SET completed = 1, completed_at = NOW(), status = 'complete' WHERE id = ?", [candidate_requirement_id]);
+    }
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

@@ -232,84 +232,116 @@ export default function CandidatePortalPage() {
 
 function PortalRequirementRow({ r, isOverdue, isUpcoming, isPendingApproval, canSelfComplete, qc }) {
   const fileRef = useRef(null);
+  const [stagedFiles, setStagedFiles] = useState([]);
+
+  const uploadAndSubmit = useMutation({
+    mutationFn: async () => {
+      if (stagedFiles.length > 0) {
+        const fd = new FormData();
+        stagedFiles.forEach(f => fd.append('files', f));
+        fd.append('candidate_requirement_id', r.id);
+        await api.post('/onboarding/my-portal/documents', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      }
+      await api.post('/onboarding/my-portal/submit-requirement', { candidate_requirement_id: r.id });
+    },
+    onSuccess: () => { setStagedFiles([]); qc.invalidateQueries(['my-portal']); },
+  });
+
   const completeMutation = useMutation({
     mutationFn: () => api.post('/onboarding/my-portal/complete-requirement', { candidate_requirement_id: r.id }),
     onSuccess: () => qc.invalidateQueries(['my-portal']),
   });
-  const uploadMutation = useMutation({
-    mutationFn: (file) => {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('candidate_requirement_id', r.id);
-      return api.post('/onboarding/my-portal/documents', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-    },
-    onSuccess: () => qc.invalidateQueries(['my-portal']),
-  });
+
+  const addFiles = (e) => {
+    const files = Array.from(e.target.files || []);
+    setStagedFiles(prev => [...prev, ...files].slice(0, 3));
+    e.target.value = '';
+  };
 
   return (
-    <div className={`px-3 py-3 rounded-lg ${
+    <div className={`px-4 py-4 rounded-lg ${
       r.completed ? 'bg-green-50/60' :
       isPendingApproval ? 'bg-amber-50/60 border border-amber-200' :
       isOverdue ? 'bg-red-50/60 border border-red-200' :
       isUpcoming ? 'bg-gray-50/50 opacity-60' :
       'bg-gray-50'
     }`}>
-      <div className="flex items-center gap-3">
-        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+      <div className="flex items-start gap-3">
+        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
           r.completed ? 'border-green-500 bg-green-500' :
           isPendingApproval ? 'border-amber-400 bg-amber-400' :
           'border-gray-300'
         }`}>
-          {r.completed && <span className="text-white text-xs">&#10003;</span>}
-          {isPendingApproval && <span className="text-white text-xs">!</span>}
+          {r.completed && <span className="text-white text-sm">&#10003;</span>}
+          {isPendingApproval && <span className="text-white text-sm font-bold">!</span>}
         </div>
         <div className="flex-1 min-w-0">
-          <div className={`text-sm ${r.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{r.title}</div>
-          {r.description && <div className="text-xs text-gray-400">{r.description}</div>}
-          {isPendingApproval && <div className="text-xs text-amber-700 font-medium mt-0.5">Submitted — awaiting approval</div>}
+          <div className={`text-base font-medium ${r.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{r.title}</div>
+          {r.description && <div className="text-sm text-gray-500 mt-0.5">{r.description}</div>}
+          {isPendingApproval && <div className="text-sm text-amber-700 font-medium mt-1">Submitted — awaiting review from your team</div>}
+
+          {/* Actions */}
+          {!r.completed && !isPendingApproval && (
+            <div className="mt-3 space-y-2">
+              {/* File upload area */}
+              {r.requires_document === 1 && (
+                <div>
+                  <input ref={fileRef} type="file" multiple className="hidden" onChange={addFiles} accept="*/*" />
+                  {stagedFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {stagedFiles.map((f, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded px-2 py-1 text-xs text-gray-600">
+                          {f.name} <span className="text-gray-300">({(f.size/1024).toFixed(0)}KB)</span>
+                          <button type="button" onClick={() => setStagedFiles(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 ml-0.5">&times;</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {stagedFiles.length < 3 && (
+                    <button type="button" onClick={() => fileRef.current?.click()}
+                      className="text-sm text-[#1e3a5f] hover:underline flex items-center gap-1.5">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                      {stagedFiles.length > 0 ? `Add more (${3 - stagedFiles.length} remaining)` : 'Upload documents (max 3)'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Submit buttons */}
+              <div className="flex items-center gap-2">
+                {r.needs_approval === 1 ? (
+                  <button type="button" onClick={() => uploadAndSubmit.mutate()}
+                    disabled={uploadAndSubmit.isPending || (r.requires_document === 1 && stagedFiles.length === 0)}
+                    className="text-sm bg-[#1e3a5f] text-white px-4 py-1.5 rounded-lg hover:bg-[#152a47] disabled:opacity-40 font-medium">
+                    {uploadAndSubmit.isPending ? 'Submitting…' : 'Submit for Approval'}
+                  </button>
+                ) : canSelfComplete && (
+                  <button type="button" onClick={() => { if (stagedFiles.length > 0) uploadAndSubmit.mutate(); else completeMutation.mutate(); }}
+                    disabled={completeMutation.isPending || uploadAndSubmit.isPending}
+                    className="text-sm bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-40 font-medium">
+                    {(completeMutation.isPending || uploadAndSubmit.isPending) ? 'Completing…' : 'Mark Complete'}
+                  </button>
+                )}
+                {uploadAndSubmit.isError && <span className="text-xs text-red-600">Failed to submit</span>}
+              </div>
+            </div>
+          )}
         </div>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
-          r.type === 'document' ? 'bg-blue-100 text-blue-700' :
-          r.type === 'training' ? 'bg-purple-100 text-purple-700' :
-          r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
-          'bg-gray-100 text-gray-600'
-        }`}>{r.type}</span>
-        {r.due_date && (
-          <span className={`text-xs shrink-0 ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
-            {isOverdue ? 'Overdue' : formatDate(r.due_date)}
-          </span>
-        )}
+
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+            r.type === 'document' ? 'bg-blue-100 text-blue-700' :
+            r.type === 'training' ? 'bg-purple-100 text-purple-700' :
+            r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
+            'bg-gray-100 text-gray-600'
+          }`}>{r.type}</span>
+          {r.due_date && (
+            <span className={`text-xs ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
+              {isOverdue ? 'OVERDUE' : formatDate(r.due_date)}
+            </span>
+          )}
+        </div>
       </div>
-      {/* Actions row */}
-      {!r.completed && !isPendingApproval && (
-        <div className="flex items-center gap-2 mt-2 ml-8">
-          {r.requires_document === 1 && (
-            <>
-              <input ref={fileRef} type="file" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadMutation.mutate(e.target.files[0]); }} />
-              <button type="button" onClick={() => fileRef.current?.click()}
-                className="text-xs text-[#1e3a5f] hover:underline flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                Upload document
-              </button>
-              {uploadMutation.isPending && <span className="text-xs text-gray-400">Uploading…</span>}
-            </>
-          )}
-          {canSelfComplete && (
-            <button type="button" onClick={() => completeMutation.mutate()}
-              disabled={completeMutation.isPending}
-              className="text-xs bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700 disabled:opacity-50">
-              {completeMutation.isPending ? 'Completing…' : 'Mark Complete'}
-            </button>
-          )}
-          {r.needs_approval === 1 && !r.requires_document && (
-            <button type="button" onClick={() => completeMutation.mutate()}
-              disabled={completeMutation.isPending}
-              className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded hover:bg-amber-700 disabled:opacity-50">
-              {completeMutation.isPending ? 'Submitting…' : 'Submit for Approval'}
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

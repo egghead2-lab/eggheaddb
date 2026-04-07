@@ -44,6 +44,7 @@ import CandidateProfilePage from './pages/CandidateProfilePage';
 import OnboardingRequirementsPage from './pages/OnboardingRequirementsPage';
 import OnboardingTemplatesPage from './pages/OnboardingTemplatesPage';
 import EmailTemplatesPage from './pages/EmailTemplatesPage';
+import PendingApprovalsPage from './pages/PendingApprovalsPage';
 import ReportFieldConfigPage from './pages/ReportFieldConfigPage';
 import CandidatePortalPage from './pages/CandidatePortalPage';
 import SubManagementPage from './pages/SubManagementPage';
@@ -95,6 +96,7 @@ export default function App() {
       <Route path="/onboarding-requirements" element={<ProtectedRoute><OnboardingRequirementsPage /></ProtectedRoute>} />
       <Route path="/onboarding-templates" element={<ProtectedRoute><OnboardingTemplatesPage /></ProtectedRoute>} />
       <Route path="/email-templates" element={<ProtectedRoute><EmailTemplatesPage /></ProtectedRoute>} />
+      <Route path="/pending-approvals" element={<ProtectedRoute><PendingApprovalsPage /></ProtectedRoute>} />
       <Route path="/payroll" element={<ProtectedRoute><PayrollDashboardPage /></ProtectedRoute>} />
       <Route path="/payroll/runs" element={<ProtectedRoute><PayrollRunsPage /></ProtectedRoute>} />
       <Route path="/payroll/misc-pay" element={<ProtectedRoute><MiscPayPage /></ProtectedRoute>} />

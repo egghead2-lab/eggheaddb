@@ -224,7 +224,7 @@ export default function CandidateDetailPage() {
           {!isNew && (
             <ChecklistSection requirements={requirements} templates={templates} appliedTemplates={appliedTemplates}
               candidateId={id} today={today} reqMutation={reqMutation} approveMutation={approveMutation}
-              applyTemplateMutation={applyTemplateMutation} allRequirements={[]} users={users} />
+              applyTemplateMutation={applyTemplateMutation} users={users} documents={candidate.documents || []} />
           )}
 
           {/* Login Credentials */}
@@ -400,7 +400,7 @@ export default function CandidateDetailPage() {
 const ROLE_LABELS = { scheduler: 'Scheduler', field_manager: 'Field Mgr', recruiter: 'Recruiter', onboarder: 'Onboarder', trainer: 'Trainer' };
 const ROLE_COLORS = { scheduler: 'bg-blue-100 text-blue-700', field_manager: 'bg-emerald-100 text-emerald-700', recruiter: 'bg-teal-100 text-teal-700', onboarder: 'bg-pink-100 text-pink-700', trainer: 'bg-orange-100 text-orange-700' };
 
-function ChecklistSection({ requirements, templates, appliedTemplates, candidateId, today, reqMutation, approveMutation, applyTemplateMutation, users }) {
+function ChecklistSection({ requirements, templates, appliedTemplates, candidateId, today, reqMutation, approveMutation, applyTemplateMutation, users, documents }) {
   const qc = useQueryClient();
   const [sortBy, setSortBy] = useState('urgency'); // urgency, due_date, owner, type
   const [filterRole, setFilterRole] = useState('');
@@ -559,6 +559,22 @@ function ChecklistSection({ requirements, templates, appliedTemplates, candidate
                       className="text-xs bg-red-500 text-white px-2.5 py-1 rounded hover:bg-red-600 font-medium">Reject</button>
                   </div>
                 )}
+                {/* Attached documents */}
+                {(() => {
+                  const reqDocs = documents.filter(d => d.candidate_requirement_id === r.id);
+                  return reqDocs.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {reqDocs.map(d => (
+                        <a key={d.id} href={`${api.defaults.baseURL}/onboarding/documents/${d.id}/download`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded hover:bg-blue-100">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          {d.file_name}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               {/* Type */}
