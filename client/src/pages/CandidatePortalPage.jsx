@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
 import { useAuth } from '../hooks/useAuth';
 import api from '../api/client';
 import { Badge } from '../components/ui/Badge';
@@ -103,6 +104,9 @@ export default function CandidatePortalPage() {
             <div className="text-xs text-gray-500 mt-0.5">Messages</div>
           </div>
         </div>
+
+        {/* Personal Info Form */}
+        <PersonalInfoForm portal={portal} />
 
         {/* Requirements checklist */}
         <div className="bg-white rounded-lg border border-gray-200">
@@ -218,6 +222,114 @@ export default function CandidatePortalPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PersonalInfoForm({ portal }) {
+  const qc = useQueryClient();
+  const { register, handleSubmit, reset, formState: { isDirty } } = useForm({
+    defaultValues: {
+      phone: portal.phone || '',
+      address: portal.address || '',
+      city: portal.city || '',
+      state: portal.state || '',
+      zip: portal.zip || '',
+      has_car: portal.has_car ?? '',
+      car_details: portal.car_details || '',
+      shirt_size: portal.shirt_size || '',
+      emergency_contact_name: portal.emergency_contact_name || '',
+      emergency_contact_phone: portal.emergency_contact_phone || '',
+      emergency_contact_relation: portal.emergency_contact_relation || '',
+      availability_notes: portal.availability_notes || '',
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (data) => api.put('/onboarding/my-portal/profile', data),
+    onSuccess: () => { qc.invalidateQueries(['my-portal']); },
+  });
+
+  const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f]';
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200">
+      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="font-semibold text-gray-900">Your Information</h2>
+        {saveMutation.isSuccess && <span className="text-xs text-green-600">Saved!</span>}
+      </div>
+      <form onSubmit={handleSubmit(d => saveMutation.mutate(d))} className="p-4 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+            <input {...register('phone')} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Shirt Size</label>
+            <input {...register('shirt_size')} placeholder="S, M, L, XL…" className={inputCls} />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+            <input {...register('address')} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">City</label>
+            <input {...register('city')} className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">State</label>
+              <input {...register('state')} maxLength={2} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Zip</label>
+              <input {...register('zip')} className={inputCls} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Do you have a car?</label>
+            <select {...register('has_car')} className={inputCls}>
+              <option value="">Select…</option>
+              <option value="1">Yes</option>
+              <option value="0">No</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Car Details</label>
+            <input {...register('car_details')} placeholder="Make, model, year" className={inputCls} />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Availability Notes</label>
+            <textarea {...register('availability_notes')} rows={2} placeholder="Days/times you're available to teach"
+              className={inputCls} />
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Emergency Contact</div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+              <input {...register('emergency_contact_name')} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+              <input {...register('emergency_contact_phone')} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Relationship</label>
+              <input {...register('emergency_contact_relation')} className={inputCls} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button type="submit" disabled={saveMutation.isPending}
+            className="px-4 py-2 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152a47] disabled:opacity-50 transition-colors">
+            {saveMutation.isPending ? 'Saving…' : 'Save Info'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

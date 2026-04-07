@@ -42,6 +42,7 @@ import CandidatesPage from './pages/CandidatesPage';
 import CandidateDetailPage from './pages/CandidateDetailPage';
 import OnboardingRequirementsPage from './pages/OnboardingRequirementsPage';
 import OnboardingTemplatesPage from './pages/OnboardingTemplatesPage';
+import EmailTemplatesPage from './pages/EmailTemplatesPage';
 import CandidatePortalPage from './pages/CandidatePortalPage';
 import SubManagementPage from './pages/SubManagementPage';
 
@@ -90,6 +91,7 @@ export default function App() {
       <Route path="/candidates/:id" element={<ProtectedRoute><CandidateDetailPage /></ProtectedRoute>} />
       <Route path="/onboarding-requirements" element={<ProtectedRoute><OnboardingRequirementsPage /></ProtectedRoute>} />
       <Route path="/onboarding-templates" element={<ProtectedRoute><OnboardingTemplatesPage /></ProtectedRoute>} />
+      <Route path="/email-templates" element={<ProtectedRoute><EmailTemplatesPage /></ProtectedRoute>} />
       <Route path="/payroll" element={<ProtectedRoute><PayrollDashboardPage /></ProtectedRoute>} />
       <Route path="/payroll/runs" element={<ProtectedRoute><PayrollRunsPage /></ProtectedRoute>} />
       <Route path="/payroll/misc-pay" element={<ProtectedRoute><MiscPayPage /></ProtectedRoute>} />

@@ -72,9 +72,11 @@ router.get('/candidates/:id', async (req, res, next) => {
     const [[candidate]] = await pool.query(
       `SELECT c.*,
               ga.geographic_area_name,
-              CONCAT(onb.first_name, ' ', onb.last_name) AS onboarder_name,
-              CONCAT(tr.first_name, ' ', tr.last_name) AS trainer_name,
-              CONCAT(rec.first_name, ' ', rec.last_name) AS recruiter_name,
+              CONCAT(onb.first_name, ' ', onb.last_name) AS onboarder_name, onb.email AS onboarder_email,
+              CONCAT(tr.first_name, ' ', tr.last_name) AS trainer_name, tr.email AS trainer_email,
+              CONCAT(rec.first_name, ' ', rec.last_name) AS recruiter_name, rec.email AS recruiter_email,
+              CONCAT(sc.first_name, ' ', sc.last_name) AS scheduling_coordinator_name, sc.email AS sc_email,
+              CONCAT(fm.first_name, ' ', fm.last_name) AS field_manager_name, fm.email AS fm_email,
               cu.user_name AS login_username,
               cu.active AS login_active,
               r.role_name AS login_role
@@ -83,6 +85,8 @@ router.get('/candidates/:id', async (req, res, next) => {
        LEFT JOIN user onb ON onb.id = c.onboarder_user_id
        LEFT JOIN user tr ON tr.id = c.trainer_user_id
        LEFT JOIN user rec ON rec.id = c.recruiter_user_id
+       LEFT JOIN user sc ON sc.id = c.scheduling_coordinator_user_id
+       LEFT JOIN user fm ON fm.id = c.field_manager_user_id
        LEFT JOIN user cu ON cu.id = c.user_id
        LEFT JOIN role r ON r.id = cu.role_id
        WHERE c.id = ?`, [id]
@@ -145,7 +149,11 @@ router.put('/candidates/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const fields = ['full_name', 'email', 'phone', 'status', 'geographic_area_id', 'onboarder_user_id',
-      'trainer_user_id', 'recruiter_user_id', 'first_class_date', 'accepted_at', 'notes', 'active'];
+      'trainer_user_id', 'recruiter_user_id', 'scheduling_coordinator_user_id', 'field_manager_user_id',
+      'first_class_date', 'accepted_at', 'notes', 'active',
+      'address', 'city', 'state', 'zip', 'has_car', 'car_details', 'shirt_size',
+      'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+      'availability_notes', 'how_heard', 'resume_link'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
@@ -547,6 +555,147 @@ router.get('/dashboard', async (req, res, next) => {
 // CANDIDATE PORTAL (self-service for logged-in candidates)
 // ═══════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════
+// EMAIL (Gmail integration)
+// ═══════════════════════════════════════════════════════════════════
+
+const { searchThreads, sendEmail, getGmailAddress } = require('../lib/gmail');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+// GET /api/onboarding/candidates/:id/emails — fetch Gmail threads for a candidate
+router.get('/candidates/:id/emails', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    // Get user's refresh token
+    const [[user]] = await pool.query('SELECT google_refresh_token FROM user WHERE id = ?', [userId]);
+    if (!user?.google_refresh_token) {
+      return res.json({ success: true, data: { threads: [], connected: false } });
+    }
+
+    // Get candidate email and created date
+    const [[candidate]] = await pool.query('SELECT email, ts_inserted FROM candidate WHERE id = ?', [id]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
+
+    const threads = await searchThreads(
+      user.google_refresh_token,
+      candidate.email,
+      new Date(candidate.ts_inserted)
+    );
+
+    let connectedEmail = null;
+    try { connectedEmail = await getGmailAddress(user.google_refresh_token); } catch {}
+
+    res.json({ success: true, data: { threads, connected: true, connectedEmail } });
+  } catch (err) {
+    if (err.code === 401 || err.message?.includes('invalid_grant')) {
+      return res.json({ success: true, data: { threads: [], connected: false, expired: true } });
+    }
+    next(err);
+  }
+});
+
+// POST /api/onboarding/candidates/:id/emails — send an email to a candidate (with optional attachments)
+router.post('/candidates/:id/emails', upload.array('attachments', 10), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { subject, body, threadId } = req.body;
+    const userId = req.user.userId;
+
+    if (!subject || !body) return res.status(400).json({ success: false, error: 'Subject and body required' });
+
+    const [[user]] = await pool.query('SELECT google_refresh_token FROM user WHERE id = ?', [userId]);
+    if (!user?.google_refresh_token) {
+      return res.status(400).json({ success: false, error: 'Gmail not connected. Sign out and sign back in with Google.' });
+    }
+
+    const [[candidate]] = await pool.query('SELECT email FROM candidate WHERE id = ?', [id]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
+
+    // Process attachments from multer
+    const attachments = (req.files || []).map(f => ({
+      name: f.originalname,
+      mimeType: f.mimetype || 'application/octet-stream',
+      data: f.buffer,
+    }));
+
+    const result = await sendEmail({
+      refreshToken: user.google_refresh_token,
+      to: candidate.email,
+      subject,
+      htmlBody: body,
+      threadId: threadId || null,
+      attachments,
+    });
+
+    // Store in our DB
+    let fromEmail = null;
+    try { fromEmail = await getGmailAddress(user.google_refresh_token); } catch {}
+
+    await pool.query(
+      `INSERT INTO candidate_email (candidate_id, gmail_thread_id, gmail_message_id, subject, from_email, to_email, body_html, body_text, direction, sent_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)`,
+      [id, result.threadId, result.id, subject, fromEmail, candidate.email, body,
+       body.replace(/<[^>]+>/g, '').trim().substring(0, 1000), userId]
+    );
+
+    res.json({ success: true, threadId: result.threadId, messageId: result.id });
+  } catch (err) {
+    if (err.code === 401 || err.message?.includes('invalid_grant')) {
+      return res.status(400).json({ success: false, error: 'Gmail token expired. Sign out and sign back in.' });
+    }
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// EMAIL TEMPLATES
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/onboarding/email-templates
+router.get('/email-templates', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM email_template WHERE active = 1 ORDER BY sort_order, name');
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/email-templates
+router.post('/email-templates', async (req, res, next) => {
+  try {
+    const { name, subject, body_html, category } = req.body;
+    if (!name || !subject || !body_html) return res.status(400).json({ success: false, error: 'Name, subject, and body required' });
+    const [result] = await pool.query(
+      'INSERT INTO email_template (name, subject, body_html, category) VALUES (?, ?, ?, ?)',
+      [name, subject, body_html, category || null]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/onboarding/email-templates/:id
+router.put('/email-templates/:id', async (req, res, next) => {
+  try {
+    const fields = ['name', 'subject', 'body_html', 'category', 'sort_order', 'active'];
+    const updates = fields.filter(f => req.body[f] !== undefined);
+    if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+    const setClauses = updates.map(f => `${f} = ?`).join(', ');
+    const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
+    await pool.query(`UPDATE email_template SET ${setClauses} WHERE id = ?`, [...values, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/onboarding/email-templates/:id
+router.delete('/email-templates/:id', async (req, res, next) => {
+  try {
+    await pool.query('UPDATE email_template SET active = 0 WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/onboarding/my-portal — candidate views their own data
 router.get('/my-portal', async (req, res, next) => {
   try {
@@ -565,6 +714,15 @@ router.get('/my-portal', async (req, res, next) => {
        WHERE c.user_id = ? AND c.active = 1`, [userId]
     );
     if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    // Auto-activate on first portal visit
+    if (candidate.status === 'pending') {
+      await pool.query(
+        "UPDATE candidate SET status = 'in_progress', accepted_at = NOW() WHERE id = ? AND status = 'pending'",
+        [candidate.id]
+      );
+      candidate.status = 'in_progress';
+    }
 
     // Requirements
     const [requirements] = await pool.query(
@@ -629,6 +787,25 @@ router.post('/candidates/:id/messages', async (req, res, next) => {
       [req.params.id, req.user.userId, body.trim()]
     );
     res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/onboarding/my-portal/profile — candidate updates their own profile info
+router.put('/my-portal/profile', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    const allowed = ['phone', 'address', 'city', 'state', 'zip', 'has_car', 'car_details',
+      'shirt_size', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+      'availability_notes'];
+    const updates = allowed.filter(f => req.body[f] !== undefined);
+    if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+    const setClauses = updates.map(f => `${f} = ?`).join(', ');
+    const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
+    await pool.query(`UPDATE candidate SET ${setClauses} WHERE id = ?`, [...values, candidate.id]);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

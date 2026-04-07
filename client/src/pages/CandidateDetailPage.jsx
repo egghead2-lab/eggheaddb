@@ -167,6 +167,34 @@ export default function CandidateDetailPage() {
         </div>
 
         <div className="p-6 space-y-4 pb-32">
+          {/* Team Card — at a glance */}
+          {!isNew && (candidate.onboarder_name || candidate.trainer_name || candidate.scheduling_coordinator_name || candidate.field_manager_name) && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Assigned Team</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { role: 'Onboarder', name: candidate.onboarder_name, email: candidate.onboarder_email, color: 'bg-pink-50 text-pink-700' },
+                  { role: 'Trainer', name: candidate.trainer_name, email: candidate.trainer_email, color: 'bg-orange-50 text-orange-700' },
+                  { role: 'Sched. Coord.', name: candidate.scheduling_coordinator_name, email: candidate.sc_email, color: 'bg-blue-50 text-blue-700' },
+                  { role: 'Field Manager', name: candidate.field_manager_name, email: candidate.fm_email, color: 'bg-emerald-50 text-emerald-700' },
+                ].filter(t => t.name).map(t => (
+                  <div key={t.role} className="flex items-start gap-2">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.color}`}>{t.role}</span>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-800 truncate">{t.name}</div>
+                      {t.email && <div className="text-[10px] text-gray-400 truncate">{t.email}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {candidate.phone && (
+                <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+                  Candidate phone: <a href={`tel:${candidate.phone}`} className="text-[#1e3a5f] font-medium">{candidate.phone}</a>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Info */}
           <Section title="Candidate Info" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
@@ -181,6 +209,14 @@ export default function CandidateDetailPage() {
                 {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
               </Select>
               <Input label="First Class Date" type="date" {...register('first_class_date')} />
+              <Input label="How Heard" {...register('how_heard')} placeholder="How did they find us?" />
+              <Input label="Resume Link" {...register('resume_link')} placeholder="URL" />
+            </div>
+          </Section>
+
+          {/* Team Assignments */}
+          <Section title="Team Assignments" defaultOpen={!isNew}>
+            <div className="grid grid-cols-2 gap-4">
               <Select label="Onboarder" {...register('onboarder_user_id')}>
                 <option value="">Select…</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
@@ -189,16 +225,58 @@ export default function CandidateDetailPage() {
                 <option value="">Select…</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
               </Select>
+              <Select label="Scheduling Coordinator" {...register('scheduling_coordinator_user_id')}>
+                <option value="">Select…</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
+              </Select>
+              <Select label="Field Manager" {...register('field_manager_user_id')}>
+                <option value="">Select…</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
+              </Select>
               <Select label="Recruiter" {...register('recruiter_user_id')}>
                 <option value="">Select…</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
               </Select>
+            </div>
+          </Section>
+
+          {/* Personal Info (candidate fills in, admin can edit) */}
+          <Section title="Personal Info" defaultOpen={false}>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2"><Input label="Address" {...register('address')} /></div>
+              <Input label="City" {...register('city')} />
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="State" {...register('state')} maxLength={2} />
+                <Input label="Zip" {...register('zip')} />
+              </div>
+              <Select label="Has Car" {...register('has_car')}>
+                <option value="">—</option>
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+              </Select>
+              <Input label="Car Details" {...register('car_details')} placeholder="Make, model, year" />
+              <Input label="Shirt Size" {...register('shirt_size')} placeholder="S, M, L, XL…" />
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea {...register('notes')} rows={3}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Availability Notes</label>
+                <textarea {...register('availability_notes')} rows={2}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
               </div>
             </div>
+          </Section>
+
+          {/* Emergency Contact */}
+          <Section title="Emergency Contact" defaultOpen={false}>
+            <div className="grid grid-cols-3 gap-4">
+              <Input label="Name" {...register('emergency_contact_name')} />
+              <Input label="Phone" {...register('emergency_contact_phone')} />
+              <Input label="Relationship" {...register('emergency_contact_relation')} />
+            </div>
+          </Section>
+
+          {/* Notes */}
+          <Section title="Notes" defaultOpen={false}>
+            <textarea {...register('notes')} rows={3}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
           </Section>
 
           {/* Login Credentials */}
@@ -383,6 +461,9 @@ export default function CandidateDetailPage() {
               </div>
             </Section>
           )}
+
+          {/* Gmail Email */}
+          {!isNew && <EmailSection candidateId={id} candidateEmail={candidate.email} />}
         </div>
 
         {/* Save bar */}
@@ -415,5 +496,230 @@ export default function CandidateDetailPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+// ── Gmail Email Section ─────────────────────────────────────────────
+
+import { RichTextEditor } from '../components/ui/RichTextEditor';
+
+function EmailSection({ candidateId, candidateEmail }) {
+  const qc = useQueryClient();
+  const [showCompose, setShowCompose] = useState(false);
+  const [expandedThread, setExpandedThread] = useState(null);
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [replyThreadId, setReplyThreadId] = useState(null);
+  const [attachments, setAttachments] = useState([]);
+  const fileInputRef = useRef(null);
+
+  const { data: emailTemplatesData } = useQuery({
+    queryKey: ['email-templates'],
+    queryFn: () => api.get('/onboarding/email-templates').then(r => r.data),
+  });
+  const emailTemplates = emailTemplatesData?.data || [];
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['candidate-emails', candidateId],
+    queryFn: () => api.get(`/onboarding/candidates/${candidateId}/emails`).then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: (formData) => api.post(`/onboarding/candidates/${candidateId}/emails`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries(['candidate-emails', candidateId]);
+      setShowCompose(false);
+      setSubject('');
+      setBody('');
+      setReplyThreadId(null);
+      setAttachments([]);
+    },
+  });
+
+  const emailData = data?.data || {};
+  const threads = emailData.threads || [];
+  const connected = emailData.connected;
+
+  const startReply = (thread) => {
+    setReplyThreadId(thread.threadId);
+    setSubject(thread.subject.startsWith('Re:') ? thread.subject : `Re: ${thread.subject}`);
+    setBody('');
+    setAttachments([]);
+    setShowCompose(true);
+  };
+
+  const startNew = () => {
+    setReplyThreadId(null);
+    setSubject('');
+    setBody('');
+    setAttachments([]);
+    setShowCompose(true);
+  };
+
+  const handleSend = () => {
+    const formData = new FormData();
+    formData.append('subject', subject);
+    formData.append('body', body);
+    if (replyThreadId) formData.append('threadId', replyThreadId);
+    for (const file of attachments) formData.append('attachments', file);
+    sendMutation.mutate(formData);
+  };
+
+  const addFiles = (e) => {
+    const files = Array.from(e.target.files || []);
+    setAttachments(prev => [...prev, ...files]);
+    e.target.value = '';
+  };
+
+  const removeAttachment = (idx) => setAttachments(prev => prev.filter((_, i) => i !== idx));
+
+  return (
+    <Section title={`Email (${threads.length} thread${threads.length !== 1 ? 's' : ''})`} defaultOpen={true}>
+      {isLoading ? (
+        <div className="flex justify-center py-4"><Spinner className="w-5 h-5" /></div>
+      ) : !connected ? (
+        <div className="text-sm text-gray-500 py-2">
+          Gmail not connected. <a href="/api/auth/google" className="text-[#1e3a5f] hover:underline">Sign in with Google</a> to enable email.
+          {emailData.expired && <span className="text-amber-600 ml-2">(Token expired — please re-authenticate)</span>}
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-gray-400">
+              Connected as {emailData.connectedEmail} &middot; Emails with {candidateEmail}
+            </span>
+            <button type="button" onClick={startNew}
+              className="text-xs bg-[#1e3a5f] text-white px-3 py-1.5 rounded hover:bg-[#152a47] transition-colors font-medium">
+              + Compose
+            </button>
+          </div>
+
+          {/* Compose / Reply */}
+          {showCompose && (
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-700">{replyThreadId ? 'Reply' : 'New Email'}</span>
+                <button type="button" onClick={() => setShowCompose(false)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-gray-500">To: <strong>{candidateEmail}</strong></div>
+                {emailTemplates.length > 0 && (
+                  <select onChange={e => {
+                    const tmpl = emailTemplates.find(t => t.id === Number(e.target.value));
+                    if (tmpl) { setSubject(tmpl.subject); setBody(tmpl.body_html); }
+                    e.target.value = '';
+                  }} className="text-xs rounded border border-gray-300 px-2 py-1 bg-white">
+                    <option value="">Load template…</option>
+                    {emailTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                )}
+              </div>
+              <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
+                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              <RichTextEditor value={body} onChange={setBody} placeholder="Write your email…" minHeight="150px" />
+
+              {/* Attachments */}
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1 text-xs text-gray-600">
+                      <span className="truncate max-w-[150px]">{f.name}</span>
+                      <span className="text-gray-300">({(f.size / 1024).toFixed(0)}KB)</span>
+                      <button type="button" onClick={() => removeAttachment(i)} className="text-gray-400 hover:text-red-500">&times;</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <input ref={fileInputRef} type="file" multiple onChange={addFiles} className="hidden" />
+                  <button type="button" onClick={() => fileInputRef.current?.click()}
+                    className="text-xs text-gray-500 hover:text-[#1e3a5f] flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                    Attach files
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowCompose(false)} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
+                  <button type="button" onClick={handleSend}
+                    disabled={!subject.trim() || !body.trim() || body === '<p></p>' || sendMutation.isPending}
+                    className="text-xs bg-[#1e3a5f] text-white px-4 py-1.5 rounded hover:bg-[#152a47] disabled:opacity-40 transition-colors font-medium">
+                    {sendMutation.isPending ? 'Sending…' : `Send${attachments.length ? ` (${attachments.length} file${attachments.length > 1 ? 's' : ''})` : ''}`}
+                  </button>
+                </div>
+              </div>
+              {sendMutation.isError && <p className="text-xs text-red-600">{sendMutation.error?.response?.data?.error || 'Failed to send'}</p>}
+            </div>
+          )}
+
+          {/* Thread list — most recent first */}
+          {threads.length === 0 ? (
+            <p className="text-sm text-gray-400 py-2">No email threads found with this candidate.</p>
+          ) : (
+            <div className="space-y-2">
+              {threads.map(thread => {
+                const lastMsg = thread.messages[thread.messages.length - 1];
+                const isExpanded = expandedThread === thread.threadId;
+                return (
+                  <div key={thread.threadId} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <button type="button"
+                      onClick={() => setExpandedThread(isExpanded ? null : thread.threadId)}
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition-colors text-left">
+                      <span className="text-[10px] text-gray-300 shrink-0">{isExpanded ? '▾' : '▸'}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-800 truncate">{thread.subject || '(no subject)'}</span>
+                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{thread.messages.length}</span>
+                        </div>
+                        <div className="text-xs text-gray-400 truncate mt-0.5">
+                          {lastMsg.from.split('<')[0].trim()} — {lastMsg.text?.substring(0, 80) || '(html)'}…
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-[10px] text-gray-400">{new Date(Number(thread.lastMessageAt)).toLocaleDateString()}</span>
+                        <button type="button" onClick={e => { e.stopPropagation(); startReply(thread); }}
+                          className="text-[10px] text-[#1e3a5f] hover:underline font-medium">Reply</button>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 max-h-[500px] overflow-y-auto">
+                        {thread.messages.map((msg, mi) => (
+                          <div key={msg.id} className={`px-5 py-4 ${mi > 0 ? 'border-t border-gray-100' : ''}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <span className="text-xs font-semibold text-gray-700">{msg.from.split('<')[0].trim()}</span>
+                                <span className="text-[10px] text-gray-400 ml-2">to {msg.to.split('<')[0].trim()}</span>
+                              </div>
+                              <span className="text-[10px] text-gray-400">{new Date(msg.date).toLocaleString()}</span>
+                            </div>
+                            {msg.html ? (
+                              <div className="text-sm text-gray-700 prose prose-sm max-w-none [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-500 [&_blockquote]:text-xs"
+                                dangerouslySetInnerHTML={{ __html: msg.html }} />
+                            ) : (
+                              <div className="text-sm text-gray-700 whitespace-pre-wrap">{msg.text}</div>
+                            )}
+                          </div>
+                        ))}
+                        <div className="px-5 py-2 bg-gray-50 border-t border-gray-100">
+                          <button type="button" onClick={() => startReply(thread)}
+                            className="text-xs text-[#1e3a5f] hover:underline font-medium">Reply to this thread</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </Section>
   );
 }
