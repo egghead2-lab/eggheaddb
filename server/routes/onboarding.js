@@ -135,16 +135,40 @@ router.get('/candidates/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Helper: auto-assign team from area
+async function autoAssignTeamFromArea(pool, candidateId, areaId) {
+  if (!areaId) return;
+  const [[area]] = await pool.query(
+    `SELECT onboarder_user_id, trainer_user_id, recruiter_user_id,
+            scheduling_coordinator_user_id, field_manager_user_id, sales_user_id
+     FROM geographic_area WHERE id = ?`, [areaId]
+  );
+  if (!area) return;
+  await pool.query(
+    `UPDATE candidate SET
+      onboarder_user_id = COALESCE(onboarder_user_id, ?),
+      trainer_user_id = COALESCE(trainer_user_id, ?),
+      recruiter_user_id = COALESCE(recruiter_user_id, ?),
+      scheduling_coordinator_user_id = COALESCE(scheduling_coordinator_user_id, ?),
+      field_manager_user_id = COALESCE(field_manager_user_id, ?)
+     WHERE id = ?`,
+    [area.onboarder_user_id, area.trainer_user_id, area.recruiter_user_id,
+     area.scheduling_coordinator_user_id, area.field_manager_user_id, candidateId]
+  );
+}
+
 // POST /api/onboarding/candidates
 router.post('/candidates', async (req, res, next) => {
   try {
-    const { full_name, email, phone, geographic_area_id, onboarder_user_id, trainer_user_id, recruiter_user_id, notes } = req.body;
+    const { full_name, email, phone, geographic_area_id, notes } = req.body;
     if (!full_name || !email) return res.status(400).json({ success: false, error: 'Name and email are required' });
     const [result] = await pool.query(
-      `INSERT INTO candidate (full_name, email, phone, geographic_area_id, onboarder_user_id, trainer_user_id, recruiter_user_id, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [full_name, email, phone || null, geographic_area_id || null, onboarder_user_id || null, trainer_user_id || null, recruiter_user_id || null, notes || null]
+      `INSERT INTO candidate (full_name, email, phone, geographic_area_id, notes)
+       VALUES (?, ?, ?, ?, ?)`,
+      [full_name, email, phone || null, geographic_area_id || null, notes || null]
     );
+    // Auto-assign team from area
+    if (geographic_area_id) await autoAssignTeamFromArea(pool, result.insertId, geographic_area_id);
     res.json({ success: true, id: result.insertId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, error: 'Email already exists' });
@@ -159,14 +183,22 @@ router.put('/candidates/:id', async (req, res, next) => {
     const fields = ['full_name', 'email', 'phone', 'status', 'geographic_area_id', 'onboarder_user_id',
       'trainer_user_id', 'recruiter_user_id', 'scheduling_coordinator_user_id', 'field_manager_user_id',
       'first_class_date', 'accepted_at', 'notes', 'active',
-      'address', 'city', 'state', 'zip', 'has_car', 'car_details', 'shirt_size',
-      'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+      'address', 'city', 'state', 'zip', 'shirt_size',
       'availability_notes', 'how_heard', 'resume_link'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
     const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
     await pool.query(`UPDATE candidate SET ${setClauses} WHERE id = ?`, [...values, id]);
+    // Auto-assign team when area changes
+    if (req.body.geographic_area_id) {
+      // Clear existing assignments first so auto-assign fills them
+      await pool.query(
+        `UPDATE candidate SET onboarder_user_id = NULL, trainer_user_id = NULL, recruiter_user_id = NULL,
+          scheduling_coordinator_user_id = NULL, field_manager_user_id = NULL WHERE id = ?`, [id]
+      );
+      await autoAssignTeamFromArea(pool, id, req.body.geographic_area_id);
+    }
     res.json({ success: true });
   } catch (err) { next(err); }
 });
@@ -187,6 +219,81 @@ router.delete('/candidates/:id', async (req, res, next) => {
       await pool.query('UPDATE user SET active = 0, ts_updated = NOW() WHERE id = ?', [candidate.user_id]);
     }
 
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ── Candidate Notes (status updates) ────────────────────────────────
+
+// GET /api/onboarding/candidates/:id/notes
+router.get('/candidates/:id/notes', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT n.*, CONCAT(u.first_name, ' ', u.last_name) AS author_name
+       FROM candidate_note n
+       LEFT JOIN user u ON u.id = n.user_id
+       WHERE n.candidate_id = ?
+       ORDER BY n.ts_inserted DESC`, [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidates/:id/notes
+router.post('/candidates/:id/notes', async (req, res, next) => {
+  try {
+    const { body } = req.body;
+    if (!body?.trim()) return res.status(400).json({ success: false, error: 'Note body required' });
+    const [result] = await pool.query(
+      'INSERT INTO candidate_note (candidate_id, user_id, body) VALUES (?, ?, ?)',
+      [req.params.id, req.user.userId, body.trim()]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/onboarding/candidate-notes/:id
+router.delete('/candidate-notes/:id', async (req, res, next) => {
+  try {
+    await pool.query('DELETE FROM candidate_note WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ── Availability ────────────────────────────────────────────────────
+
+// GET /api/onboarding/candidates/:id/availability
+router.get('/candidates/:id/availability', async (req, res, next) => {
+  try {
+    const [[row]] = await pool.query('SELECT * FROM candidate_availability WHERE candidate_id = ?', [req.params.id]);
+    res.json({ success: true, data: row || null });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/onboarding/candidates/:id/availability (upsert)
+router.put('/candidates/:id/availability', async (req, res, next) => {
+  try {
+    const { monday, monday_notes, tuesday, tuesday_notes, wednesday, wednesday_notes,
+            thursday, thursday_notes, friday, friday_notes, saturday, saturday_notes,
+            sunday, sunday_notes, additional_notes } = req.body;
+    await pool.query(
+      `INSERT INTO candidate_availability (candidate_id, monday, monday_notes, tuesday, tuesday_notes,
+        wednesday, wednesday_notes, thursday, thursday_notes, friday, friday_notes,
+        saturday, saturday_notes, sunday, sunday_notes, additional_notes, personal_info_completed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+       ON DUPLICATE KEY UPDATE monday=VALUES(monday), monday_notes=VALUES(monday_notes),
+        tuesday=VALUES(tuesday), tuesday_notes=VALUES(tuesday_notes),
+        wednesday=VALUES(wednesday), wednesday_notes=VALUES(wednesday_notes),
+        thursday=VALUES(thursday), thursday_notes=VALUES(thursday_notes),
+        friday=VALUES(friday), friday_notes=VALUES(friday_notes),
+        saturday=VALUES(saturday), saturday_notes=VALUES(saturday_notes),
+        sunday=VALUES(sunday), sunday_notes=VALUES(sunday_notes),
+        additional_notes=VALUES(additional_notes), personal_info_completed=1`,
+      [req.params.id, monday?1:0, monday_notes||null, tuesday?1:0, tuesday_notes||null,
+       wednesday?1:0, wednesday_notes||null, thursday?1:0, thursday_notes||null,
+       friday?1:0, friday_notes||null, saturday?1:0, saturday_notes||null,
+       sunday?1:0, sunday_notes||null, additional_notes||null]
+    );
     res.json({ success: true });
   } catch (err) { next(err); }
 });

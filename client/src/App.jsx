@@ -40,6 +40,7 @@ import ParentDetailPage from './pages/ParentDetailPage';
 import AreasPage from './pages/AreasPage';
 import CandidatesPage from './pages/CandidatesPage';
 import CandidateDetailPage from './pages/CandidateDetailPage';
+import CandidateProfilePage from './pages/CandidateProfilePage';
 import OnboardingRequirementsPage from './pages/OnboardingRequirementsPage';
 import OnboardingTemplatesPage from './pages/OnboardingTemplatesPage';
 import EmailTemplatesPage from './pages/EmailTemplatesPage';
@@ -90,6 +91,7 @@ export default function App() {
       <Route path="/candidates" element={<ProtectedRoute><CandidatesPage /></ProtectedRoute>} />
       <Route path="/candidates/new" element={<ProtectedRoute><CandidateDetailPage /></ProtectedRoute>} />
       <Route path="/candidates/:id" element={<ProtectedRoute><CandidateDetailPage /></ProtectedRoute>} />
+      <Route path="/candidates/:id/profile" element={<ProtectedRoute><CandidateProfilePage /></ProtectedRoute>} />
       <Route path="/onboarding-requirements" element={<ProtectedRoute><OnboardingRequirementsPage /></ProtectedRoute>} />
       <Route path="/onboarding-templates" element={<ProtectedRoute><OnboardingTemplatesPage /></ProtectedRoute>} />
       <Route path="/email-templates" element={<ProtectedRoute><EmailTemplatesPage /></ProtectedRoute>} />

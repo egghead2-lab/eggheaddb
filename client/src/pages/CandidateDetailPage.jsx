@@ -146,143 +146,79 @@ export default function CandidateDetailPage() {
       <UnsavedChangesModal when={isDirty} />
       <form onSubmit={handleSubmit(onSubmit)}>
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <Link to="/candidates" className="text-sm text-gray-500 hover:text-[#1e3a5f]">&larr; Candidates</Link>
-            <div className="flex items-center gap-3 mt-0.5">
-              <h1 className="text-xl font-bold text-gray-900">{isNew ? 'New Candidate' : candidate.full_name}</h1>
-              {!isNew && <Badge status={STATUS_LABELS[candidate.status] || candidate.status} />}
-              {candidate.professor_id && (
-                <Link to={`/professors/${candidate.professor_id}`} className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded font-medium hover:underline">
-                  View Professor Profile &rarr;
-                </Link>
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Link to="/candidates" className="text-sm text-gray-500 hover:text-[#1e3a5f]">&larr; Candidates</Link>
+              <div className="flex items-center gap-3 mt-0.5">
+                <h1 className="text-xl font-bold text-gray-900">{isNew ? 'New Candidate' : candidate.full_name}</h1>
+                {!isNew && <Badge status={STATUS_LABELS[candidate.status] || candidate.status} />}
+                {candidate.professor_id && (
+                  <Link to={`/professors/${candidate.professor_id}`} className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded font-medium hover:underline">
+                    View Professor Profile &rarr;
+                  </Link>
+                )}
+              </div>
+              {!isNew && (
+                <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                  {candidate.phone && <span>Phone: <a href={`tel:${candidate.phone}`} className="text-[#1e3a5f] font-medium">{candidate.phone}</a></span>}
+                  {candidate.email && <span>Email: <a href={`mailto:${candidate.email}`} className="text-[#1e3a5f] font-medium">{candidate.email}</a></span>}
+                  {candidate.geographic_area_name && <span>Area: <strong>{candidate.geographic_area_name}</strong></span>}
+                  {candidate.first_class_date && <span>First Class: <strong>{formatDate(candidate.first_class_date)}</strong></span>}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {!isNew && <Link to={`/candidates/${id}/profile`} className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">Profile & Settings</Link>}
+              {!isNew && candidate.status !== 'hired' && (
+                <>
+                  <button type="button"
+                    onClick={() => { if (confirm(`Remove ${candidate.full_name}?`)) deleteMutation.mutate(); }}
+                    className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
+                    Uninvite
+                  </button>
+                  <Button type="button" size="sm" onClick={() => setShowHire(true)}>Hire</Button>
+                </>
               )}
             </div>
           </div>
-          {!isNew && candidate.status !== 'hired' && (
-            <div className="flex items-center gap-2">
-              <button type="button"
-                onClick={() => { if (confirm(`Remove ${candidate.full_name}? This will deactivate their candidate record${candidate.user_id ? ' and disable their login' : ''}.`)) deleteMutation.mutate(); }}
-                className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                {deleteMutation.isPending ? 'Removing…' : 'Uninvite'}
-              </button>
-              <Button type="button" onClick={() => setShowHire(true)}>Hire as Professor</Button>
+
+          {/* Team card — inline */}
+          {!isNew && (candidate.onboarder_name || candidate.trainer_name || candidate.scheduling_coordinator_name || candidate.field_manager_name) && (
+            <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100">
+              {[
+                { role: 'Onboarder', name: candidate.onboarder_name, color: 'text-pink-700' },
+                { role: 'Trainer', name: candidate.trainer_name, color: 'text-orange-700' },
+                { role: 'Sched.', name: candidate.scheduling_coordinator_name, color: 'text-blue-700' },
+                { role: 'FM', name: candidate.field_manager_name, color: 'text-emerald-700' },
+                { role: 'Recruiter', name: candidate.recruiter_name, color: 'text-teal-700' },
+              ].filter(t => t.name).map(t => (
+                <span key={t.role} className="text-xs text-gray-500">
+                  {t.role}: <strong className={t.color}>{t.name}</strong>
+                </span>
+              ))}
             </div>
           )}
         </div>
 
         <div className="p-6 space-y-4 pb-32">
-          {/* Team Card — at a glance */}
-          {!isNew && (candidate.onboarder_name || candidate.trainer_name || candidate.scheduling_coordinator_name || candidate.field_manager_name) && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Assigned Team</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { role: 'Onboarder', name: candidate.onboarder_name, email: candidate.onboarder_email, color: 'bg-pink-50 text-pink-700' },
-                  { role: 'Trainer', name: candidate.trainer_name, email: candidate.trainer_email, color: 'bg-orange-50 text-orange-700' },
-                  { role: 'Sched. Coord.', name: candidate.scheduling_coordinator_name, email: candidate.sc_email, color: 'bg-blue-50 text-blue-700' },
-                  { role: 'Field Manager', name: candidate.field_manager_name, email: candidate.fm_email, color: 'bg-emerald-50 text-emerald-700' },
-                ].filter(t => t.name).map(t => (
-                  <div key={t.role} className="flex items-start gap-2">
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.color}`}>{t.role}</span>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-800 truncate">{t.name}</div>
-                      {t.email && <div className="text-[10px] text-gray-400 truncate">{t.email}</div>}
-                    </div>
-                  </div>
-                ))}
+          {/* New candidate form — only show when creating */}
+          {isNew && (
+            <Section title="New Candidate" defaultOpen={true}>
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Full Name" required {...register('full_name', { required: true })} />
+                <Input label="Email" type="email" required {...register('email', { required: true })} />
+                <Input label="Phone" {...register('phone')} />
+                <Select label="Area (auto-assigns team)" {...register('geographic_area_id')}>
+                  <option value="">Select area…</option>
+                  {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
+                </Select>
               </div>
-              {candidate.phone && (
-                <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
-                  Candidate phone: <a href={`tel:${candidate.phone}`} className="text-[#1e3a5f] font-medium">{candidate.phone}</a>
-                </div>
-              )}
-            </div>
+            </Section>
           )}
 
-          {/* Info */}
-          <Section title="Candidate Info" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Full Name" required {...register('full_name', { required: true })} />
-              <Input label="Email" type="email" required {...register('email', { required: true })} />
-              <Input label="Phone" {...register('phone')} />
-              <Select label="Status" {...register('status')}>
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-              </Select>
-              <Select label="Area" {...register('geographic_area_id')}>
-                <option value="">Select area…</option>
-                {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
-              </Select>
-              <Input label="First Class Date" type="date" {...register('first_class_date')} />
-              <Input label="How Heard" {...register('how_heard')} placeholder="How did they find us?" />
-              <Input label="Resume Link" {...register('resume_link')} placeholder="URL" />
-            </div>
-          </Section>
-
-          {/* Team Assignments */}
-          <Section title="Team Assignments" defaultOpen={!isNew}>
-            <div className="grid grid-cols-2 gap-4">
-              <Select label="Onboarder" {...register('onboarder_user_id')}>
-                <option value="">Select…</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-              </Select>
-              <Select label="Trainer" {...register('trainer_user_id')}>
-                <option value="">Select…</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-              </Select>
-              <Select label="Scheduling Coordinator" {...register('scheduling_coordinator_user_id')}>
-                <option value="">Select…</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-              </Select>
-              <Select label="Field Manager" {...register('field_manager_user_id')}>
-                <option value="">Select…</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-              </Select>
-              <Select label="Recruiter" {...register('recruiter_user_id')}>
-                <option value="">Select…</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-              </Select>
-            </div>
-          </Section>
-
-          {/* Personal Info (candidate fills in, admin can edit) */}
-          <Section title="Personal Info" defaultOpen={false}>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2"><Input label="Address" {...register('address')} /></div>
-              <Input label="City" {...register('city')} />
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="State" {...register('state')} maxLength={2} />
-                <Input label="Zip" {...register('zip')} />
-              </div>
-              <Select label="Has Car" {...register('has_car')}>
-                <option value="">—</option>
-                <option value="1">Yes</option>
-                <option value="0">No</option>
-              </Select>
-              <Input label="Car Details" {...register('car_details')} placeholder="Make, model, year" />
-              <Input label="Shirt Size" {...register('shirt_size')} placeholder="S, M, L, XL…" />
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Availability Notes</label>
-                <textarea {...register('availability_notes')} rows={2}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-              </div>
-            </div>
-          </Section>
-
-          {/* Emergency Contact */}
-          <Section title="Emergency Contact" defaultOpen={false}>
-            <div className="grid grid-cols-3 gap-4">
-              <Input label="Name" {...register('emergency_contact_name')} />
-              <Input label="Phone" {...register('emergency_contact_phone')} />
-              <Input label="Relationship" {...register('emergency_contact_relation')} />
-            </div>
-          </Section>
-
-          {/* Notes */}
-          <Section title="Notes" defaultOpen={false}>
-            <textarea {...register('notes')} rows={3}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-          </Section>
+          {/* Internal Notes — status update feed (hidden from candidates) */}
+          {!isNew && <CandidateNotesSection candidateId={id} />}
 
           {/* Login Credentials */}
           {!isNew && (
@@ -543,6 +479,63 @@ export default function CandidateDetailPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+// ── Internal Notes (status updates) ─────────────────────────────────
+
+function CandidateNotesSection({ candidateId }) {
+  const qc = useQueryClient();
+  const [noteBody, setNoteBody] = useState('');
+
+  const { data } = useQuery({
+    queryKey: ['candidate-notes', candidateId],
+    queryFn: () => api.get(`/onboarding/candidates/${candidateId}/notes`).then(r => r.data),
+  });
+
+  const addNote = useMutation({
+    mutationFn: (body) => api.post(`/onboarding/candidates/${candidateId}/notes`, { body }),
+    onSuccess: () => { setNoteBody(''); qc.invalidateQueries(['candidate-notes', candidateId]); },
+  });
+
+  const deleteNote = useMutation({
+    mutationFn: (noteId) => api.delete(`/onboarding/candidate-notes/${noteId}`),
+    onSuccess: () => qc.invalidateQueries(['candidate-notes', candidateId]),
+  });
+
+  const notes = data?.data || [];
+
+  return (
+    <Section title={`Internal Notes (${notes.length})`} defaultOpen={notes.length > 0}>
+      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Hidden from candidate</p>
+      <div className="flex gap-2 mb-3">
+        <input value={noteBody} onChange={e => setNoteBody(e.target.value)}
+          placeholder="Add a status update or note…"
+          onKeyDown={e => { if (e.key === 'Enter' && noteBody.trim()) { e.preventDefault(); addNote.mutate(noteBody); } }}
+          className="flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+        <button type="button" onClick={() => noteBody.trim() && addNote.mutate(noteBody)}
+          disabled={!noteBody.trim() || addNote.isPending}
+          className="px-3 py-1.5 bg-[#1e3a5f] text-white text-xs font-medium rounded hover:bg-[#152a47] disabled:opacity-40">
+          {addNote.isPending ? '…' : 'Add'}
+        </button>
+      </div>
+      {notes.length > 0 && (
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          {notes.map(n => (
+            <div key={n.id} className="flex items-start gap-2 text-sm">
+              <div className="flex-1">
+                <span className="font-medium text-gray-700">{n.author_name}</span>
+                <span className="text-gray-400 mx-1.5">&middot;</span>
+                <span className="text-[10px] text-gray-400">{new Date(n.ts_inserted).toLocaleString()}</span>
+                <div className="text-gray-600 mt-0.5">{n.body}</div>
+              </div>
+              <button type="button" onClick={() => deleteNote.mutate(n.id)}
+                className="text-gray-300 hover:text-red-500 text-xs shrink-0 mt-1">&times;</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 
