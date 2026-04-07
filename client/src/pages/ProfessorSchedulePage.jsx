@@ -146,9 +146,18 @@ function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
 export default function ProfessorSchedulePage() {
   const { id: paramId } = useParams();
   const [selectedId, setSelectedId] = useState(paramId || '');
-  const profId = paramId || selectedId;
   const { user } = useAuth();
   const role = user?.role || '';
+
+  // Auto-load own profile for professors
+  const { data: myProfileData } = useQuery({
+    queryKey: ['my-professor-profile'],
+    queryFn: () => api.get('/professors/my-profile').then(r => r.data),
+    enabled: role === 'Professor' && !paramId,
+    staleTime: Infinity,
+  });
+
+  const profId = paramId || selectedId || (role === 'Professor' ? myProfileData?.data?.professor_id : '') || '';
 
   // Professors see view-only, schedulers/admins can click through
   const ADMIN_ROLES = ['Admin', 'CEO', 'Scheduling Coordinator', 'Field Manager', 'Client Manager'];

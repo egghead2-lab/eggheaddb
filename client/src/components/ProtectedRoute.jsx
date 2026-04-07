@@ -31,6 +31,12 @@ export function ProtectedRoute({ children }) {
     return <Navigate to="/candidate-portal" replace />;
   }
 
+  // Professors can only access their schedule
+  if (role === 'Professor') {
+    if (location.pathname.startsWith('/schedule')) return children;
+    return <Navigate to="/schedule" replace />;
+  }
+
   // Admin/CEO always pass
   if (ADMIN_ROLES.includes(role)) return children;
 

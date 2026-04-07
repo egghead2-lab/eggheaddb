@@ -85,6 +85,11 @@ export default function CandidateDetailPage() {
     onSuccess: () => qc.invalidateQueries(['candidate', id]),
   });
 
+  const approveMutation = useMutation({
+    mutationFn: ({ reqId, action }) => api.post(`/onboarding/candidate-requirements/${reqId}/approve`, { action }),
+    onSuccess: () => qc.invalidateQueries(['candidate', id]),
+  });
+
   const applyTemplateMutation = useMutation({
     mutationFn: (templateId) => api.post(`/onboarding/candidates/${id}/apply-template`, { template_id: templateId }),
     onSuccess: () => qc.invalidateQueries(['candidate', id]),
@@ -351,34 +356,71 @@ export default function CandidateDetailPage() {
                 <p className="text-sm text-gray-400">No requirements assigned. Apply a template to get started.</p>
               ) : (
                 <div className="space-y-1">
-                  {requirements.map(r => (
-                    <div key={r.id} className={`flex items-center gap-3 px-3 py-2 rounded ${r.completed ? 'bg-green-50/50' : r.due_date && r.due_date < today && !r.completed ? 'bg-red-50/50' : 'bg-gray-50'}`}>
-                      <input type="checkbox" checked={!!r.completed}
-                        onChange={() => reqMutation.mutate({ reqId: r.id, data: { completed: r.completed ? 0 : 1, status: r.completed ? 'not_started' : 'complete' } })}
-                        className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer" />
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-sm ${r.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{r.title}</div>
-                        {r.description && <div className="text-xs text-gray-400 truncate">{r.description}</div>}
+                  {[...requirements].sort((a, b) => {
+                    // Sort: overdue first, then by due date, completed last
+                    if (a.completed && !b.completed) return 1;
+                    if (!a.completed && b.completed) return -1;
+                    const aOverdue = a.due_date && a.due_date < today && !a.completed;
+                    const bOverdue = b.due_date && b.due_date < today && !b.completed;
+                    if (aOverdue && !bOverdue) return -1;
+                    if (!aOverdue && bOverdue) return 1;
+                    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+                    if (a.due_date && !b.due_date) return -1;
+                    return 0;
+                  }).map(r => {
+                    const isOverdue = r.due_date && r.due_date < today && !r.completed;
+                    const isFuture = r.due_date && r.due_date > today && !r.completed;
+                    const daysUntilDue = r.due_date ? Math.ceil((new Date(r.due_date) - new Date(today)) / 86400000) : null;
+                    const isUpcoming = daysUntilDue !== null && daysUntilDue > 7 && !r.completed;
+                    const isPendingApproval = r.approval_status === 'pending_approval';
+                    return (
+                      <div key={r.id} className={`flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
+                        r.completed ? 'bg-green-50/50' :
+                        isPendingApproval ? 'bg-amber-50/60 border border-amber-200' :
+                        isOverdue ? 'bg-red-50/50 border border-red-200' :
+                        isUpcoming ? 'bg-gray-50/50 opacity-60' :
+                        'bg-gray-50'
+                      }`}>
+                        <input type="checkbox" checked={!!r.completed}
+                          onChange={() => reqMutation.mutate({ reqId: r.id, data: { completed: r.completed ? 0 : 1, status: r.completed ? 'not_started' : 'complete' } })}
+                          className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm ${r.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{r.title}</span>
+                            {r.needs_approval === 1 && <span className="text-[9px] px-1 py-0.5 bg-violet-100 text-violet-700 rounded font-medium">Approval</span>}
+                            {r.requires_document === 1 && <span className="text-[9px] px-1 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Doc</span>}
+                          </div>
+                          {r.description && <div className="text-xs text-gray-400 truncate">{r.description}</div>}
+                          {isPendingApproval && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-amber-700 font-medium">Pending approval</span>
+                              <button type="button" onClick={() => approveMutation.mutate({ reqId: r.id, action: 'approve' })}
+                                className="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700">Approve</button>
+                              <button type="button" onClick={() => approveMutation.mutate({ reqId: r.id, action: 'reject' })}
+                                className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600">Reject</button>
+                            </div>
+                          )}
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
+                          r.type === 'document' ? 'bg-blue-100 text-blue-700' :
+                          r.type === 'training' ? 'bg-purple-100 text-purple-700' :
+                          r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>{r.type}</span>
+                        {r.assigned_role && (
+                          <span className={`text-[10px] px-1 py-0.5 rounded font-medium shrink-0 ${
+                            { scheduler: 'bg-blue-50 text-blue-600', field_manager: 'bg-emerald-50 text-emerald-600', recruiter: 'bg-teal-50 text-teal-600', onboarder: 'bg-pink-50 text-pink-600', trainer: 'bg-orange-50 text-orange-600' }[r.assigned_role] || 'bg-gray-100 text-gray-500'
+                          }`}>{r.assigned_role.replace('_', ' ')}</span>
+                        )}
+                        {r.due_date && (
+                          <span className={`text-[10px] shrink-0 ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
+                            {isOverdue ? `Overdue (${formatDate(r.due_date)})` : formatDate(r.due_date)}
+                          </span>
+                        )}
+                        {r.assigned_to_name && <span className="text-[10px] text-gray-400 shrink-0">{r.assigned_to_name}</span>}
                       </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        r.type === 'document' ? 'bg-blue-100 text-blue-700' :
-                        r.type === 'training' ? 'bg-purple-100 text-purple-700' :
-                        r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>{r.type}</span>
-                      {r.due_date && (
-                        <span className={`text-[10px] ${r.due_date < today && !r.completed ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                          {formatDate(r.due_date)}
-                        </span>
-                      )}
-                      {r.assigned_role && (
-                        <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
-                          { scheduler: 'bg-blue-50 text-blue-600', field_manager: 'bg-emerald-50 text-emerald-600', recruiter: 'bg-teal-50 text-teal-600', onboarder: 'bg-pink-50 text-pink-600', trainer: 'bg-orange-50 text-orange-600' }[r.assigned_role] || 'bg-gray-100 text-gray-500'
-                        }`}>{r.assigned_role.replace('_', ' ')}</span>
-                      )}
-                      {r.assigned_to_name && <span className="text-[10px] text-gray-400">{r.assigned_to_name}</span>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Section>

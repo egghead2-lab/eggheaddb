@@ -100,11 +100,12 @@ export default function CandidatesPage() {
 
       <div className="p-6">
         {/* KPI cards */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-5 gap-4 mb-6">
           {[
             { label: 'Pending', value: dash.pending, color: 'text-amber-600', bg: 'bg-amber-50' },
             { label: 'In Progress', value: dash.inProgress, color: 'text-blue-600', bg: 'bg-blue-50' },
             { label: viewMode === 'mine' ? 'My Overdue Reqs' : 'Overdue Reqs', value: viewMode === 'mine' ? myOverdueReqs : dash.overdueReqs, color: 'text-red-600', bg: 'bg-red-50' },
+            { label: 'Pending Approvals', value: dash.pendingApprovals, color: 'text-orange-600', bg: 'bg-orange-50' },
             { label: viewMode === 'mine' ? 'My Open Tasks' : 'Open Tasks', value: viewMode === 'mine' ? myOpenReqs + myOpenTasks : dash.openTasks, color: 'text-violet-600', bg: 'bg-violet-50' },
           ].map(kpi => (
             <div key={kpi.label} className={`${kpi.bg} rounded-lg p-4 border border-gray-100`}>

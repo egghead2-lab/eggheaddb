@@ -446,6 +446,17 @@ export default function ProfessorDetailPage() {
   });
 
   const prof = profData?.data || {};
+  const [generatedPassword, setGeneratedPassword] = useState(null);
+
+  const generateLoginMutation = useMutation({
+    mutationFn: () => api.post(`/professors/${id}/generate-login`).then(r => r.data),
+    onSuccess: (res) => { setGeneratedPassword(res.password); qc.invalidateQueries(['professors', id]); },
+  });
+
+  const regenPasswordMutation = useMutation({
+    mutationFn: () => api.post(`/professors/${id}/regenerate-password`).then(r => r.data),
+    onSuccess: (res) => { setGeneratedPassword(res.password); },
+  });
 
   const onSubmit = (data) => mutation.mutate(data);
 
@@ -499,6 +510,58 @@ export default function ProfessorDetailPage() {
               </div>
             </div>
           </Section>
+
+          {/* Portal Login */}
+          {!isNew && (
+            <Section title="Portal Login" defaultOpen={!!prof.user_id}>
+              {prof.user_id ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-6">
+                    <div>
+                      <label className="text-xs text-gray-500">Username</label>
+                      <div className="text-sm font-mono font-medium text-gray-800">{prof.login_username}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Role</label>
+                      <div className="text-sm text-gray-600">{prof.login_role || 'Professor'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Status</label>
+                      <div className={`text-sm font-medium ${prof.login_active ? 'text-green-600' : 'text-red-600'}`}>
+                        {prof.login_active ? 'Active' : 'Inactive'}
+                      </div>
+                    </div>
+                  </div>
+                  {generatedPassword && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <div className="text-xs font-medium text-amber-800 mb-1">New Password (copy now — won't be shown again)</div>
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono bg-white px-2 py-1 rounded border border-amber-200 select-all">{generatedPassword}</code>
+                        <button type="button" onClick={() => navigator.clipboard.writeText(generatedPassword)}
+                          className="text-xs text-amber-700 hover:text-amber-900 underline">Copy</button>
+                      </div>
+                    </div>
+                  )}
+                  <button type="button" onClick={() => regenPasswordMutation.mutate()}
+                    disabled={regenPasswordMutation.isPending}
+                    className="text-xs text-[#1e3a5f] hover:underline">
+                    {regenPasswordMutation.isPending ? 'Generating…' : 'Reset Password'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-500">No portal login yet. Generate one so this professor can view their schedule.</p>
+                  <Button type="button" onClick={() => generateLoginMutation.mutate()}
+                    disabled={generateLoginMutation.isPending}>
+                    {generateLoginMutation.isPending ? 'Creating…' : 'Generate Portal Login'}
+                  </Button>
+                  {generateLoginMutation.isError && (
+                    <p className="text-xs text-red-600">{generateLoginMutation.error?.response?.data?.error || 'Failed'}</p>
+                  )}
+                </div>
+              )}
+            </Section>
+          )}
 
           {/* Section 2: Pay Info */}
           <Section title="Pay Info">

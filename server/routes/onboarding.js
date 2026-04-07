@@ -4,6 +4,10 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { searchThreads, sendEmail, getGmailAddress } = require('../lib/gmail');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 const CANDIDATE_ROLE_ID = 16;
 
@@ -298,7 +302,7 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
 router.put('/candidate-requirements/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const fields = ['completed', 'status', 'due_date', 'assigned_to_user_id', 'assigned_role', 'notes'];
+    const fields = ['completed', 'status', 'due_date', 'assigned_to_user_id', 'assigned_role', 'notes', 'approval_status'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
 
@@ -362,6 +366,102 @@ router.delete('/candidate-tasks/:id', async (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// DOCUMENTS
+// ═══════════════════════════════════════════════════════════════════
+
+const docUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, path.join(__dirname, '../../uploads/candidate-docs')),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+// POST /api/onboarding/candidates/:id/documents
+router.post('/candidates/:id/documents', docUpload.single('file'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { candidate_requirement_id } = req.body;
+    if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
+
+    const [result] = await pool.query(
+      `INSERT INTO candidate_document (candidate_id, candidate_requirement_id, file_name, file_size, mime_type, storage_path, uploaded_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, candidate_requirement_id || null, req.file.originalname, req.file.size, req.file.mimetype,
+       req.file.filename, req.user.userId]
+    );
+
+    // If this requirement needs approval, set status to pending_approval
+    if (candidate_requirement_id) {
+      const [[cr]] = await pool.query('SELECT needs_approval FROM candidate_requirement WHERE id = ?', [candidate_requirement_id]);
+      if (cr?.needs_approval) {
+        await pool.query("UPDATE candidate_requirement SET approval_status = 'pending_approval' WHERE id = ? AND approval_status != 'approved'",
+          [candidate_requirement_id]);
+      }
+    }
+
+    res.json({ success: true, id: result.insertId, file_name: req.file.originalname });
+  } catch (err) { next(err); }
+});
+
+// GET /api/onboarding/candidates/:id/documents
+router.get('/candidates/:id/documents', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT d.*, CONCAT(u.first_name, ' ', u.last_name) AS uploaded_by_name
+       FROM candidate_document d
+       LEFT JOIN user u ON u.id = d.uploaded_by_user_id
+       WHERE d.candidate_id = ?
+       ORDER BY d.ts_inserted DESC`, [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/onboarding/documents/:id/download
+router.get('/documents/:id/download', async (req, res, next) => {
+  try {
+    const [[doc]] = await pool.query('SELECT * FROM candidate_document WHERE id = ?', [req.params.id]);
+    if (!doc) return res.status(404).json({ success: false, error: 'Document not found' });
+    const filePath = path.join(__dirname, '../../uploads/candidate-docs', doc.storage_path);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File not found on disk' });
+    res.download(filePath, doc.file_name);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/onboarding/documents/:id
+router.delete('/documents/:id', async (req, res, next) => {
+  try {
+    const [[doc]] = await pool.query('SELECT storage_path FROM candidate_document WHERE id = ?', [req.params.id]);
+    if (doc) {
+      const filePath = path.join(__dirname, '../../uploads/candidate-docs', doc.storage_path);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      await pool.query('DELETE FROM candidate_document WHERE id = ?', [req.params.id]);
+    }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidate-requirements/:id/approve
+router.post('/candidate-requirements/:id/approve', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body; // 'approve' or 'reject'
+    if (action === 'approve') {
+      await pool.query(
+        "UPDATE candidate_requirement SET approval_status = 'approved', completed = 1, completed_at = NOW(), completed_by_user_id = ?, status = 'complete', approved_by_user_id = ?, approved_at = NOW() WHERE id = ?",
+        [req.user.userId, req.user.userId, id]
+      );
+    } else {
+      await pool.query(
+        "UPDATE candidate_requirement SET approval_status = 'rejected' WHERE id = ?", [id]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // REQUIREMENTS (global definitions)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -378,11 +478,11 @@ router.get('/requirements', async (req, res, next) => {
 // POST /api/onboarding/requirements
 router.post('/requirements', async (req, res, next) => {
   try {
-    const { title, description, category, type, requires_document, sort_order, assigned_role, email_template_id } = req.body;
+    const { title, description, category, type, requires_document, sort_order, assigned_role, email_template_id, needs_approval, due_basis, due_days } = req.body;
     if (!title) return res.status(400).json({ success: false, error: 'Title required' });
     const [result] = await pool.query(
-      'INSERT INTO onboarding_requirement (title, description, category, type, requires_document, sort_order, assigned_role, email_template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [title, description || null, category || null, type || 'task', requires_document ? 1 : 0, sort_order || 0, assigned_role || null, email_template_id || null]
+      'INSERT INTO onboarding_requirement (title, description, category, type, requires_document, sort_order, assigned_role, email_template_id, needs_approval, due_basis, due_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, description || null, category || null, type || 'task', requires_document ? 1 : 0, sort_order || 0, assigned_role || null, email_template_id || null, needs_approval ? 1 : 0, due_basis || null, due_days || null]
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
@@ -392,7 +492,7 @@ router.post('/requirements', async (req, res, next) => {
 router.put('/requirements/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const fields = ['title', 'description', 'category', 'type', 'requires_document', 'sort_order', 'active', 'assigned_role', 'email_template_id'];
+    const fields = ['title', 'description', 'category', 'type', 'requires_document', 'sort_order', 'active', 'assigned_role', 'email_template_id', 'needs_approval', 'due_basis', 'due_days'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
@@ -521,28 +621,48 @@ router.post('/candidates/:id/apply-template', async (req, res, next) => {
       field_manager: candidate?.field_manager_user_id,
     };
 
-    // Get requirement details for role assignment
+    // Get requirement details for role, approval, and due date calculation
     const reqIds = items.map(i => i.requirement_id);
     const [reqDetails] = reqIds.length > 0
-      ? await pool.query('SELECT id, assigned_role FROM onboarding_requirement WHERE id IN (?)', [reqIds])
+      ? await pool.query('SELECT id, assigned_role, needs_approval, due_basis, due_days FROM onboarding_requirement WHERE id IN (?)', [reqIds])
       : [[]];
-    const reqRoleMap = {};
-    reqDetails.forEach(r => { reqRoleMap[r.id] = r.assigned_role; });
+    const reqMap = {};
+    reqDetails.forEach(r => { reqMap[r.id] = r; });
+
+    // Get candidate's first class date for due date calculations
+    const [[candDates]] = await pool.query('SELECT accepted_at, first_class_date FROM candidate WHERE id = ?', [id]);
+    const hireDate = candDates?.accepted_at ? new Date(candDates.accepted_at) : new Date();
+    const startDate = candDates?.first_class_date ? new Date(candDates.first_class_date) : null;
 
     let added = 0;
     for (const item of items) {
       if (existingSet.has(item.requirement_id)) continue;
+      const reqDef = reqMap[item.requirement_id] || {};
+
+      // Calculate due date from requirement definition or template override
       let dueDate = null;
-      if (item.due_offset_days) {
-        const d = new Date(baseDate);
-        d.setDate(d.getDate() + item.due_offset_days);
+      const dueDays = item.due_offset_days || reqDef.due_days;
+      const dueBasis = reqDef.due_basis;
+      if (dueDays && dueBasis) {
+        let refDate = null;
+        if (dueBasis === 'days_after_hire') { refDate = new Date(hireDate); refDate.setDate(refDate.getDate() + dueDays); }
+        else if (dueBasis === 'days_before_hire') { refDate = new Date(hireDate); refDate.setDate(refDate.getDate() - dueDays); }
+        else if (dueBasis === 'days_after_start' && startDate) { refDate = new Date(startDate); refDate.setDate(refDate.getDate() + dueDays); }
+        else if (dueBasis === 'days_before_start' && startDate) { refDate = new Date(startDate); refDate.setDate(refDate.getDate() - dueDays); }
+        if (refDate) dueDate = refDate.toISOString().split('T')[0];
+      } else if (dueDays) {
+        const d = new Date(hireDate);
+        d.setDate(d.getDate() + dueDays);
         dueDate = d.toISOString().split('T')[0];
       }
-      const role = reqRoleMap[item.requirement_id] || null;
+
+      const role = reqDef.assigned_role || null;
       const assignedUserId = role ? roleToUser[role] || null : null;
+      const needsApproval = reqDef.needs_approval ? 1 : 0;
+
       await pool.query(
-        'INSERT INTO candidate_requirement (candidate_id, requirement_id, due_date, assigned_role, assigned_to_user_id) VALUES (?, ?, ?, ?, ?)',
-        [id, item.requirement_id, dueDate, role, assignedUserId]
+        'INSERT INTO candidate_requirement (candidate_id, requirement_id, due_date, assigned_role, assigned_to_user_id, needs_approval, approval_status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, item.requirement_id, dueDate, role, assignedUserId, needsApproval, needsApproval ? 'not_needed' : 'not_needed']
       );
       added++;
     }
@@ -606,11 +726,13 @@ router.get('/dashboard', async (req, res, next) => {
     const [[overdueReqs]] = await pool.query('SELECT COUNT(*) as cnt FROM candidate_requirement WHERE completed = 0 AND due_date < ?', [today]);
     const [[openTasks]] = await pool.query('SELECT COUNT(*) as cnt FROM candidate_task WHERE completed = 0');
     const [[overdueTasks]] = await pool.query('SELECT COUNT(*) as cnt FROM candidate_task WHERE completed = 0 AND due_date < ?', [today]);
+    const [[pendingApprovals]] = await pool.query("SELECT COUNT(*) as cnt FROM candidate_requirement WHERE approval_status = 'pending_approval'");
 
     res.json({ success: true, data: {
       pending: pending.cnt, inProgress: inProgress.cnt,
       openReqs: openReqs.cnt, overdueReqs: overdueReqs.cnt,
       openTasks: openTasks.cnt, overdueTasks: overdueTasks.cnt,
+      pendingApprovals: pendingApprovals.cnt,
     }});
   } catch (err) { next(err); }
 });
@@ -623,8 +745,6 @@ router.get('/dashboard', async (req, res, next) => {
 // EMAIL (Gmail integration)
 // ═══════════════════════════════════════════════════════════════════
 
-const { searchThreads, sendEmail, getGmailAddress } = require('../lib/gmail');
-const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 // GET /api/onboarding/candidates/:id/emails — fetch Gmail threads for a candidate
@@ -869,6 +989,58 @@ router.put('/my-portal/profile', async (req, res, next) => {
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
     const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
     await pool.query(`UPDATE candidate SET ${setClauses} WHERE id = ?`, [...values, candidate.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/my-portal/documents — candidate uploads a document
+router.post('/my-portal/documents', docUpload.single('file'), async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+    if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
+
+    const { candidate_requirement_id } = req.body;
+    const [result] = await pool.query(
+      `INSERT INTO candidate_document (candidate_id, candidate_requirement_id, file_name, file_size, mime_type, storage_path, uploaded_by_candidate)
+       VALUES (?, ?, ?, ?, ?, ?, 1)`,
+      [candidate.id, candidate_requirement_id || null, req.file.originalname, req.file.size, req.file.mimetype, req.file.filename]
+    );
+
+    // If needs approval, set to pending
+    if (candidate_requirement_id) {
+      const [[cr]] = await pool.query('SELECT needs_approval FROM candidate_requirement WHERE id = ?', [candidate_requirement_id]);
+      if (cr?.needs_approval) {
+        await pool.query("UPDATE candidate_requirement SET approval_status = 'pending_approval' WHERE id = ? AND approval_status != 'approved'", [candidate_requirement_id]);
+      }
+    }
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/my-portal/complete-requirement — candidate marks non-approval item complete
+router.post('/my-portal/complete-requirement', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    const { candidate_requirement_id } = req.body;
+    const [[cr]] = await pool.query('SELECT needs_approval, candidate_id FROM candidate_requirement WHERE id = ?', [candidate_requirement_id]);
+    if (!cr || cr.candidate_id !== candidate.id) return res.status(403).json({ success: false, error: 'Not your requirement' });
+
+    if (cr.needs_approval) {
+      // Can't self-complete — just mark as pending approval
+      await pool.query("UPDATE candidate_requirement SET approval_status = 'pending_approval' WHERE id = ?", [candidate_requirement_id]);
+    } else {
+      // Self-complete
+      await pool.query(
+        "UPDATE candidate_requirement SET completed = 1, completed_at = NOW(), status = 'complete' WHERE id = ?",
+        [candidate_requirement_id]
+      );
+    }
     res.json({ success: true });
   } catch (err) { next(err); }
 });

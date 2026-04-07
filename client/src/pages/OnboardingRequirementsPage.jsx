@@ -18,7 +18,7 @@ const TYPE_COLORS = {
 export default function OnboardingRequirementsPage() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [newReq, setNewReq] = useState({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '' });
+  const [newReq, setNewReq] = useState({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '', needs_approval: false, due_basis: '', due_days: '' });
 
   const { data, isLoading } = useQuery({
     queryKey: ['onboarding-requirements'],
@@ -27,7 +27,7 @@ export default function OnboardingRequirementsPage() {
 
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/onboarding/requirements', data),
-    onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setNewReq({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '' }); setShowAdd(false); },
+    onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setNewReq({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '', needs_approval: false, due_basis: '', due_days: '' }); setShowAdd(false); },
   });
 
   const deleteMutation = useMutation({
@@ -68,8 +68,24 @@ export default function OnboardingRequirementsPage() {
               </select>
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={newReq.requires_document} onChange={e => setNewReq({ ...newReq, requires_document: e.target.checked })} />
-                Requires document upload
+                Requires document
               </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" checked={newReq.needs_approval} onChange={e => setNewReq({ ...newReq, needs_approval: e.target.checked })} />
+                Needs approval
+              </label>
+              <select value={newReq.due_basis} onChange={e => setNewReq({ ...newReq, due_basis: e.target.value })}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm">
+                <option value="">No auto due date</option>
+                <option value="days_after_hire">Days after hire</option>
+                <option value="days_before_hire">Days before hire</option>
+                <option value="days_after_start">Days after start date</option>
+                <option value="days_before_start">Days before start date</option>
+              </select>
+              {newReq.due_basis && (
+                <input type="number" value={newReq.due_days} onChange={e => setNewReq({ ...newReq, due_days: e.target.value })}
+                  placeholder="# days" className="rounded border border-gray-300 px-3 py-1.5 text-sm w-24" />
+              )}
             </div>
             <div className="mt-3 flex justify-end">
               <Button onClick={() => createMutation.mutate(newReq)} disabled={!newReq.title || createMutation.isPending}>

@@ -86,6 +86,16 @@ router.get('/', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/professors/my-profile — professor finds their own professor ID from their user ID
+router.get('/my-profile', authenticate, async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [userId]);
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+    res.json({ success: true, data: { professor_id: prof.id } });
+  } catch (err) { next(err); }
+});
+
 // GET /api/professors/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
@@ -96,12 +106,17 @@ router.get('/:id', authenticate, async (req, res, next) => {
               ps.professor_status_name,
               c.city_name, c.zip_code, c.state_id,
               ga.geographic_area_name,
-              os.onboard_status_name
+              os.onboard_status_name,
+              pu.user_name AS login_username,
+              pu.active AS login_active,
+              pr.role_name AS login_role
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN onboard_status os ON os.id = p.onboard_status_id
+       LEFT JOIN user pu ON pu.id = p.user_id
+       LEFT JOIN role pr ON pr.id = pu.role_id
        WHERE p.id = ? AND p.active = 1`,
       [id]
     );
@@ -444,6 +459,73 @@ router.get('/:id/sub-dates', authenticate, async (req, res, next) => {
       [req.params.id]
     );
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// PROFESSOR PORTAL LOGIN
+// ═══════════════════════════════════════════════════════════════════
+
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const PROFESSOR_ROLE_ID = 17;
+
+// POST /api/professors/:id/generate-login
+router.post('/:id/generate-login', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[prof]] = await pool.query('SELECT * FROM professor WHERE id = ?', [id]);
+    if (!prof) return res.status(404).json({ success: false, error: 'Professor not found' });
+    if (prof.user_id) return res.status(400).json({ success: false, error: 'Login already exists' });
+
+    // Generate username from nickname: first.last (lowercase)
+    const nickParts = (prof.professor_nickname + ' ' + prof.last_name).trim().toLowerCase().split(/\s+/);
+    let baseUsername = nickParts.length > 1
+      ? `${nickParts[0]}.${nickParts[nickParts.length - 1]}`
+      : nickParts[0];
+    baseUsername = baseUsername.replace(/[^a-z0-9.]/g, '');
+
+    let username = baseUsername;
+    let suffix = 1;
+    while (true) {
+      const [existing] = await pool.query('SELECT id FROM user WHERE user_name = ?', [username]);
+      if (existing.length === 0) break;
+      username = `${baseUsername}${suffix}`;
+      suffix++;
+    }
+
+    const rawPassword = crypto.randomBytes(4).toString('hex');
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    const [userResult] = await pool.query(
+      `INSERT INTO user (first_name, last_name, email, user_name, password, role_id, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [prof.first_name || prof.professor_nickname, prof.last_name || '', prof.email, username, hashedPassword, PROFESSOR_ROLE_ID]
+    );
+
+    await pool.query('UPDATE professor SET user_id = ? WHERE id = ?', [userResult.insertId, id]);
+
+    res.json({ success: true, user_id: userResult.insertId, username, password: rawPassword });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, error: 'A user with this email already exists' });
+    next(err);
+  }
+});
+
+// POST /api/professors/:id/regenerate-password
+router.post('/:id/regenerate-password', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[prof]] = await pool.query('SELECT user_id FROM professor WHERE id = ?', [id]);
+    if (!prof) return res.status(404).json({ success: false, error: 'Professor not found' });
+    if (!prof.user_id) return res.status(400).json({ success: false, error: 'No login exists yet' });
+
+    const rawPassword = crypto.randomBytes(4).toString('hex');
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    await pool.query('UPDATE user SET password = ?, ts_updated = NOW() WHERE id = ?', [hashedPassword, prof.user_id]);
+
+    res.json({ success: true, password: rawPassword });
   } catch (err) { next(err); }
 });
 
