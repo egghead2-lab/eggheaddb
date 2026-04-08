@@ -27,13 +27,14 @@ export default function DashboardPage() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-6 gap-4 mb-6">
+        <div className="grid grid-cols-7 gap-4 mb-6">
           <KpiCard label="Active Programs" value={kpi.activePrograms} link="/programs" />
           <KpiCard label="Unconfirmed" value={kpi.unconfirmedPrograms} link="/programs" color={kpi.unconfirmedPrograms > 0 ? 'amber' : ''} />
           <KpiCard label="Sessions (7 days)" value={kpi.upcomingSessions7d} />
           <KpiCard label="Overdue Reviews" value={kpi.overdueLessons} link="/lessons" color={kpi.overdueLessons > 0 ? 'red' : ''} />
           <KpiCard label="Active Professors" value={kpi.activeProfessors} link="/professors" />
           <KpiCard label="Active Locations" value={kpi.activeLocations} link="/locations" />
+          <KpiCard label="Overdue Evals" value={kpi.overdueEvals} link="/evaluations" color={kpi.overdueEvals > 0 ? 'red' : ''} />
         </div>
 
         <DailyTasksAndKpis />

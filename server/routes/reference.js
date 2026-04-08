@@ -127,6 +127,13 @@ router.get('/dashboard-kpis', authenticate, async (req, res, next) => {
     const [[activeLocations]] = await pool.query(
       `SELECT COUNT(*) as cnt FROM location WHERE active = 1 AND (location_type_id IS NULL OR location_type_id != 5)`
     );
+    // Overdue evaluations: professors whose last eval + tier frequency < today
+    const [[overdueEvals]] = await pool.query(
+      `SELECT COUNT(*) as cnt FROM professor p
+       JOIN professor_status ps ON ps.id = p.professor_status_id
+       WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Training')
+         AND (p.last_evaluation_date IS NULL OR p.last_evaluation_date < DATE_SUB(CURDATE(), INTERVAL 120 DAY))`
+    );
     res.json({ success: true, data: {
       activePrograms: active.cnt,
       unconfirmedPrograms: unconfirmed.cnt,
@@ -134,6 +141,7 @@ router.get('/dashboard-kpis', authenticate, async (req, res, next) => {
       overdueLessons: overdue.cnt,
       activeProfessors: activeProfessors.cnt,
       activeLocations: activeLocations.cnt,
+      overdueEvals: overdueEvals.cnt,
     }});
   } catch (err) { next(err); }
 });

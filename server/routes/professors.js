@@ -60,7 +60,8 @@ router.get('/', authenticate, async (req, res, next) => {
               CONCAT(sc_user.first_name, ' ', sc_user.last_name) AS scheduling_coordinator,
               (SELECT COUNT(*) FROM livescan l WHERE l.professor_id = p.id AND l.active = 1) AS livescan_count,
               (SELECT COUNT(*) FROM availability a WHERE a.professor_id = p.id AND a.active = 1) AS availability_count,
-              (SELECT COUNT(*) FROM program pr LEFT JOIN class_status cs2 ON cs2.id = pr.class_status_id WHERE pr.active = 1 AND (pr.lead_professor_id = p.id OR pr.assistant_professor_id = p.id) AND cs2.class_status_name NOT LIKE 'Cancelled%' AND (pr.last_session_date >= CURDATE() OR pr.last_session_date IS NULL)) AS active_program_count
+              (SELECT COUNT(*) FROM program pr LEFT JOIN class_status cs2 ON cs2.id = pr.class_status_id WHERE pr.active = 1 AND (pr.lead_professor_id = p.id OR pr.assistant_professor_id = p.id) AND cs2.class_status_name NOT LIKE 'Cancelled%' AND (pr.last_session_date >= CURDATE() OR pr.last_session_date IS NULL)) AS active_program_count,
+              p.last_evaluation_date, p.last_evaluation_result, p.hire_date
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id

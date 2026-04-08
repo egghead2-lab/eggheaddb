@@ -10,6 +10,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { formatDate } from '../lib/utils';
 import { formatCurrency } from '../lib/utils';
 import { TRAINING_FIELDS } from '../lib/constants';
 import { exportToCsv } from '../lib/exportCsv';
@@ -27,6 +28,7 @@ const COLUMNS = [
   { key: 'trained', label: 'Trained In' },
   { key: 'base_pay', label: 'Base Pay' },
   { key: 'programs', label: 'Programs' },
+  { key: 'last_eval', label: 'Last Eval' },
   { key: 'compliance', label: 'Compliance' },
   { key: 'actions', label: 'Actions' },
 ];
@@ -152,6 +154,7 @@ export default function ProfessorsPage() {
                     {v('trained') && <th className="text-left px-4 py-3 font-semibold text-gray-700">Trained In</th>}
                     {v('base_pay') && <SortTh col="base_pay" sort={sort} dir={dir} onSort={handleSort} align="right">Base Pay</SortTh>}
                     {v('programs') && <SortTh col="programs" sort={sort} dir={dir} onSort={handleSort} align="center">Programs</SortTh>}
+                    {v('last_eval') && <th className="text-center px-4 py-3 font-semibold text-gray-700">Last Eval</th>}
                     {v('compliance') && <th className="text-center px-4 py-3 font-semibold text-gray-700">Compliance</th>}
                     {v('actions') && <th className="w-16"></th>}
                   </tr>
@@ -182,6 +185,18 @@ export default function ProfessorsPage() {
                       </td>}
                       {v('base_pay') && <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(p.base_pay)}</td>}
                       {v('programs') && <td className="px-3 py-2.5 text-center text-gray-600">{p.active_program_count || 0}</td>}
+                      {v('last_eval') && <td className="px-3 py-2.5 text-center">
+                        {p.last_evaluation_date ? (
+                          <div>
+                            <div className="text-xs text-gray-600">{formatDate(p.last_evaluation_date)}</div>
+                            {p.last_evaluation_result && <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
+                              p.last_evaluation_result === 'pass' ? 'bg-green-100 text-green-700' :
+                              p.last_evaluation_result === 'needs_improvement' ? 'bg-amber-100 text-amber-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>{p.last_evaluation_result.replace(/_/g, ' ')}</span>}
+                          </div>
+                        ) : <span className="text-[10px] text-red-500 font-medium">Never</span>}
+                      </td>}
                       {v('compliance') && <td className="px-4 py-2.5 text-center text-xs font-medium">
                         <span className={`mr-1.5 ${p.tb_test ? 'text-green-600' : 'text-gray-300'}`}>TB</span>
                         <span className={`mr-1.5 ${p.livescan_count > 0 ? 'text-green-600' : 'text-gray-300'}`}>LS</span>
