@@ -217,17 +217,19 @@ export default function ProgramsPage() {
                       {v('location') && <td className="px-4 py-2.5 text-gray-600">
                         {p.location_id ? <Link to={`/locations/${p.location_id}`} className="text-[#1e3a5f] hover:underline">{p.location_nickname}</Link> : '—'}
                       </td>}
-                      {v('type') && <td className="px-4 py-2.5 text-gray-600">
-                        {p.class_name || p.program_type_name || '—'}
-                        {p.class_type_name && (
-                          <span className={`ml-1 inline-block px-1 py-0.5 text-[10px] font-medium rounded ${
-                            p.class_type_name === 'Science' ? 'bg-blue-100 text-blue-700' :
-                            p.class_type_name === 'Engineering' ? 'bg-orange-100 text-orange-700' :
-                            p.class_type_name === 'Robotics' ? 'bg-purple-100 text-purple-700' :
-                            p.class_type_name === 'Financial Literacy' ? 'bg-emerald-100 text-emerald-700' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>{p.class_type_name}</span>
-                        )}
+                      {v('type') && <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          {p.class_type_name && (
+                            <span className={`inline-block px-1.5 py-0.5 text-[10px] font-medium rounded whitespace-nowrap shrink-0 ${
+                              p.class_type_name === 'Science' ? 'bg-blue-100 text-blue-700' :
+                              p.class_type_name === 'Engineering' ? 'bg-orange-100 text-orange-700' :
+                              p.class_type_name === 'Robotics' ? 'bg-purple-100 text-purple-700' :
+                              p.class_type_name === 'Financial Literacy' ? 'bg-emerald-100 text-emerald-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>{p.class_type_name}</span>
+                          )}
+                          <span className="text-gray-600 truncate">{p.class_name || p.program_type_name || '—'}</span>
+                        </div>
                       </td>}
                       {v('day_time') && <td className="px-4 py-2.5 text-gray-600">{getProgramDay(p)} {formatTime(p.start_time)}</td>}
                       {v('start_date') && <td className="px-4 py-2.5 text-gray-600 text-xs">{p.first_session_date ? formatDate(p.first_session_date) : '—'}</td>}
