@@ -333,7 +333,7 @@ router.get('/observations/outstanding', async (req, res, next) => {
     );
 
     const all = [...observations, ...evaluations].sort((a, b) =>
-      (a.observation_date || '').localeCompare(b.observation_date || '')
+      new Date(b.observation_date || 0) - new Date(a.observation_date || 0)
     );
 
     res.json({ success: true, data: all });
