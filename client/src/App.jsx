@@ -55,6 +55,11 @@ import StandardOrderBuilderPage from './pages/StandardOrderBuilderPage';
 import MarkShippedPage from './pages/MarkShippedPage';
 import BinManagerPage from './pages/BinManagerPage';
 import StockLevelsPage from './pages/StockLevelsPage';
+import MidCycleOrdersPage from './pages/MidCycleOrdersPage';
+import ResolutionCenterPage from './pages/ResolutionCenterPage';
+import TrackingImportPage from './pages/TrackingImportPage';
+import WeeklyRequirementsPage from './pages/WeeklyRequirementsPage';
+import PartyShipmentsPage from './pages/PartyShipmentsPage';
 
 export default function App() {
   return (
@@ -124,6 +129,11 @@ export default function App() {
       <Route path="/materials/mark-shipped" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />
       <Route path="/materials/bins" element={<ProtectedRoute><BinManagerPage /></ProtectedRoute>} />
       <Route path="/materials/stock" element={<ProtectedRoute><StockLevelsPage /></ProtectedRoute>} />
+      <Route path="/materials/mid-cycle" element={<ProtectedRoute><MidCycleOrdersPage /></ProtectedRoute>} />
+      <Route path="/materials/resolutions" element={<ProtectedRoute><ResolutionCenterPage /></ProtectedRoute>} />
+      <Route path="/materials/tracking" element={<ProtectedRoute><TrackingImportPage /></ProtectedRoute>} />
+      <Route path="/materials/weekly-requirements" element={<ProtectedRoute><WeeklyRequirementsPage /></ProtectedRoute>} />
+      <Route path="/materials/parties" element={<ProtectedRoute><PartyShipmentsPage /></ProtectedRoute>} />
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
