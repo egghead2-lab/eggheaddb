@@ -183,7 +183,7 @@ router.get('/dashboard', async (req, res, next) => {
        WHERE p.active = 1
          AND ps.professor_status_name IN ('Active', 'Training')
          ${areaWhere}
-       ORDER BY p.last_evaluation_date ASC NULLS FIRST, p.hire_date ASC`,
+       ORDER BY p.last_evaluation_date IS NULL DESC, p.last_evaluation_date ASC, p.hire_date ASC`,
       [...areaParams]
     );
 
