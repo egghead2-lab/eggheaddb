@@ -282,7 +282,7 @@ router.post('/', authenticate, async (req, res, next) => {
       'emergency_contact_number', 'birthday', 'hire_date', 'termination_date',
       'termination_rason', 'schedule_link', 'base_pay', 'assist_pay', 'pickup_pay',
       'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
-      'show_party_trained_id', 'slime_party_trained_id', 'demo_trained_id',
+      'show_party_trained_id', 'demo_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
       'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
     ];
@@ -315,7 +315,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'emergency_contact', 'emergency_contact_number', 'birthday', 'hire_date',
       'termination_date', 'termination_rason', 'schedule_link', 'base_pay', 'assist_pay',
       'pickup_pay', 'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
-      'show_party_trained_id', 'slime_party_trained_id', 'demo_trained_id',
+      'show_party_trained_id', 'demo_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
       'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
       'active',
