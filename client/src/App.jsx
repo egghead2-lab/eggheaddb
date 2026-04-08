@@ -113,6 +113,9 @@ export default function App() {
       <Route path="/payroll/runs" element={<ProtectedRoute><PayrollRunsPage /></ProtectedRoute>} />
       <Route path="/payroll/misc-pay" element={<ProtectedRoute><MiscPayPage /></ProtectedRoute>} />
       <Route path="/payroll/fm-log" element={<ProtectedRoute><FmDailyLogPage /></ProtectedRoute>} />
+      <Route path="/fm/daily-log" element={<ProtectedRoute><FmDailyLogPage /></ProtectedRoute>} />
+      <Route path="/fm/mileage" element={<ProtectedRoute><MileagePage /></ProtectedRoute>} />
+      <Route path="/fm/misc-pay" element={<ProtectedRoute><MiscPayPage /></ProtectedRoute>} />
       <Route path="/payroll/gusto-codes" element={<ProtectedRoute><GustoCodesPage /></ProtectedRoute>} />
       <Route path="/payroll/session-pay" element={<ProtectedRoute><SessionPayPage /></ProtectedRoute>} />
       <Route path="/payroll/onboarding-pay" element={<ProtectedRoute><OnboardingPayPage /></ProtectedRoute>} />
