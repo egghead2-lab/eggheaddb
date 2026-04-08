@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import api from '../api/client';
 import { useGeneralData } from '../hooks/useReferenceData';
-import { toFormData, formatDate } from '../lib/utils';
+import { toFormData, formatDate, formatTime } from '../lib/utils';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
@@ -241,6 +241,8 @@ export default function CandidateDetailPage() {
                   <option value="">Select area…</option>
                   {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
                 </Select>
+                <Input label="Lead Pay ($/hr)" type="number" step="0.01" required {...register('lead_pay', { required: 'Required' })} />
+                <Input label="Assist Pay ($/hr)" type="number" step="0.01" required {...register('assist_pay', { required: 'Required' })} />
               </div>
             </Section>
           )}
@@ -258,7 +260,8 @@ export default function CandidateDetailPage() {
           {/* Tentative Schedule */}
           {!isNew && <CandidateScheduleSection candidateId={id} schedule={candidate.schedule || []}
             scheduleReady={candidate.schedule_ready} scheduleConfirmedAt={candidate.schedule_confirmed_at}
-            scheduleChanged={candidate.schedule_changed_since_confirm} />}
+            scheduleChanged={candidate.schedule_changed_since_confirm}
+            candidateLeadPay={candidate.lead_pay} candidateAssistPay={candidate.assist_pay} />}
 
           {/* Login Credentials */}
           {!isNew && (
@@ -469,7 +472,17 @@ const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sun
 const DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function getDays(p) { return DAYS.map((d, i) => p[d] ? DAY_ABBR[i] : null).filter(Boolean).join(', '); }
 
-function CandidateScheduleSection({ candidateId, schedule, scheduleReady, scheduleConfirmedAt, scheduleChanged }) {
+function calcClassPay(s, candidateLeadPay, candidateAssistPay) {
+  const isLead = s.role === 'Lead';
+  const hourlyRate = isLead ? (candidateLeadPay || 0) : (candidateAssistPay || 0);
+  const lengthHours = (s.class_length_minutes || 60) / 60;
+  const calculatedPay = hourlyRate * lengthHours;
+  const programPay = isLead ? s.program_lead_pay : s.program_assist_pay;
+  // Use the higher of calculated rate or program special pay
+  return Math.max(calculatedPay, programPay || 0);
+}
+
+function CandidateScheduleSection({ candidateId, schedule, scheduleReady, scheduleConfirmedAt, scheduleChanged, candidateLeadPay, candidateAssistPay }) {
   const qc = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -553,6 +566,7 @@ function CandidateScheduleSection({ candidateId, schedule, scheduleReady, schedu
                 <th className="text-left px-3 py-2 font-medium text-gray-600">Days</th>
                 <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
                 <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
+                <th className="text-right px-3 py-2 font-medium text-gray-600 w-20">Pay/Class</th>
                 <th className="text-center px-3 py-2 font-medium text-gray-600 w-16">Role</th>
                 <th className="text-center px-3 py-2 font-medium text-gray-600 w-20">Status</th>
                 <th className="w-8"></th>
@@ -574,10 +588,16 @@ function CandidateScheduleSection({ candidateId, schedule, scheduleReady, schedu
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-600">{s.location_nickname || '—'}</td>
                     <td className="px-3 py-2 text-xs text-gray-600">{getDays(s)}</td>
-                    <td className="px-3 py-2 text-xs text-gray-600">{s.start_time ? s.start_time.slice(0, 5) : '—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{formatTime(s.start_time)}{s.class_length_minutes ? ` (${s.class_length_minutes}m)` : ''}</td>
                     <td className="px-3 py-2 text-xs text-gray-500">
                       {s.first_session_date ? formatDate(s.first_session_date) : '—'}
                       {s.last_session_date ? ` – ${formatDate(s.last_session_date)}` : ''}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs font-medium text-green-700">
+                      {(() => {
+                        const pay = calcClassPay(s, candidateLeadPay, candidateAssistPay);
+                        return pay > 0 ? `$${pay.toFixed(2)}` : '—';
+                      })()}
                     </td>
                     <td className="px-3 py-2 text-center">
                       <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${

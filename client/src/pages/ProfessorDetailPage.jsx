@@ -483,7 +483,7 @@ function ObservationSection({ professorId, observations, professorAreaId, areas,
             {o.location_nickname}{o.address ? ` — ${o.address}` : ''}
           </div>
           <div className="text-xs text-gray-500">
-            {o.start_time ? o.start_time.slice(0, 5) : '—'} &bull;
+            {o.start_time ? formatTime(o.start_time) : '—'} &bull;
             Lead: <span className="font-medium">{o.lead_professor_name || '—'}</span>
             {o.lead_professor_phone && <span className="ml-1 text-gray-400">{o.lead_professor_phone}</span>}
           </div>

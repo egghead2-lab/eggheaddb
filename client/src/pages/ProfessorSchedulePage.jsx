@@ -398,7 +398,7 @@ export default function ProfessorSchedulePage() {
                             {o.location_nickname}{o.address ? ` — ${o.address}` : ''}
                           </div>
                           <div className="text-xs text-gray-500">
-                            Time: {o.start_time ? o.start_time.slice(0, 5) : '—'}
+                            Time: {o.start_time ? formatTime(o.start_time) : '—'}
                             {o.class_length_minutes ? ` (${o.class_length_minutes} min)` : ''}
                             &nbsp;&bull;&nbsp;Lead: <strong>{o.lead_professor_name || '—'}</strong>
                             {o.lead_professor_phone ? ` ${o.lead_professor_phone}` : ''}

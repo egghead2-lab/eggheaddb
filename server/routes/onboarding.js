@@ -139,12 +139,14 @@ router.get('/candidates/:id', async (req, res, next) => {
        WHERE d.candidate_id = ? ORDER BY d.ts_inserted DESC`, [id]
     );
 
-    // Tentative schedule with current staffing info
+    // Tentative schedule with current staffing info and pay data
     const [schedule] = await pool.query(
       `SELECT cs.*, prog.program_nickname, prog.start_time, prog.class_length_minutes,
               prog.first_session_date, prog.last_session_date,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
               prog.lead_professor_id, prog.assistant_professor_id,
+              prog.lead_professor_pay AS program_lead_pay, prog.assistant_professor_pay AS program_assist_pay,
+              prog.session_count,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS current_lead_name,
               CONCAT(ap.professor_nickname, ' ', ap.last_name) AS current_assist_name,
               loc.nickname AS location_nickname, loc.address,
@@ -214,7 +216,7 @@ router.put('/candidates/:id', async (req, res, next) => {
       'trainer_user_id', 'recruiter_user_id', 'scheduling_coordinator_user_id', 'field_manager_user_id',
       'first_class_date', 'accepted_at', 'notes', 'active',
       'address', 'city', 'state', 'zip', 'shirt_size',
-      'availability_notes', 'how_heard', 'resume_link'];
+      'availability_notes', 'how_heard', 'resume_link', 'lead_pay', 'assist_pay'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields to update' });
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
@@ -412,10 +414,10 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
 
     const [profResult] = await pool.query(
       `INSERT INTO professor (professor_nickname, first_name, last_name, email, phone_number,
-        geographic_area_id, professor_status_id, active, ts_inserted, ts_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+        geographic_area_id, professor_status_id, base_pay, assist_pay, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
       [nickname, firstName, lastName, candidate.email, candidate.phone, candidate.geographic_area_id,
-       req.body.professor_status_id || 1]
+       req.body.professor_status_id || 1, candidate.lead_pay || null, candidate.assist_pay || null]
     );
 
     // Link candidate to professor and mark as hired
@@ -1122,6 +1124,8 @@ router.get('/my-portal', async (req, res, next) => {
     // Find candidate linked to this user
     const [[candidate]] = await pool.query(
       `SELECT c.id, c.full_name, c.email, c.phone, c.status, c.first_class_date,
+              c.lead_pay, c.assist_pay,
+              c.schedule_ready, c.schedule_confirmed_at, c.schedule_changed_since_confirm,
               ga.geographic_area_name,
               CONCAT(onb.first_name, ' ', onb.last_name) AS onboarder_name,
               CONCAT(tr.first_name, ' ', tr.last_name) AS trainer_name
@@ -1175,12 +1179,14 @@ router.get('/my-portal', async (req, res, next) => {
        ORDER BY cm.ts_inserted ASC`, [candidate.id]
     );
 
-    // Tentative schedule
+    // Tentative schedule with pay
     const [schedule] = await pool.query(
       `SELECT cs.id, cs.program_id, cs.role, cs.status, cs.confirmed_at, cs.notes,
               prog.program_nickname, prog.start_time, prog.class_length_minutes,
               prog.first_session_date, prog.last_session_date,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
+              prog.lead_professor_pay AS program_lead_pay, prog.assistant_professor_pay AS program_assist_pay,
+              prog.session_count,
               loc.nickname AS location_nickname, loc.address
        FROM candidate_schedule cs
        JOIN program prog ON prog.id = cs.program_id AND prog.active = 1

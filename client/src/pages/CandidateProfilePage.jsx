@@ -74,6 +74,8 @@ export default function CandidateProfilePage() {
                 {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
               </Select>
               <Input label="First Class Date" type="date" {...register('first_class_date')} />
+              <Input label="Lead Pay ($/hr)" type="number" step="0.01" {...register('lead_pay')} />
+              <Input label="Assist Pay ($/hr)" type="number" step="0.01" {...register('assist_pay')} />
               <Input label="How Heard" {...register('how_heard')} />
               <Input label="Resume Link" {...register('resume_link')} />
             </div>

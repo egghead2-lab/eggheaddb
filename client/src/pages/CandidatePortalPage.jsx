@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import api from '../api/client';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatTime } from '../lib/utils';
 
 const STATUS_LABELS = { pending: 'Pending', in_progress: 'In Progress', complete: 'Complete', hired: 'Hired' };
 
@@ -393,9 +393,17 @@ function CandidateScheduleView({ schedule, scheduleReady, scheduleConfirmedAt, s
               <div className="font-medium text-gray-900">{s.program_nickname}</div>
               <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
                 <div><span className="text-gray-400 text-xs">Day(s)</span><div className="text-gray-800">{getSchedDays(s)}</div></div>
-                <div><span className="text-gray-400 text-xs">Time</span><div className="text-gray-800">{s.start_time ? s.start_time.slice(0, 5) : '—'}{s.class_length_minutes ? ` (${s.class_length_minutes} min)` : ''}</div></div>
+                <div><span className="text-gray-400 text-xs">Time</span><div className="text-gray-800">{formatTime(s.start_time)}{s.class_length_minutes ? ` (${s.class_length_minutes} min)` : ''}</div></div>
                 <div><span className="text-gray-400 text-xs">Dates</span><div className="text-gray-800">{s.first_session_date ? formatDate(s.first_session_date) : '—'} – {s.last_session_date ? formatDate(s.last_session_date) : 'TBD'}</div></div>
                 <div><span className="text-gray-400 text-xs">Role</span><div className="text-gray-800">{s.role} Professor</div></div>
+                <div><span className="text-gray-400 text-xs">Pay Per Class</span><div className="text-green-700 font-medium">{(() => {
+                  const hourly = s.role === 'Lead' ? (portal.lead_pay || 0) : (portal.assist_pay || 0);
+                  const calc = hourly * ((s.class_length_minutes || 60) / 60);
+                  const progPay = s.role === 'Lead' ? s.program_lead_pay : s.program_assist_pay;
+                  const pay = Math.max(calc, progPay || 0);
+                  return pay > 0 ? `$${pay.toFixed(2)}` : '—';
+                })()}</div></div>
+                {s.session_count > 0 && <div><span className="text-gray-400 text-xs">Sessions</span><div className="text-gray-800">{s.session_count}</div></div>}
               </div>
               <div className="mt-2 border-t border-gray-100 pt-2">
                 <span className="text-gray-400 text-xs">Location</span>
