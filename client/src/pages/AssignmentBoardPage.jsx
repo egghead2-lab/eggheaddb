@@ -143,25 +143,33 @@ export default function AssignmentBoardPage() {
     <AppShell>
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <h1 className="text-xl font-bold text-gray-900">Professor Assignment Board</h1>
-        <div className="flex gap-3 mt-3 items-end flex-wrap">
+        <div className="flex items-end gap-3 mt-3">
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Areas</label>
-            <select multiple value={selectedAreas} onChange={e => setSelectedAreas([...e.target.selectedOptions].map(o => o.value))}
-              className="rounded border border-gray-300 px-2 py-1 text-sm min-w-[200px] h-20">
-              {areas.map(a => <option key={a.id} value={a.geographic_area_name}>{a.geographic_area_name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Start Date</label>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Start</label>
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1.5 text-sm" />
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">End Date</label>
+            <label className="text-xs font-medium text-gray-700 block mb-1">End</label>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1.5 text-sm" />
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
           </div>
           <Button onClick={handleLoad} disabled={!selectedAreas.length}>Load Board</Button>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          <span className="text-xs text-gray-500 py-1 mr-1">Areas:</span>
+          {selectedAreas.length > 0 && (
+            <button onClick={() => setSelectedAreas([])} className="text-[10px] text-gray-400 hover:text-gray-600 underline py-1 mr-1">Clear</button>
+          )}
+          {areas.map(a => (
+            <button key={a.id} onClick={() => setSelectedAreas(prev =>
+              prev.includes(a.geographic_area_name) ? prev.filter(x => x !== a.geographic_area_name) : [...prev, a.geographic_area_name]
+            )} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+              selectedAreas.includes(a.geographic_area_name)
+                ? 'bg-[#1e3a5f] text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}>{a.geographic_area_name}</button>
+          ))}
         </div>
       </div>
 
