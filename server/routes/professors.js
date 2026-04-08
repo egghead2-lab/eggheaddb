@@ -136,7 +136,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
     const [[professor]] = await pool.query(
       `SELECT p.*,
               ps.professor_status_name,
-              c.city_name, c.zip_code, c.state_id,
+              c.city_name, c.zip_code, c.state_id, st.state_code, st.state_name,
               ga.geographic_area_name,
               os.onboard_status_name,
               pu.user_name AS login_username,
@@ -145,6 +145,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN state st ON st.id = c.state_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN onboard_status os ON os.id = p.onboard_status_id
        LEFT JOIN user pu ON pu.id = p.user_id
@@ -319,6 +320,30 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
       'active',
     ];
+
+    // Handle city/state/zip → city_id resolution
+    if (data._zip_code && data._city_name) {
+      const zip = data._zip_code.trim();
+      const cityName = data._city_name.trim();
+      const stateCode = (data._state_code || 'CA').trim().toUpperCase();
+
+      // Find existing city by zip
+      const [existingCity] = await pool.query('SELECT id FROM city WHERE zip_code = ?', [zip]);
+      if (existingCity.length > 0) {
+        data.city_id = existingCity[0].id;
+      } else {
+        // Find state
+        const [stateRow] = await pool.query('SELECT id FROM state WHERE state_code = ?', [stateCode]);
+        const stateId = stateRow.length > 0 ? stateRow[0].id : 5; // default CA
+        // Find area from professor's current geographic area or default
+        const [[profArea]] = await pool.query('SELECT geographic_area_id FROM city WHERE id = (SELECT city_id FROM professor WHERE id = ?)', [id]);
+        const areaId = profArea?.geographic_area_id || 9;
+        // Create city
+        const [newCity] = await pool.query('INSERT INTO city (city_name, zip_code, state_id, geographic_area_id) VALUES (?, ?, ?, ?)',
+          [cityName, zip, stateId, areaId]);
+        data.city_id = newCity.insertId;
+      }
+    }
 
     const updateFields = fields.filter(f => data[f] !== undefined);
     const values = updateFields.map(f => data[f] === '' ? null : data[f]);

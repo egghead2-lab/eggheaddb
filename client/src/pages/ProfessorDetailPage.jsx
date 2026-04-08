@@ -913,7 +913,12 @@ export default function ProfessorDetailPage() {
               <Input label="Email" type="email" {...register('email')} />
               <Input label="Phone Number" {...register('phone_number')} />
               <div className="col-span-2">
-                <Input label="Address" {...register('address')} />
+                <Input label="Street Address" {...register('address')} />
+              </div>
+              <Input label="City" defaultValue={prof.city_name || ''} {...register('_city_name')} />
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="State" defaultValue={prof.state_code || ''} {...register('_state_code')} maxLength={2} />
+                <Input label="Zip" defaultValue={prof.zip_code || ''} {...register('_zip_code')} />
               </div>
               <Select label="Geographic Area" {...register('scheduling_coordinator_owner_id')}>
                 <option value="">None</option>
