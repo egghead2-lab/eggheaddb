@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../components/layout/AppShell';
@@ -51,6 +51,7 @@ export default function AssignmentBoardPage() {
   const [assignments, setAssignments] = useState({}); // programId -> professorId
   const [originals, setOriginals] = useState({});
   const [dragItem, setDragItem] = useState(null);
+  const scrollRef = useRef(null);
   const qc = useQueryClient();
 
   const { data: refData } = useGeneralData();
@@ -194,16 +195,30 @@ export default function AssignmentBoardPage() {
       ) : isLoading ? (
         <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
       ) : (
-        <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
-          <div className="min-w-[1600px]" style={{ display: 'grid', gridTemplateColumns: '240px repeat(5, 1fr)' }}>
+        <div ref={scrollRef} className="overflow-auto relative" style={{ maxHeight: 'calc(100vh - 220px)' }}
+          onDragOver={e => {
+            e.preventDefault();
+            const el = scrollRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            const ZONE = 60;
+            if (y < ZONE) { el.scrollTop -= 8; }
+            else if (y > rect.height - ZONE) { el.scrollTop += 8; }
+            // Horizontal
+            const x = e.clientX - rect.left;
+            if (x < ZONE) { el.scrollLeft -= 8; }
+            else if (x > rect.width - ZONE) { el.scrollLeft += 8; }
+          }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '160px repeat(5, 1fr)', minWidth: '900px' }}>
             {/* Header row */}
-            <div className="bg-gray-100 border-b border-r border-gray-300 px-3 py-2 font-semibold text-sm text-gray-700 sticky top-0 z-10"></div>
+            <div className="bg-gray-100 border-b border-r border-gray-300 px-2 py-1.5 font-semibold text-xs text-gray-700 sticky top-0 z-10"></div>
             {WEEKDAYS.map(day => (
-              <div key={day} className="bg-gray-100 border-b border-r border-gray-300 px-3 py-2 font-semibold text-sm text-gray-700 text-center sticky top-0 z-10">{day}</div>
+              <div key={day} className="bg-gray-100 border-b border-r border-gray-300 px-1 py-1.5 font-semibold text-xs text-gray-700 text-center sticky top-0 z-10">{day.slice(0, 3)}</div>
             ))}
 
             {/* Unassigned row */}
-            <div className="bg-white border-b border-r border-gray-200 px-3 py-2 font-semibold text-sm sticky left-0 z-[5] bg-white">Unassigned</div>
+            <div className="bg-white border-b border-r border-gray-200 px-2 py-1 font-semibold text-xs sticky left-0 z-[5] bg-white">Unassigned</div>
             {WEEKDAYS.map(day => (
               <DroppableCell key={`unassigned-${day}`} day={day} profId={null}
                 programs={getCell(null, day)} assignments={assignments} originals={originals}
@@ -213,18 +228,18 @@ export default function AssignmentBoardPage() {
             {/* Professor rows */}
             {sortedProfs.map(prof => (
               <>
-                <div key={`label-${prof.id}`} className="bg-white border-b border-r border-gray-200 px-3 py-2 sticky left-0 z-[5] bg-white">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium">{prof.name}</span>
-                    <span className={`inline-block px-1.5 py-0.5 text-[10px] font-medium rounded-full ${STATUS_PILL[prof.status] || 'bg-gray-100 text-gray-600'}`}>{prof.status}</span>
+                <div key={`label-${prof.id}`} className="bg-white border-b border-r border-gray-200 px-2 py-1 sticky left-0 z-[5] bg-white">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[11px] font-medium leading-tight">{prof.name}</span>
+                    <span className={`px-1 py-0 text-[8px] font-medium rounded ${STATUS_PILL[prof.status] || 'bg-gray-100 text-gray-600'}`}>{prof.status.charAt(0)}</span>
                   </div>
-                  <div className="text-[10px] text-gray-400 mt-0.5">{prof.homeTerritory || ''}</div>
-                  <div className="flex gap-1 mt-1">
+                  <div className="flex gap-0.5 mt-0.5">
                     {WEEKDAYS.map(d => (
-                      <span key={d} className={`text-[9px] px-1 rounded ${prof.availability[d] ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-300'}`}>
+                      <span key={d} className={`text-[8px] w-3 text-center rounded ${prof.availability[d] ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-300'}`}>
                         {d.charAt(0)}
                       </span>
                     ))}
+                    {prof.homeTerritory && <span className="text-[8px] text-gray-400 ml-1 truncate">{prof.homeTerritory}</span>}
                   </div>
                 </div>
                 {WEEKDAYS.map(day => (
@@ -285,30 +300,29 @@ function DroppableCell({ day, profId, programs, assignments, originals, unavaila
 
   return (
     <div ref={ref}
-      className={`border-b border-r border-gray-200 min-h-[100px] p-1 transition-colors ${over ? 'bg-blue-50' : unavailable ? 'bg-red-50/30' : ''}`}
+      className={`border-b border-r border-gray-200 min-h-[32px] p-0.5 transition-colors ${over ? 'bg-blue-50' : unavailable ? 'bg-red-50/20' : ''}`}
       onDragOver={e => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={e => { e.preventDefault(); setOver(false); onDrop(profId, day); }}
     >
       {programs.map(p => {
         const isChanged = (assignments[p.id] ?? p.professorId) !== originals[p.id];
-        const prevName = isChanged ? (getProfessorName(originals[p.id]) || 'Unassigned') : null;
+        const prevName = isChanged ? (getProfessorName(originals[p.id]) || 'Unasgn') : null;
         const typeClass = TYPE_BORDER[p.programType] || '';
 
         return (
           <div key={p.id}
             draggable
             onDragStart={() => onDragStart(p.id)}
-            className={`rounded px-2 py-1.5 mb-1 text-xs cursor-grab border ${typeClass} ${
+            title={`${p.nickname}\n${p.className || ''}\n${p.startTime ? formatTimeRange(p.startTime, p.classLength) : ''}`}
+            className={`rounded px-1 py-0.5 mb-0.5 cursor-grab border ${typeClass} ${
               isChanged ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-200'
             } ${unavailable && profStatus !== 'Inactive' ? 'ring-1 ring-red-300' : ''}`}
           >
-            <div className="font-medium text-gray-900 truncate">{p.nickname}</div>
-            <div className="text-gray-500">{p.className}</div>
-            <div className="text-gray-400">{p.startTime ? formatTimeRange(p.startTime, p.classLength) : ''}</div>
-            {unavailable && <div className="text-red-500 font-semibold mt-0.5">Unavailable</div>}
-            {profStatus === 'Inactive' && <div className="text-red-500 font-semibold mt-0.5">Inactive Prof</div>}
-            {prevName && <div className="text-gray-400 italic mt-0.5">Previously: {prevName}</div>}
+            <div className="text-[10px] font-medium text-gray-900 truncate leading-tight">{p.nickname}</div>
+            <div className="text-[9px] text-gray-400 truncate leading-tight">{p.startTime ? formatTimeRange(p.startTime, p.classLength) : ''}</div>
+            {unavailable && <div className="text-[9px] text-red-500 font-bold">Unavail</div>}
+            {prevName && <div className="text-[9px] text-gray-400 italic truncate">was: {prevName}</div>}
           </div>
         );
       })}
