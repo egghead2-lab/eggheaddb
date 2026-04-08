@@ -50,6 +50,11 @@ import CandidatePortalPage from './pages/CandidatePortalPage';
 import SubManagementPage from './pages/SubManagementPage';
 import EvaluationDashboardPage from './pages/EvaluationDashboardPage';
 import ObservationLookupPage from './pages/ObservationLookupPage';
+import ShipmentCyclesPage from './pages/ShipmentCyclesPage';
+import StandardOrderBuilderPage from './pages/StandardOrderBuilderPage';
+import MarkShippedPage from './pages/MarkShippedPage';
+import BinManagerPage from './pages/BinManagerPage';
+import StockLevelsPage from './pages/StockLevelsPage';
 
 export default function App() {
   return (
@@ -114,6 +119,11 @@ export default function App() {
       <Route path="/sub-management" element={<ProtectedRoute><SubManagementPage /></ProtectedRoute>} />
       <Route path="/evaluations" element={<ProtectedRoute><EvaluationDashboardPage /></ProtectedRoute>} />
       <Route path="/observation-lookup" element={<ProtectedRoute><ObservationLookupPage /></ProtectedRoute>} />
+      <Route path="/materials/cycles" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
+      <Route path="/materials/standard-order" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
+      <Route path="/materials/mark-shipped" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />
+      <Route path="/materials/bins" element={<ProtectedRoute><BinManagerPage /></ProtectedRoute>} />
+      <Route path="/materials/stock" element={<ProtectedRoute><StockLevelsPage /></ProtectedRoute>} />
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
