@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -161,6 +161,422 @@ function AvailabilitySection({ professorId, availability, availabilityNotes, qc 
         )}
         {saveMutation.isSuccess && !dirty && <span className="text-[10px] text-green-600">Saved</span>}
       </div>
+    </Section>
+  );
+}
+
+// ── Evaluation History ──────────────────────────────────────────────
+
+const EVAL_RESULT_COLORS = {
+  pass: 'bg-green-100 text-green-700',
+  needs_improvement: 'bg-amber-100 text-amber-700',
+  fail: 'bg-red-100 text-red-700',
+};
+
+const EVAL_TYPE_OPTIONS = [
+  { value: 'formal', label: 'Formal' },
+  { value: 'peer_to_peer', label: 'Peer to Peer' },
+  { value: 'support_session', label: 'Support / Check-in' },
+  { value: 'follow_up', label: 'Follow-up' },
+];
+
+const FORM_STATUS_BADGE = {
+  completed: 'bg-green-100 text-green-700',
+  pending: 'bg-amber-100 text-amber-700',
+  deleted: 'bg-gray-100 text-gray-400 line-through',
+};
+
+function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult }) {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [addDate, setAddDate] = useState('');
+  const [addType, setAddType] = useState('formal');
+  const [addEvaluatorId, setAddEvaluatorId] = useState('');
+
+  // Staff users (for Formal, Support, Follow-up)
+  const { data: usersData } = useQuery({
+    queryKey: ['users-all'],
+    queryFn: () => api.get('/users?limit=200').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+    enabled: showAdd,
+  });
+  const staffUsers = usersData?.data || [];
+
+  // Professors (for Peer to Peer)
+  const { data: profListData } = useQuery({
+    queryKey: ['professor-list'],
+    queryFn: () => api.get('/professors/list').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+    enabled: showAdd,
+  });
+  const professorList = profListData?.data || [];
+
+  const isPeerToPeer = addType === 'peer_to_peer';
+
+  const { data } = useQuery({
+    queryKey: ['evaluations', professorId],
+    queryFn: () => api.get(`/evaluations/professor/${professorId}`).then(r => r.data),
+  });
+  const evaluations = data?.data || [];
+
+  const { data: configData } = useQuery({
+    queryKey: ['evaluation-config'],
+    queryFn: () => api.get('/evaluations/schedule-config').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const tiers = configData?.data || [];
+
+  const addMutation = useMutation({
+    mutationFn: () => api.post(`/evaluations/professor/${professorId}`, {
+      evaluation_date: addDate,
+      evaluation_type: addType,
+      evaluator_professor_id: addEvaluatorId || null,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries(['evaluations', professorId]);
+      qc.invalidateQueries(['professors', professorId]);
+      setShowAdd(false); setAddDate(''); setAddType('formal'); setAddEvaluatorId('');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/evaluations/${id}`),
+    onSuccess: () => { qc.invalidateQueries(['evaluations', professorId]); qc.invalidateQueries(['professors', professorId]); },
+  });
+
+  // Compute status
+  const today = new Date();
+  const hireDateObj = hireDate ? new Date(hireDate) : null;
+  const daysOnStaff = hireDateObj ? Math.floor((today - hireDateObj) / 86400000) : null;
+  const tier = tiers.find(t => daysOnStaff !== null && daysOnStaff >= t.min_days_on_staff && (t.max_days_on_staff === null || daysOnStaff <= t.max_days_on_staff));
+  const freq = tier?.frequency_days || 120;
+
+  let nextDueDate = null;
+  let isOverdue = false;
+  if (lastEvalDate) {
+    const d = new Date(lastEvalDate);
+    d.setDate(d.getDate() + freq);
+    nextDueDate = d;
+    isOverdue = d < today;
+  } else if (hireDateObj) {
+    const d = new Date(hireDateObj);
+    d.setDate(d.getDate() + Math.min(freq, 45));
+    nextDueDate = d;
+    isOverdue = d < today;
+  }
+
+  // Split: upcoming scheduled (pending form), completed
+  const todayStr = today.toISOString().split('T')[0];
+  const scheduled = evaluations.filter(e => e.form_status === 'pending' || !e.form_status);
+  const completed = evaluations.filter(e => e.form_status === 'completed');
+
+  return (
+    <Section title={`Evaluations (${evaluations.length})`} defaultOpen={true}>
+      {/* Status banner */}
+      <div className={`flex items-center gap-3 mb-3 px-3 py-2 rounded-lg text-sm ${
+        isOverdue ? 'bg-red-50 border border-red-200 text-red-700' :
+        !lastEvalDate ? 'bg-amber-50 border border-amber-200 text-amber-700' :
+        'bg-green-50 border border-green-200 text-green-700'
+      }`}>
+        {!lastEvalDate ? (
+          <span className="font-medium">Never evaluated</span>
+        ) : (
+          <span>Last eval: <strong>{formatDate(lastEvalDate)}</strong>
+            {lastEvalResult && <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded font-medium ${EVAL_RESULT_COLORS[lastEvalResult] || ''}`}>{lastEvalResult.replace(/_/g, ' ')}</span>}
+          </span>
+        )}
+        {tier && <span className="text-xs opacity-70">Tier: {tier.tier_name} (every {freq}d)</span>}
+        {nextDueDate && (
+          <span className={`ml-auto text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-gray-500'}`}>
+            {isOverdue ? `Overdue by ${Math.abs(Math.floor((today - nextDueDate) / 86400000))}d` : `Due ${formatDate(nextDueDate.toISOString())}`}
+          </span>
+        )}
+      </div>
+
+      {/* Schedule new evaluation */}
+      {!showAdd ? (
+        <button type="button" onClick={() => setShowAdd(true)} className="text-xs text-[#1e3a5f] hover:underline mb-3">+ Schedule evaluation</button>
+      ) : (
+        <div className="bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
+          <div className="text-xs font-semibold text-gray-600 mb-1">Schedule an evaluation</div>
+          <div className="flex gap-2 items-center flex-wrap">
+            <Input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} className="w-36" />
+            <div className="flex gap-1">
+              {EVAL_TYPE_OPTIONS.map(t => (
+                <button key={t.value} type="button" onClick={() => { setAddType(t.value); setAddEvaluatorId(''); }}
+                  className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${
+                    addType === t.value ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}>{t.label}</button>
+              ))}
+            </div>
+            {isPeerToPeer ? (
+              <select value={addEvaluatorId} onChange={e => setAddEvaluatorId(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1 text-xs w-44">
+                <option value="">Select professor…</option>
+                {professorList.filter(p => String(p.id) !== String(professorId)).map(p => (
+                  <option key={p.id} value={p.id}>{p.display_name || `${p.professor_nickname} ${p.last_name || ''}`}</option>
+                ))}
+              </select>
+            ) : (
+              <select value={addEvaluatorId} onChange={e => setAddEvaluatorId(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1 text-xs w-44">
+                <option value="">Select staff…</option>
+                {staffUsers.map(u => (
+                  <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+                ))}
+              </select>
+            )}
+            <Button size="sm" type="button" onClick={() => addMutation.mutate()} disabled={!addDate || addMutation.isPending}>
+              {addMutation.isPending ? '…' : 'Schedule'}
+            </Button>
+            <button type="button" onClick={() => setShowAdd(false)} className="text-xs text-gray-400">Cancel</button>
+          </div>
+          <p className="text-[10px] text-gray-400">After this date passes, the form will appear in Observation Lookup for completion.</p>
+          {addMutation.isError && <p className="text-xs text-red-600">{addMutation.error?.response?.data?.error || 'Failed'}</p>}
+        </div>
+      )}
+
+      {/* Scheduled (pending form) */}
+      {scheduled.length > 0 && (
+        <div className="space-y-1 mb-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Scheduled</div>
+          {scheduled.map(e => {
+            const dateStr = (e.evaluation_date || '').split('T')[0];
+            const isPast = dateStr < todayStr;
+            return (
+              <div key={e.id} className={`flex items-center gap-3 px-3 py-1.5 rounded text-sm ${isPast ? 'bg-amber-50' : 'bg-blue-50/30'}`}>
+                <span className="w-20 shrink-0 font-medium text-gray-700">{formatDate(dateStr)}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                  e.evaluation_type === 'formal' ? 'bg-blue-100 text-blue-700' :
+                  e.evaluation_type === 'peer_to_peer' ? 'bg-violet-100 text-violet-700' :
+                  'bg-gray-100 text-gray-600'
+                }`}>{EVAL_TYPE_OPTIONS.find(t => t.value === e.evaluation_type)?.label || e.evaluation_type?.replace(/_/g, ' ')}</span>
+                {isPast && <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded font-medium">Form pending</span>}
+                <span className="text-xs text-gray-500 flex-1 truncate">{e.evaluator_name || ''}</span>
+                <button type="button" onClick={() => { if (confirm('Remove this evaluation?')) deleteMutation.mutate(e.id); }}
+                  className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Completed history */}
+      {completed.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Completed ({completed.length})</div>
+          {completed.map(e => (
+            <div key={e.id} className="flex items-center gap-3 px-3 py-1.5 rounded bg-gray-50 text-sm">
+              <span className="w-20 shrink-0 font-medium text-gray-700">{formatDate((e.evaluation_date || '').split('T')[0])}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                e.evaluation_type === 'formal' ? 'bg-blue-100 text-blue-700' :
+                e.evaluation_type === 'peer_to_peer' ? 'bg-violet-100 text-violet-700' :
+                'bg-gray-100 text-gray-600'
+              }`}>{EVAL_TYPE_OPTIONS.find(t => t.value === e.evaluation_type)?.label || e.evaluation_type?.replace(/_/g, ' ')}</span>
+              {e.result && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${EVAL_RESULT_COLORS[e.result] || ''}`}>{e.result.replace(/_/g, ' ')}</span>}
+              <span className="text-xs text-gray-500 flex-1 truncate">{e.evaluator_name || e.logged_by_name || ''}{e.notes ? ` — ${e.notes}` : ''}</span>
+              <button type="button" onClick={() => { if (confirm('Delete this evaluation?')) deleteMutation.mutate(e.id); }}
+                className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {evaluations.length === 0 && (
+        <p className="text-sm text-gray-400">No evaluations scheduled or completed.</p>
+      )}
+    </Section>
+  );
+}
+
+// ── Observations ───────────────────────────────────────────────────
+
+const OBS_DAYS_MAP = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+const OBS_DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function obsGetDays(p) { return OBS_DAYS_MAP.map((d, i) => p[d] ? OBS_DAY_LABELS[i] : null).filter(Boolean).join(', '); }
+
+function ObservationSection({ professorId, observations, professorAreaId, areas, qc }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchAreaId, setSearchAreaId] = useState(professorAreaId || '');
+  const [selectedProgram, setSelectedProgram] = useState(null);
+  const [obsDate, setObsDate] = useState('');
+  const [obsType, setObsType] = useState('observation');
+  const [obsPay, setObsPay] = useState('');
+  const [obsNotes, setObsNotes] = useState('');
+  const searchTimeout = useRef(null);
+
+  const today = new Date().toISOString().split('T')[0];
+  const upcoming = observations.filter(o => o.observation_date && o.observation_date.split('T')[0] >= today && o.status !== 'cancelled');
+  const past = observations.filter(o => o.observation_date && o.observation_date.split('T')[0] < today && o.status !== 'cancelled');
+
+  const invalidate = () => qc.invalidateQueries(['professors', professorId]);
+
+  const addMutation = useMutation({
+    mutationFn: (data) => api.post(`/professors/${professorId}/observations`, data),
+    onSuccess: () => {
+      invalidate(); setShowAdd(false); setSelectedProgram(null);
+      setObsDate(''); setObsType('observation'); setObsPay(''); setObsNotes('');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ obsId, data }) => api.put(`/professors/${professorId}/observations/${obsId}`, data),
+    onSuccess: invalidate,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (obsId) => api.delete(`/professors/${professorId}/observations/${obsId}`),
+    onSuccess: invalidate,
+  });
+
+  const handleSearch = (val) => {
+    setSearchQuery(val);
+    if (val.length < 2) { setSearchResults([]); return; }
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const res = await api.get('/professors/observations/search-programs', {
+          params: { search: val, area_id: searchAreaId || undefined }
+        });
+        setSearchResults(res.data?.data || []);
+      } catch { setSearchResults([]); }
+    }, 200);
+  };
+
+  const handleAdd = () => {
+    if (!selectedProgram || !obsDate) return;
+    addMutation.mutate({
+      program_id: selectedProgram.id,
+      observation_date: obsDate,
+      observation_type: obsType,
+      pay_amount: obsPay || null,
+      notes: obsNotes || null,
+    });
+  };
+
+  const renderRow = (o, isPast) => {
+    const dateStr = (o.observation_date || '').split('T')[0];
+    const isEval = o.observation_type === 'evaluation';
+    return (
+      <div key={o.id} className={`flex items-start gap-3 px-3 py-2 rounded text-sm ${
+        isPast ? 'bg-gray-50 text-gray-400' :
+        isEval ? 'bg-violet-50/50' : 'bg-white'
+      }`}>
+        <div className="w-20 shrink-0">
+          <div className={`font-medium ${isPast ? '' : 'text-gray-700'}`}>{formatDate(dateStr)}</div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`font-medium ${isPast ? 'text-gray-400' : 'text-gray-800'}`}>{o.program_nickname}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+              isEval ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'
+            }`}>{isEval ? 'Evaluation' : 'Observation'}</span>
+            {o.is_paid ? (
+              <span className="text-[10px] text-green-600">{o.pay_amount ? `$${o.pay_amount}` : 'Paid'}</span>
+            ) : (
+              <span className="text-[10px] text-gray-400">Unpaid</span>
+            )}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {o.location_nickname}{o.address ? ` — ${o.address}` : ''}
+          </div>
+          <div className="text-xs text-gray-500">
+            {o.start_time ? o.start_time.slice(0, 5) : '—'} &bull;
+            Lead: <span className="font-medium">{o.lead_professor_name || '—'}</span>
+            {o.lead_professor_phone && <span className="ml-1 text-gray-400">{o.lead_professor_phone}</span>}
+          </div>
+          {o.notes && <div className="text-xs text-gray-400 mt-0.5">{o.notes}</div>}
+        </div>
+        <div className="shrink-0 flex items-center gap-1">
+          {!isPast && o.status === 'scheduled' && (
+            <button type="button" onClick={() => updateMutation.mutate({ obsId: o.id, data: { status: 'completed' } })}
+              className="text-[10px] text-green-600 hover:underline">Complete</button>
+          )}
+          <button type="button" onClick={() => { if (confirm('Remove this observation?')) deleteMutation.mutate(o.id); }}
+            className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Section title={`Observations (${upcoming.length} upcoming)`} defaultOpen={upcoming.length > 0 || observations.length > 0}>
+      {/* Add form */}
+      {!showAdd ? (
+        <button type="button" onClick={() => setShowAdd(true)} className="text-xs text-[#1e3a5f] hover:underline mb-3">+ Schedule observation</button>
+      ) : (
+        <div className="bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
+          <div className="flex gap-2 items-center">
+            <select value={searchAreaId} onChange={e => { setSearchAreaId(e.target.value); setSearchResults([]); }}
+              className="rounded border border-gray-300 px-2 py-1 text-xs w-40">
+              <option value="">All areas</option>
+              {areas.map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
+            </select>
+            <div className="flex-1 relative">
+              <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
+                placeholder="Search programs…" className="w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              {searchResults.length > 0 && (
+                <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {searchResults.map(p => (
+                    <li key={p.id} onMouseDown={e => { e.preventDefault(); setSelectedProgram(p); setSearchQuery(p.program_nickname); setSearchResults([]); }}
+                      className="px-3 py-2 text-xs cursor-pointer hover:bg-[#1e3a5f]/10">
+                      <div className="font-medium">{p.program_nickname}</div>
+                      <div className="text-gray-400">{p.location_nickname} &bull; {p.lead_professor_name || 'No lead'} &bull; {p.geographic_area_name || ''}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button type="button" onClick={() => { setShowAdd(false); setSelectedProgram(null); setSearchQuery(''); }}
+              className="text-xs text-gray-400">Cancel</button>
+          </div>
+          {selectedProgram && (
+            <div className="bg-white rounded border border-gray-200 p-2 text-xs">
+              <div className="font-medium text-gray-800">{selectedProgram.program_nickname}</div>
+              <div className="text-gray-500">{selectedProgram.location_nickname} — {selectedProgram.address || ''}</div>
+              <div className="text-gray-500">Lead: {selectedProgram.lead_professor_name || '—'} {selectedProgram.lead_professor_phone || ''}</div>
+              <div className="flex gap-2 mt-2 items-center flex-wrap">
+                <Input type="date" value={obsDate} onChange={e => setObsDate(e.target.value)} className="w-36" />
+                <select value={obsType} onChange={e => setObsType(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-1 text-xs">
+                  <option value="observation">Observation</option>
+                  <option value="evaluation">Evaluation</option>
+                </select>
+                <Input type="number" placeholder="Pay $" value={obsPay} onChange={e => setObsPay(e.target.value)} className="w-20" />
+                <Input placeholder="Notes…" value={obsNotes} onChange={e => setObsNotes(e.target.value)} className="w-40" />
+                <Button size="sm" type="button" onClick={handleAdd} disabled={!obsDate || addMutation.isPending}>
+                  {addMutation.isPending ? '…' : 'Add'}
+                </Button>
+              </div>
+              {addMutation.isError && <p className="text-xs text-red-600 mt-1">{addMutation.error?.response?.data?.error || 'Failed'}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Upcoming */}
+      {upcoming.length > 0 && (
+        <div className="space-y-1 mb-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Upcoming</div>
+          {upcoming.map(o => renderRow(o, false))}
+        </div>
+      )}
+
+      {/* Past */}
+      {past.length > 0 && (
+        <details>
+          <summary className="text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 mb-1">
+            Past ({past.length})
+          </summary>
+          <div className="space-y-1 mt-1">{past.map(o => renderRow(o, true))}</div>
+        </details>
+      )}
+
+      {upcoming.length === 0 && past.length === 0 && !showAdd && (
+        <p className="text-sm text-gray-400">No observations scheduled.</p>
+      )}
     </Section>
   );
 }
@@ -761,6 +1177,12 @@ export default function ProfessorDetailPage() {
 
           {/* Section 7: Substitute Dates */}
           {!isNew && <SubstituteDatesSection professorId={id} daysOff={prof.daysOff || []} substituteReasons={ref.substituteReasons || []} qc={qc} />}
+
+          {/* Observation Schedule */}
+          {!isNew && <ObservationSection professorId={id} observations={prof.observations || []} professorAreaId={prof.geographic_area_id} areas={ref.areas || []} qc={qc} />}
+
+          {/* Evaluation History */}
+          {!isNew && <EvaluationSection professorId={id} hireDate={prof.hire_date} lastEvalDate={prof.last_evaluation_date} lastEvalResult={prof.last_evaluation_result} />}
 
           {/* Section 8: Materials / Bins */}
           <Section title="Materials / Bins">

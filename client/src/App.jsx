@@ -48,6 +48,8 @@ import PendingApprovalsPage from './pages/PendingApprovalsPage';
 import ReportFieldConfigPage from './pages/ReportFieldConfigPage';
 import CandidatePortalPage from './pages/CandidatePortalPage';
 import SubManagementPage from './pages/SubManagementPage';
+import EvaluationDashboardPage from './pages/EvaluationDashboardPage';
+import ObservationLookupPage from './pages/ObservationLookupPage';
 
 export default function App() {
   return (
@@ -110,6 +112,8 @@ export default function App() {
       <Route path="/report-fields" element={<ProtectedRoute><ReportFieldConfigPage /></ProtectedRoute>} />
       <Route path="/tool-manager" element={<ProtectedRoute><ToolManagerPage /></ProtectedRoute>} />
       <Route path="/sub-management" element={<ProtectedRoute><SubManagementPage /></ProtectedRoute>} />
+      <Route path="/evaluations" element={<ProtectedRoute><EvaluationDashboardPage /></ProtectedRoute>} />
+      <Route path="/observation-lookup" element={<ProtectedRoute><ObservationLookupPage /></ProtectedRoute>} />
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

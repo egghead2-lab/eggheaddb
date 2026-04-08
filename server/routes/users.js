@@ -149,4 +149,17 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
+// DELETE /api/users/:id (soft delete)
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    // Don't let admin delete themselves
+    if (String(id) === String(req.user.userId)) {
+      return res.status(400).json({ success: false, error: 'Cannot deactivate your own account' });
+    }
+    await pool.query('UPDATE user SET active = 0, ts_updated = NOW() WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { getUser, createUser, updateUser } from '../api/users';
+import { getUser, createUser, updateUser, deleteUser } from '../api/users';
 import { getRoles, createRole } from '../api/reference';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
@@ -57,6 +57,11 @@ export default function UserDetailPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteUser(id),
+    onSuccess: () => { qc.invalidateQueries(['users']); navigate('/users'); },
+  });
+
   const user = userData?.data || {};
 
   const onSubmit = (data) => {
@@ -86,6 +91,13 @@ export default function UserDetailPage() {
               {isNew ? 'New User' : `${user.first_name || ''} ${user.last_name || ''}`}
             </h1>
           </div>
+          {!isNew && (
+            <button type="button"
+              onClick={() => { if (confirm(`Deactivate ${user.first_name} ${user.last_name}? They will no longer be able to log in.`)) deleteMutation.mutate(); }}
+              className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+              {deleteMutation.isPending ? 'Deactivating…' : 'Deactivate'}
+            </button>
+          )}
         </div>
 
         <div className="p-6 space-y-4 pb-32">

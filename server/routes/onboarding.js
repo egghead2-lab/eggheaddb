@@ -139,7 +139,29 @@ router.get('/candidates/:id', async (req, res, next) => {
        WHERE d.candidate_id = ? ORDER BY d.ts_inserted DESC`, [id]
     );
 
-    res.json({ success: true, data: { ...candidate, requirements, tasks, appliedTemplates, availability: availability || null, documents } });
+    // Tentative schedule with current staffing info
+    const [schedule] = await pool.query(
+      `SELECT cs.*, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.first_session_date, prog.last_session_date,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
+              prog.lead_professor_id, prog.assistant_professor_id,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS current_lead_name,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS current_assist_name,
+              loc.nickname AS location_nickname, loc.address,
+              ga2.geographic_area_name AS program_area,
+              CONCAT(u.first_name, ' ', u.last_name) AS assigned_by_name
+       FROM candidate_schedule cs
+       JOIN program prog ON prog.id = cs.program_id AND prog.active = 1
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga2 ON ga2.id = loc.geographic_area_id_online
+       LEFT JOIN user u ON u.id = cs.assigned_by_user_id
+       WHERE cs.candidate_id = ? AND cs.active = 1
+       ORDER BY prog.first_session_date, prog.program_nickname`, [id]
+    );
+
+    res.json({ success: true, data: { ...candidate, requirements, tasks, appliedTemplates, availability: availability || null, documents, schedule } });
   } catch (err) { next(err); }
 });
 
@@ -400,9 +422,25 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
     await pool.query('UPDATE candidate SET professor_id = ?, status = ? WHERE id = ?',
       [profResult.insertId, 'hired', id]);
 
-    // If candidate has a user account, upgrade role from Candidate to Professor (role_id 15)
+    // If candidate has a user account, upgrade role from Candidate to Professor
     if (candidate.user_id) {
-      await pool.query('UPDATE user SET role_id = 15, ts_updated = NOW() WHERE id = ?', [candidate.user_id]);
+      await pool.query('UPDATE user SET role_id = 17, ts_updated = NOW() WHERE id = ?', [candidate.user_id]);
+      // Link professor to user
+      await pool.query('UPDATE professor SET user_id = ? WHERE id = ?', [candidate.user_id, profResult.insertId]);
+    }
+
+    // Resolve confirmed schedule — assign programs to the new professor
+    const { assign_programs } = req.body; // array of { program_id, role } to assign
+    if (assign_programs && Array.isArray(assign_programs)) {
+      for (const ap of assign_programs) {
+        if (ap.role === 'Assistant') {
+          await pool.query('UPDATE program SET assistant_professor_id = ?, ts_updated = NOW() WHERE id = ?',
+            [profResult.insertId, ap.program_id]);
+        } else {
+          await pool.query('UPDATE program SET lead_professor_id = ?, ts_updated = NOW() WHERE id = ?',
+            [profResult.insertId, ap.program_id]);
+        }
+      }
     }
 
     res.json({ success: true, professor_id: profResult.insertId });
@@ -1137,7 +1175,21 @@ router.get('/my-portal', async (req, res, next) => {
        ORDER BY cm.ts_inserted ASC`, [candidate.id]
     );
 
-    res.json({ success: true, data: { ...candidate, requirements, tasks, messages, availability: availability || null } });
+    // Tentative schedule
+    const [schedule] = await pool.query(
+      `SELECT cs.id, cs.program_id, cs.role, cs.status, cs.confirmed_at, cs.notes,
+              prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.first_session_date, prog.last_session_date,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
+              loc.nickname AS location_nickname, loc.address
+       FROM candidate_schedule cs
+       JOIN program prog ON prog.id = cs.program_id AND prog.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE cs.candidate_id = ? AND cs.active = 1
+       ORDER BY prog.first_session_date, prog.program_nickname`, [candidate.id]
+    );
+
+    res.json({ success: true, data: { ...candidate, requirements, tasks, messages, availability: availability || null, schedule } });
   } catch (err) { next(err); }
 });
 
@@ -1310,6 +1362,148 @@ router.post('/my-portal/messages', async (req, res, next) => {
       [candidate.id, userId, body.trim()]
     );
     res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// CANDIDATE SCHEDULE
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /api/onboarding/candidates/:id/schedule — assign a program to candidate
+router.post('/candidates/:id/schedule', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { program_id, role, notes } = req.body;
+    if (!program_id) return res.status(400).json({ success: false, error: 'Program required' });
+
+    const [result] = await pool.query(
+      `INSERT INTO candidate_schedule (candidate_id, program_id, role, assigned_by_user_id, notes, status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [id, program_id, role || 'Lead', req.user.userId, notes || null]
+    );
+
+    // If candidate had previously confirmed, flag that schedule changed
+    const [[cand]] = await pool.query('SELECT schedule_confirmed_at FROM candidate WHERE id = ?', [id]);
+    if (cand?.schedule_confirmed_at) {
+      await pool.query('UPDATE candidate SET schedule_changed_since_confirm = 1 WHERE id = ?', [id]);
+      // Mark all confirmed items as changed
+      await pool.query("UPDATE candidate_schedule SET status = 'changed' WHERE candidate_id = ? AND status = 'confirmed' AND active = 1", [id]);
+    }
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, error: 'Program already assigned' });
+    next(err);
+  }
+});
+
+// DELETE /api/onboarding/candidates/:id/schedule/:schedId — remove program from candidate
+router.delete('/candidates/:id/schedule/:schedId', async (req, res, next) => {
+  try {
+    const { id, schedId } = req.params;
+    await pool.query('UPDATE candidate_schedule SET active = 0, ts_updated = NOW() WHERE id = ? AND candidate_id = ?', [schedId, id]);
+
+    // Flag schedule changed if previously confirmed
+    const [[cand]] = await pool.query('SELECT schedule_confirmed_at FROM candidate WHERE id = ?', [id]);
+    if (cand?.schedule_confirmed_at) {
+      await pool.query('UPDATE candidate SET schedule_changed_since_confirm = 1 WHERE id = ?', [id]);
+    }
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/onboarding/candidates/:id/schedule/:schedId — update role/notes
+router.put('/candidates/:id/schedule/:schedId', async (req, res, next) => {
+  try {
+    const { schedId } = req.params;
+    const { role, notes } = req.body;
+    const sets = []; const vals = [];
+    if (role !== undefined) { sets.push('role = ?'); vals.push(role); }
+    if (notes !== undefined) { sets.push('notes = ?'); vals.push(notes); }
+    if (sets.length) {
+      await pool.query(`UPDATE candidate_schedule SET ${sets.join(', ')}, ts_updated = NOW() WHERE id = ?`, [...vals, schedId]);
+    }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidates/:id/schedule-ready — scheduler marks schedule as ready for candidate review
+router.post('/candidates/:id/schedule-ready', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE candidate SET schedule_ready = 1 WHERE id = ?', [id]);
+    await pool.query("UPDATE candidate_schedule SET status = 'ready' WHERE candidate_id = ? AND status = 'pending' AND active = 1", [id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidates/:id/schedule-unready — revert to editing
+router.post('/candidates/:id/schedule-unready', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE candidate SET schedule_ready = 0 WHERE id = ?', [id]);
+    await pool.query("UPDATE candidate_schedule SET status = 'pending' WHERE candidate_id = ? AND status = 'ready' AND active = 1", [id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/my-portal/confirm-schedule — candidate confirms their schedule
+router.post('/my-portal/confirm-schedule', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);
+    if (!candidate) return res.status(404).json({ success: false, error: 'No candidate profile found' });
+
+    await pool.query('UPDATE candidate SET schedule_confirmed_at = NOW(), schedule_changed_since_confirm = 0 WHERE id = ?', [candidate.id]);
+    await pool.query("UPDATE candidate_schedule SET status = 'confirmed', confirmed_at = NOW() WHERE candidate_id = ? AND active = 1 AND status IN ('ready', 'changed')", [candidate.id]);
+
+    // Auto-complete the Confirm Schedule requirement if it exists
+    const [[req_row]] = await pool.query(
+      `SELECT cr.id FROM candidate_requirement cr
+       JOIN onboarding_requirement r ON r.id = cr.requirement_id
+       WHERE cr.candidate_id = ? AND r.title = 'Confirm Schedule' AND cr.completed = 0`,
+      [candidate.id]
+    );
+    if (req_row) {
+      await pool.query(
+        'UPDATE candidate_requirement SET completed = 1, completed_at = NOW(), completed_by_user_id = ?, status = ? WHERE id = ?',
+        [userId, 'complete', req_row.id]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidate-requirements/:id/waive — waive a requirement
+router.post('/candidate-requirements/:id/waive', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { waived, waived_reason } = req.body;
+    await pool.query(
+      'UPDATE candidate_requirement SET waived = ?, waived_reason = ?, completed = IF(? = 1, 1, completed), status = IF(? = 1, ?, status), ts_updated = NOW() WHERE id = ?',
+      [waived ? 1 : 0, waived_reason || null, waived ? 1 : 0, waived ? 1 : 0, 'waived', id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/onboarding/pending-schedules — for assignment board: candidates needing schedule
+router.get('/pending-schedules', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT c.id, c.full_name, c.status, c.geographic_area_id,
+              ga.geographic_area_name,
+              c.schedule_ready, c.schedule_confirmed_at, c.schedule_changed_since_confirm,
+              (SELECT COUNT(*) FROM candidate_schedule cs WHERE cs.candidate_id = c.id AND cs.active = 1) AS schedule_count
+       FROM candidate c
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       WHERE c.active = 1 AND c.status IN ('pending', 'in_progress', 'complete')
+         AND c.professor_id IS NULL
+       ORDER BY c.full_name`
+    );
+    res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 

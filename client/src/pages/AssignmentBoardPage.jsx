@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../components/layout/AppShell';
 import { Button } from '../components/ui/Button';
@@ -177,6 +178,9 @@ export default function AssignmentBoardPage() {
         <div className="bg-green-50 border-b border-green-200 px-6 py-2 text-sm text-green-700 font-medium">Changes saved successfully</div>
       )}
 
+      {/* Pending Hires */}
+      {loaded && <PendingHiresPanel />}
+
       {!loaded ? (
         <div className="p-6 text-center text-gray-400 py-20">Select areas and date range, then click Load Board</div>
       ) : isLoading ? (
@@ -227,6 +231,43 @@ export default function AssignmentBoardPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+function PendingHiresPanel() {
+  const { data } = useQuery({
+    queryKey: ['pending-schedules'],
+    queryFn: () => api.get('/onboarding/pending-schedules').then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+  const candidates = data?.data || [];
+  if (candidates.length === 0) return null;
+
+  return (
+    <div className="bg-violet-50 border-b border-violet-200 px-6 py-3">
+      <div className="text-xs font-semibold text-violet-700 uppercase tracking-wider mb-2">
+        Pending Hires ({candidates.length})
+        <span className="font-normal normal-case ml-2 text-violet-500">Tentative schedules — not counted as staffed until hired + confirmed</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {candidates.map(c => (
+          <Link key={c.id} to={`/candidates/${c.id}`}
+            className="inline-flex items-center gap-2 bg-white border border-violet-200 rounded-lg px-3 py-1.5 hover:border-violet-400 transition-colors">
+            <span className="text-sm font-medium text-gray-900">{c.full_name}</span>
+            <span className="text-[10px] text-gray-500">{c.geographic_area_name || '—'}</span>
+            {c.schedule_count > 0 ? (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                c.schedule_confirmed_at && !c.schedule_changed_since_confirm ? 'bg-green-100 text-green-700' :
+                c.schedule_ready ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-600'
+              }`}>{c.schedule_count} class{c.schedule_count !== 1 ? 'es' : ''}{c.schedule_confirmed_at && !c.schedule_changed_since_confirm ? ' ✓' : ''}</span>
+            ) : (
+              <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">No schedule</span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 

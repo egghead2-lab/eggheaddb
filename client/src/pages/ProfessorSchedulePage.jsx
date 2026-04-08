@@ -180,6 +180,7 @@ export default function ProfessorSchedulePage() {
   const availability = sched.availability || [];
   const subDates = sched.subDates || [];
   const subDateSet = new Set(subDates.map(d => (d.date_requested || '').split('T')[0]));
+  const observations = sched.observations || [];
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -361,6 +362,65 @@ export default function ProfessorSchedulePage() {
                           <span className="w-24">{formatDate((d.date_requested || '').split('T')[0])}</span>
                           <span className="text-xs">{d.reason_name || '—'}</span>
                           {d.notes && <span className="text-xs truncate">{d.notes}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </Section>
+            );
+          })()}
+
+          {/* Observations */}
+          {observations.length > 0 && (() => {
+            const futObs = observations.filter(o => (o.observation_date || '').split('T')[0] >= today && o.status !== 'cancelled')
+              .sort((a, b) => (a.observation_date || '').localeCompare(b.observation_date || ''));
+            const pastObs = observations.filter(o => (o.observation_date || '').split('T')[0] < today && o.status !== 'cancelled')
+              .sort((a, b) => (b.observation_date || '').localeCompare(a.observation_date || ''));
+            if (futObs.length === 0 && pastObs.length === 0) return null;
+            return (
+              <Section title={`Observations (${futObs.length} upcoming)`} defaultOpen={futObs.length > 0}>
+                {futObs.length > 0 && (
+                  <div className="space-y-1.5 mb-3">
+                    {futObs.map(o => {
+                      const isEval = o.observation_type === 'evaluation';
+                      return (
+                        <div key={o.id} className={`rounded-lg border p-3 ${isEval ? 'border-violet-200 bg-violet-50/30' : 'border-gray-200'}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-sm text-gray-900">{formatDate((o.observation_date || '').split('T')[0])}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isEval ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {isEval ? 'Evaluation' : 'Observation'}
+                            </span>
+                            {o.is_paid && o.pay_amount ? <span className="text-[10px] text-green-600">${o.pay_amount}</span> : null}
+                          </div>
+                          <div className="text-sm text-gray-800">{o.program_nickname}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {o.location_nickname}{o.address ? ` — ${o.address}` : ''}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Time: {o.start_time ? o.start_time.slice(0, 5) : '—'}
+                            {o.class_length_minutes ? ` (${o.class_length_minutes} min)` : ''}
+                            &nbsp;&bull;&nbsp;Lead: <strong>{o.lead_professor_name || '—'}</strong>
+                            {o.lead_professor_phone ? ` ${o.lead_professor_phone}` : ''}
+                          </div>
+                          {o.notes && <div className="text-xs text-gray-400 mt-0.5">{o.notes}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {pastObs.length > 0 && (
+                  <details>
+                    <summary className="text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600">
+                      Past ({pastObs.length})
+                    </summary>
+                    <div className="space-y-1 mt-1">
+                      {pastObs.map(o => (
+                        <div key={o.id} className="flex items-center gap-3 px-3 py-1 rounded bg-gray-50 text-sm text-gray-400">
+                          <span className="w-20">{formatDate((o.observation_date || '').split('T')[0])}</span>
+                          <span className="flex-1">{o.program_nickname}</span>
+                          <span className="text-[10px]">{o.observation_type === 'evaluation' ? 'Eval' : 'Obs'}</span>
+                          <span className="text-[10px]">{o.status}</span>
                         </div>
                       ))}
                     </div>

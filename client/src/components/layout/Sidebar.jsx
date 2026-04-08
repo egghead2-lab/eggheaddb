@@ -113,7 +113,7 @@ export function Sidebar() {
   };
 
   return (
-    <div className="w-[220px] min-h-screen bg-[#152a47] flex flex-col fixed left-0 top-0 z-10">
+    <div className="w-[220px] h-screen bg-[#152a47] flex flex-col fixed left-0 top-0 z-10">
       <div className="px-5 py-5 border-b border-white/10">
         <div className="text-white font-bold text-base leading-tight">Professor Egghead</div>
         <div className="text-white/50 text-xs mt-0.5">Operations Hub</div>

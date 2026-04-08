@@ -82,7 +82,19 @@ export default function CandidateDetailPage() {
 
   const reqMutation = useMutation({
     mutationFn: ({ reqId, data }) => api.put(`/onboarding/candidate-requirements/${reqId}`, data),
-    onSuccess: () => qc.invalidateQueries(['candidate', id]),
+    onMutate: async ({ reqId, data }) => {
+      await qc.cancelQueries(['candidate', id]);
+      const prev = qc.getQueryData(['candidate', id]);
+      qc.setQueryData(['candidate', id], old => {
+        if (!old?.data?.requirements) return old;
+        return { ...old, data: { ...old.data, requirements: old.data.requirements.map(r =>
+          r.id === reqId ? { ...r, ...data, completed: data.completed ?? r.completed } : r
+        )}};
+      });
+      return { prev };
+    },
+    onError: (err, vars, ctx) => { if (ctx?.prev) qc.setQueryData(['candidate', id], ctx.prev); },
+    onSettled: () => qc.invalidateQueries(['candidate', id]),
   });
 
   const approveMutation = useMutation({
@@ -102,7 +114,19 @@ export default function CandidateDetailPage() {
 
   const toggleTask = useMutation({
     mutationFn: ({ taskId, completed }) => api.put(`/onboarding/candidate-tasks/${taskId}`, { completed: completed ? 1 : 0 }),
-    onSuccess: () => qc.invalidateQueries(['candidate', id]),
+    onMutate: async ({ taskId, completed }) => {
+      await qc.cancelQueries(['candidate', id]);
+      const prev = qc.getQueryData(['candidate', id]);
+      qc.setQueryData(['candidate', id], old => {
+        if (!old?.data?.tasks) return old;
+        return { ...old, data: { ...old.data, tasks: old.data.tasks.map(t =>
+          t.id === taskId ? { ...t, completed: completed ? 1 : 0 } : t
+        )}};
+      });
+      return { prev };
+    },
+    onError: (err, vars, ctx) => { if (ctx?.prev) qc.setQueryData(['candidate', id], ctx.prev); },
+    onSettled: () => qc.invalidateQueries(['candidate', id]),
   });
 
   const deleteTask = useMutation({
@@ -131,7 +155,11 @@ export default function CandidateDetailPage() {
   });
 
   const hireMutation = useMutation({
-    mutationFn: () => api.post(`/onboarding/candidates/${id}/hire`, { professor_nickname: hireNickname }),
+    mutationFn: () => {
+      const schedule = candidate.schedule || [];
+      const assign_programs = schedule.filter(s => s.active !== 0).map(s => ({ program_id: s.program_id, role: s.role }));
+      return api.post(`/onboarding/candidates/${id}/hire`, { professor_nickname: hireNickname, assign_programs });
+    },
     onSuccess: (res) => { qc.invalidateQueries(['candidate', id]); setShowHire(false); },
   });
 
@@ -226,6 +254,11 @@ export default function CandidateDetailPage() {
               candidateId={id} today={today} reqMutation={reqMutation} approveMutation={approveMutation}
               applyTemplateMutation={applyTemplateMutation} users={users} documents={candidate.documents || []} />
           )}
+
+          {/* Tentative Schedule */}
+          {!isNew && <CandidateScheduleSection candidateId={id} schedule={candidate.schedule || []}
+            scheduleReady={candidate.schedule_ready} scheduleConfirmedAt={candidate.schedule_confirmed_at}
+            scheduleChanged={candidate.schedule_changed_since_confirm} />}
 
           {/* Login Credentials */}
           {!isNew && (
@@ -374,24 +407,233 @@ export default function CandidateDetailPage() {
       </form>
 
       {/* Hire modal */}
-      {showHire && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-96">
-            <h3 className="text-lg font-bold text-gray-900 mb-3">Hire as Professor</h3>
-            <p className="text-sm text-gray-600 mb-4">This will create a professor profile for <strong>{candidate.full_name}</strong> and mark them as hired.</p>
-            <Input label="Professor Preferred Name" value={hireNickname} onChange={e => setHireNickname(e.target.value)} />
-            <div className="flex gap-3 mt-4 justify-end">
-              <button onClick={() => setShowHire(false)} className="text-sm text-gray-500">Cancel</button>
-              <Button onClick={() => hireMutation.mutate()} disabled={hireMutation.isPending || !hireNickname}>
-                {hireMutation.isPending ? 'Creating…' : 'Hire & Create Professor'}
-              </Button>
+      {showHire && (() => {
+        const sched = candidate.schedule || [];
+        const replacing = sched.filter(s => (s.role === 'Lead' ? s.lead_professor_id : s.assistant_professor_id));
+        return (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-[480px] max-h-[80vh] overflow-y-auto">
+              <h3 className="text-lg font-bold text-gray-900 mb-3">Hire as Professor</h3>
+              <p className="text-sm text-gray-600 mb-4">This will create a professor profile for <strong>{candidate.full_name}</strong>, mark them as hired, and assign them to their confirmed schedule.</p>
+              <Input label="Professor Preferred Name" value={hireNickname} onChange={e => setHireNickname(e.target.value)} />
+
+              {sched.length > 0 && (
+                <div className="mt-4 bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Programs to be assigned ({sched.length})</div>
+                  <div className="space-y-1">
+                    {sched.map(s => {
+                      const currentProf = s.role === 'Lead' ? s.current_lead_name : s.current_assist_name;
+                      const isReplacing = s.role === 'Lead' ? !!s.lead_professor_id : !!s.assistant_professor_id;
+                      return (
+                        <div key={s.id} className="text-xs flex items-center gap-2">
+                          <span className="text-gray-700 font-medium flex-1">{s.program_nickname}</span>
+                          <span className="text-gray-400">{s.role}</span>
+                          {isReplacing && <span className="text-amber-600 bg-amber-100 px-1 py-0.5 rounded text-[10px]">Replacing {currentProf}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {replacing.length > 0 && (
+                    <div className="mt-2 text-[10px] text-amber-700 border-t border-amber-200 pt-2">
+                      {replacing.length} program{replacing.length !== 1 ? 's' : ''} will have their current professor replaced.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!candidate.schedule_confirmed_at && sched.length > 0 && (
+                <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Schedule has not been confirmed by the candidate yet.
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-4 justify-end">
+                <button onClick={() => setShowHire(false)} className="text-sm text-gray-500">Cancel</button>
+                <Button onClick={() => hireMutation.mutate()} disabled={hireMutation.isPending || !hireNickname}>
+                  {hireMutation.isPending ? 'Creating…' : 'Hire & Assign Programs'}
+                </Button>
+              </div>
+              {hireMutation.isError && <p className="text-sm text-red-600 mt-2">{hireMutation.error?.response?.data?.error || 'Failed'}</p>}
+              {hireMutation.isSuccess && <p className="text-sm text-green-600 mt-2">Professor created! <Link to={`/professors/${hireMutation.data?.data?.professor_id}`} className="underline">View profile</Link></p>}
             </div>
-            {hireMutation.isError && <p className="text-sm text-red-600 mt-2">{hireMutation.error?.response?.data?.error || 'Failed'}</p>}
-            {hireMutation.isSuccess && <p className="text-sm text-green-600 mt-2">Professor created! <Link to={`/professors/${hireMutation.data?.data?.professor_id}`} className="underline">View profile</Link></p>}
           </div>
+        );
+      })()}
+    </AppShell>
+  );
+}
+
+// ── Candidate Schedule Section ──────────────────────────────────────
+
+const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+const DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function getDays(p) { return DAYS.map((d, i) => p[d] ? DAY_ABBR[i] : null).filter(Boolean).join(', '); }
+
+function CandidateScheduleSection({ candidateId, schedule, scheduleReady, scheduleConfirmedAt, scheduleChanged }) {
+  const qc = useQueryClient();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const searchTimeout = useRef(null);
+
+  const invalidate = () => qc.invalidateQueries(['candidate', candidateId]);
+
+  const addMutation = useMutation({
+    mutationFn: (program_id) => api.post(`/onboarding/candidates/${candidateId}/schedule`, { program_id }),
+    onSuccess: () => { invalidate(); setSearchQuery(''); setSearchResults([]); setShowSearch(false); },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (schedId) => api.delete(`/onboarding/candidates/${candidateId}/schedule/${schedId}`),
+    onSuccess: invalidate,
+  });
+
+  const readyMutation = useMutation({
+    mutationFn: () => api.post(`/onboarding/candidates/${candidateId}/schedule-ready`),
+    onSuccess: invalidate,
+  });
+
+  const unreadyMutation = useMutation({
+    mutationFn: () => api.post(`/onboarding/candidates/${candidateId}/schedule-unready`),
+    onSuccess: invalidate,
+  });
+
+  const handleSearch = (val) => {
+    setSearchQuery(val);
+    if (val.length < 2) { setSearchResults([]); return; }
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const res = await api.get('/programs', { params: { search: val, limit: 15 } });
+        const existingIds = new Set(schedule.map(s => s.program_id));
+        setSearchResults((res.data?.data || []).filter(p => !existingIds.has(p.id)));
+      } catch { setSearchResults([]); }
+    }, 200);
+  };
+
+  const statusLabel = scheduleConfirmedAt
+    ? (scheduleChanged ? 'Changed Since Confirmed' : 'Confirmed')
+    : (scheduleReady ? 'Ready for Review' : 'Building');
+  const statusColor = scheduleConfirmedAt
+    ? (scheduleChanged ? 'text-amber-700 bg-amber-100' : 'text-green-700 bg-green-100')
+    : (scheduleReady ? 'text-blue-700 bg-blue-100' : 'text-gray-600 bg-gray-100');
+
+  return (
+    <Section title={`Tentative Schedule (${schedule.length})`} defaultOpen={true} overflow="visible">
+      {/* Status bar */}
+      <div className="flex items-center gap-3 mb-3">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColor}`}>{statusLabel}</span>
+        {scheduleConfirmedAt && (
+          <span className="text-[10px] text-gray-400">Confirmed {formatDate(scheduleConfirmedAt)}</span>
+        )}
+        <div className="ml-auto flex gap-2">
+          {!scheduleReady && !scheduleConfirmedAt && schedule.length > 0 && (
+            <button type="button" onClick={() => readyMutation.mutate()}
+              className="text-xs text-white bg-blue-600 px-2.5 py-1 rounded hover:bg-blue-700">
+              {readyMutation.isPending ? '…' : 'Mark Ready for Candidate'}
+            </button>
+          )}
+          {scheduleReady && !scheduleConfirmedAt && (
+            <button type="button" onClick={() => unreadyMutation.mutate()}
+              className="text-xs text-gray-500 hover:text-gray-700 underline">
+              Revert to Editing
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Schedule table */}
+      {schedule.length > 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-3">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Days</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
+                <th className="text-center px-3 py-2 font-medium text-gray-600 w-16">Role</th>
+                <th className="text-center px-3 py-2 font-medium text-gray-600 w-20">Status</th>
+                <th className="w-8"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {schedule.map(s => {
+                const currentProf = s.role === 'Lead' ? s.current_lead_name : s.current_assist_name;
+                const isDoubleStaffed = s.role === 'Lead' ? !!s.lead_professor_id : !!s.assistant_professor_id;
+                return (
+                  <tr key={s.id} className={s.status === 'changed' ? 'bg-amber-50' : ''}>
+                    <td className="px-3 py-2">
+                      <Link to={`/programs/${s.program_id}`} className="text-[#1e3a5f] hover:underline font-medium text-xs">{s.program_nickname}</Link>
+                      {isDoubleStaffed && (
+                        <div className="text-[10px] text-amber-600 mt-0.5">
+                          Currently: <span className="font-medium">{currentProf}</span> (will be replaced)
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{s.location_nickname || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{getDays(s)}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{s.start_time ? s.start_time.slice(0, 5) : '—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500">
+                      {s.first_session_date ? formatDate(s.first_session_date) : '—'}
+                      {s.last_session_date ? ` – ${formatDate(s.last_session_date)}` : ''}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        s.role === 'Lead' ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
+                      }`}>{s.role}</span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {isDoubleStaffed && <span className="text-[10px] text-amber-600 bg-amber-100 px-1 py-0.5 rounded font-medium mr-1">Replacing</span>}
+                      <span className={`text-[10px] font-medium ${
+                        s.status === 'confirmed' ? 'text-green-600' :
+                        s.status === 'changed' ? 'text-amber-600' :
+                        s.status === 'ready' ? 'text-blue-600' : 'text-gray-400'
+                      }`}>{s.status}</span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <button type="button" onClick={() => { if (confirm('Remove this program?')) removeMutation.mutate(s.id); }}
+                        className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-sm text-gray-400 mb-3">No programs assigned yet.</p>
+      )}
+
+      {/* Add program search */}
+      {!showSearch ? (
+        <button type="button" onClick={() => setShowSearch(true)} className="text-xs text-[#1e3a5f] hover:underline">+ Add program to schedule</button>
+      ) : (
+        <div style={{ position: 'relative', zIndex: 30 }}>
+          <div className="flex gap-2 items-center">
+            <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
+              placeholder="Search programs…" autoFocus
+              onBlur={() => setTimeout(() => setSearchResults([]), 200)}
+              className="flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+            <button type="button" onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
+              className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+          </div>
+          {searchResults.length > 0 && (
+            <ul style={{ position: 'absolute', zIndex: 50 }} className="mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+              {searchResults.map(p => (
+                <li key={p.id} onMouseDown={e => { e.preventDefault(); addMutation.mutate(p.id); }}
+                  className="px-3 py-2 text-sm cursor-pointer hover:bg-[#1e3a5f]/10 flex justify-between">
+                  <span className="font-medium">{p.program_nickname}</span>
+                  <span className="text-gray-400 text-xs">{p.location_nickname || ''}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {addMutation.isError && <p className="text-xs text-red-600 mt-1">{addMutation.error?.response?.data?.error || 'Failed'}</p>}
         </div>
       )}
-    </AppShell>
+    </Section>
   );
 }
 
@@ -419,6 +661,11 @@ function ChecklistSection({ requirements, templates, appliedTemplates, candidate
   const addSingleReq = useMutation({
     mutationFn: (data) => api.post('/onboarding/candidate-requirements-add', data),
     onSuccess: () => { qc.invalidateQueries(['candidate', candidateId]); setAddReqId(''); setShowAddReq(false); },
+  });
+
+  const waiveMutation = useMutation({
+    mutationFn: ({ reqId, waived, waived_reason }) => api.post(`/onboarding/candidate-requirements/${reqId}/waive`, { waived, waived_reason }),
+    onSuccess: () => qc.invalidateQueries(['candidate', candidateId]),
   });
 
   let filtered = [...requirements];
@@ -577,13 +824,26 @@ function ChecklistSection({ requirements, templates, appliedTemplates, candidate
                 })()}
               </div>
 
-              {/* Type */}
-              <span className={`text-xs px-2 py-1 rounded font-medium shrink-0 ${
-                r.type === 'document' ? 'bg-blue-100 text-blue-700' :
-                r.type === 'training' ? 'bg-purple-100 text-purple-700' :
-                r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
-                'bg-gray-100 text-gray-600'
-              }`}>{r.type}</span>
+              {/* Type + Waive */}
+              <div className="shrink-0 flex items-center gap-1.5">
+                <span className={`text-xs px-2 py-1 rounded font-medium ${
+                  r.waived ? 'bg-gray-200 text-gray-500 line-through' :
+                  r.type === 'document' ? 'bg-blue-100 text-blue-700' :
+                  r.type === 'training' ? 'bg-purple-100 text-purple-700' :
+                  r.type === 'compliance' ? 'bg-amber-100 text-amber-700' :
+                  'bg-gray-100 text-gray-600'
+                }`}>{r.waived ? 'Waived' : r.type}</span>
+                {!r.completed && !r.waived && (
+                  <button type="button" onClick={() => {
+                    const reason = prompt('Waive reason (e.g. "Sub only — no schedule needed"):');
+                    if (reason !== null) waiveMutation.mutate({ reqId: r.id, waived: true, waived_reason: reason });
+                  }} className="text-[10px] text-gray-400 hover:text-amber-600">waive</button>
+                )}
+                {r.waived && (
+                  <button type="button" onClick={() => waiveMutation.mutate({ reqId: r.id, waived: false, waived_reason: null })}
+                    className="text-[10px] text-gray-400 hover:text-[#1e3a5f]">undo</button>
+                )}
+              </div>
 
               {/* Owner */}
               <div className="w-24 shrink-0 text-right">

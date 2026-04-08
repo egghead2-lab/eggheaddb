@@ -119,6 +119,12 @@ export default function CandidatePortalPage() {
         {/* Personal Info Form */}
         <PersonalInfoForm portal={portal} />
 
+        {/* Tentative Schedule */}
+        {(portal.schedule || []).length > 0 && (
+          <CandidateScheduleView schedule={portal.schedule} scheduleReady={portal.schedule_ready}
+            scheduleConfirmedAt={portal.schedule_confirmed_at} scheduleChanged={portal.schedule_changed_since_confirm} />
+        )}
+
         {/* Requirements checklist */}
         <div className="bg-white rounded-lg border border-gray-200">
           <div className="px-4 py-3 border-b border-gray-200">
@@ -341,6 +347,82 @@ function PortalRequirementRow({ r, isOverdue, isUpcoming, isPendingApproval, can
             </span>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const SCHED_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+const SCHED_DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function getSchedDays(p) { return SCHED_DAYS.map((d, i) => p[d] ? SCHED_DAY_ABBR[i] : null).filter(Boolean).join(', '); }
+
+function CandidateScheduleView({ schedule, scheduleReady, scheduleConfirmedAt, scheduleChanged }) {
+  const qc = useQueryClient();
+
+  const confirmMutation = useMutation({
+    mutationFn: () => api.post('/onboarding/my-portal/confirm-schedule'),
+    onSuccess: () => qc.invalidateQueries(['my-portal']),
+  });
+
+  const needsConfirm = scheduleReady && (!scheduleConfirmedAt || scheduleChanged);
+  const isConfirmed = scheduleConfirmedAt && !scheduleChanged;
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200">
+      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="font-semibold text-gray-900">Your Schedule</h2>
+          {isConfirmed && <span className="text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded font-medium">Confirmed</span>}
+          {scheduleChanged && <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium">Updated — Please Re-confirm</span>}
+          {!scheduleReady && <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded font-medium">Being Built</span>}
+        </div>
+      </div>
+      <div className="p-4">
+        {!scheduleReady && (
+          <p className="text-sm text-gray-500 mb-3">Your scheduler is building your class schedule. You'll be asked to confirm once it's ready.</p>
+        )}
+
+        {/* Class cards */}
+        <div className="space-y-3">
+          {schedule.map(s => (
+            <div key={s.id} className={`rounded-lg border p-4 ${
+              s.status === 'changed' ? 'border-amber-300 bg-amber-50' :
+              s.status === 'confirmed' ? 'border-green-200 bg-green-50/30' :
+              'border-gray-200'
+            }`}>
+              <div className="font-medium text-gray-900">{s.program_nickname}</div>
+              <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <div><span className="text-gray-400 text-xs">Day(s)</span><div className="text-gray-800">{getSchedDays(s)}</div></div>
+                <div><span className="text-gray-400 text-xs">Time</span><div className="text-gray-800">{s.start_time ? s.start_time.slice(0, 5) : '—'}{s.class_length_minutes ? ` (${s.class_length_minutes} min)` : ''}</div></div>
+                <div><span className="text-gray-400 text-xs">Dates</span><div className="text-gray-800">{s.first_session_date ? formatDate(s.first_session_date) : '—'} – {s.last_session_date ? formatDate(s.last_session_date) : 'TBD'}</div></div>
+                <div><span className="text-gray-400 text-xs">Role</span><div className="text-gray-800">{s.role} Professor</div></div>
+              </div>
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                <span className="text-gray-400 text-xs">Location</span>
+                <div className="text-sm text-gray-800 font-medium">{s.location_nickname}</div>
+                {s.address && <div className="text-sm text-gray-600">{s.address}</div>}
+              </div>
+              {s.status === 'changed' && <div className="text-xs text-amber-700 mt-2 font-medium">This class was added or changed since you last confirmed.</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* Confirmation section */}
+        {needsConfirm && (
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="text-sm font-medium text-blue-900 mb-1">Please review and confirm your schedule</div>
+            <p className="text-xs text-blue-700 mb-3">
+              By confirming, you are verifying that you have reviewed each class above — including the locations, addresses,
+              travel distances, days of the week, times, and date ranges — and that this schedule works with your
+              current availability. If anything doesn't work, please message your scheduling coordinator before confirming.
+            </p>
+            <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}
+              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+              {confirmMutation.isPending ? 'Confirming…' : 'I Have Reviewed & Confirm This Schedule'}
+            </button>
+          </div>
+        )}
+        {confirmMutation.isSuccess && <p className="text-sm text-green-600 mt-3">Schedule confirmed! Thank you.</p>}
       </div>
     </div>
   );

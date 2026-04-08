@@ -96,6 +96,37 @@ router.get('/my-profile', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/professors/observations/search-programs — search programs for observation scheduling
+router.get('/observations/search-programs', authenticate, async (req, res, next) => {
+  try {
+    const { search, area_id } = req.query;
+    let where = "WHERE prog.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'";
+    const params = [];
+    if (search) { where += ' AND prog.program_nickname LIKE ?'; params.push(`%${search}%`); }
+    if (area_id) { where += ' AND ga.id = ?'; params.push(area_id); }
+
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday,
+              prog.first_session_date, prog.last_session_date,
+              loc.nickname AS location_nickname, loc.address,
+              ga.id AS area_id, ga.geographic_area_name,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              lp.phone_number AS lead_professor_phone
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       ${where}
+       ORDER BY prog.program_nickname
+       LIMIT 30`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/professors/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
@@ -208,9 +239,29 @@ router.get('/:id', authenticate, async (req, res, next) => {
       [id, id, id]
     );
 
+    // Observations
+    const [observations] = await pool.query(
+      `SELECT po.*, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
+              loc.nickname AS location_nickname, loc.address,
+              ga2.geographic_area_name AS program_area,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              lp.phone_number AS lead_professor_phone,
+              CONCAT(u.first_name, ' ', u.last_name) AS assigned_by_name
+       FROM professor_observation po
+       JOIN program prog ON prog.id = po.program_id AND prog.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga2 ON ga2.id = loc.geographic_area_id_online
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN user u ON u.id = po.assigned_by_user_id
+       WHERE po.professor_id = ? AND po.active = 1
+       ORDER BY po.observation_date ASC`,
+      [id]
+    );
+
     res.json({
       success: true,
-      data: { ...professor, availability, livescans, bins, daysOff, incidents, reviews, upcomingSessions, activePrograms },
+      data: { ...professor, availability, livescans, bins, daysOff, incidents, reviews, upcomingSessions, activePrograms, observations },
     });
   } catch (err) {
     next(err);
@@ -526,6 +577,86 @@ router.post('/:id/regenerate-password', authenticate, async (req, res, next) => 
     await pool.query('UPDATE user SET password = ?, ts_updated = NOW() WHERE id = ?', [hashedPassword, prof.user_id]);
 
     res.json({ success: true, password: rawPassword });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// OBSERVATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /api/professors/:id/observations — schedule an observation
+router.post('/:id/observations', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { program_id, observation_date, observation_type, pay_amount, notes } = req.body;
+    if (!program_id || !observation_date) return res.status(400).json({ success: false, error: 'Program and date required' });
+
+    // Determine if observer is a field manager (unpaid by default)
+    const [[prof]] = await pool.query(
+      `SELECT p.user_id, u.role_id, r.role_name
+       FROM professor p
+       LEFT JOIN user u ON u.id = p.user_id
+       LEFT JOIN role r ON r.id = u.role_id
+       WHERE p.id = ?`, [id]
+    );
+    const isFieldManager = prof?.role_name === 'Field Manager';
+    const type = observation_type || 'observation';
+    const isPaid = isFieldManager ? 0 : 1;
+    const pay = isFieldManager ? 0 : (pay_amount || null);
+
+    const [result] = await pool.query(
+      `INSERT INTO professor_observation (professor_id, program_id, observation_date, observation_type, pay_amount, is_paid, assigned_by_user_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, program_id, observation_date, type, pay, isPaid, req.user.userId, notes || null]
+    );
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/professors/:id/observations/:obsId — update an observation
+router.put('/:id/observations/:obsId', authenticate, async (req, res, next) => {
+  try {
+    const { obsId } = req.params;
+    const fields = ['observation_date', 'observation_type', 'pay_amount', 'is_paid', 'status', 'notes'];
+    const updates = fields.filter(f => req.body[f] !== undefined);
+    if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+
+    // Auto-set completed_at
+    if (req.body.status === 'completed') { updates.push('completed_at'); req.body.completed_at = new Date().toISOString().slice(0, 19).replace('T', ' '); }
+
+    const setClauses = updates.map(f => `${f} = ?`).join(', ');
+    const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
+    await pool.query(`UPDATE professor_observation SET ${setClauses}, ts_updated = NOW() WHERE id = ?`, [...values, obsId]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/professors/:id/observations/:obsId — cancel observation
+router.delete('/:id/observations/:obsId', authenticate, async (req, res, next) => {
+  try {
+    await pool.query("UPDATE professor_observation SET active = 0, status = 'cancelled', ts_updated = NOW() WHERE id = ?", [req.params.obsId]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/professors/:id/observations — for schedule page
+router.get('/:id/observations', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT po.*, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              loc.nickname AS location_nickname, loc.address,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              lp.phone_number AS lead_professor_phone
+       FROM professor_observation po
+       JOIN program prog ON prog.id = po.program_id AND prog.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       WHERE po.professor_id = ? AND po.active = 1
+       ORDER BY po.observation_date ASC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 

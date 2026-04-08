@@ -121,6 +121,22 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
       [professorId]
     );
 
+    // Observations
+    const [observations] = await pool.query(
+      `SELECT po.id, po.observation_date, po.observation_type, po.pay_amount, po.is_paid, po.status, po.notes,
+              prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              loc.nickname AS location_nickname, loc.address,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              lp.phone_number AS lead_professor_phone
+       FROM professor_observation po
+       JOIN program prog ON prog.id = po.program_id AND prog.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       WHERE po.professor_id = ? AND po.active = 1
+       ORDER BY po.observation_date ASC`,
+      [professorId]
+    );
+
     res.json({
       success: true,
       data: {
@@ -130,6 +146,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
         parties,
         availability,
         subDates,
+        observations,
       },
     });
   } catch (err) {
