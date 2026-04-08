@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
@@ -10,11 +10,14 @@ import { Spinner } from '../components/ui/Spinner';
 
 export default function BinManagerPage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState('assign'); // assign, lookup
+  const [tab, setTab] = useState('assign');
   const [searchProfId, setSearchProfId] = useState('');
   const [lookupType, setLookupType] = useState('');
   const [lookupNumber, setLookupNumber] = useState('');
   const [assignForm, setAssignForm] = useState({ professor_id: '', bin_id: '', bin_number: '', comment: '' });
+  const [binCheck, setBinCheck] = useState(null); // null | { available, current_holder }
+  const [showTransfer, setShowTransfer] = useState(null); // has_bin_id to transfer
+  const [transferTo, setTransferTo] = useState('');
 
   const { data: binTypes } = useQuery({
     queryKey: ['bin-types'],
@@ -29,25 +32,35 @@ export default function BinManagerPage() {
   });
   const professors = profListData?.data || [];
 
-  // Professor bin lookup
   const { data: profBinsData } = useQuery({
     queryKey: ['prof-bins', searchProfId],
     queryFn: () => api.get(`/materials/bins/professor/${searchProfId}`).then(r => r.data),
     enabled: !!searchProfId,
   });
 
-  // Type+number lookup
   const { data: lookupData, refetch: lookupRefetch } = useQuery({
     queryKey: ['bin-lookup', lookupType, lookupNumber],
     queryFn: () => api.get(`/materials/bins/lookup?type=${lookupType}&number=${lookupNumber}`).then(r => r.data),
     enabled: false,
   });
 
+  // Check bin availability when bin_id and bin_number change
+  useEffect(() => {
+    if (assignForm.bin_id && assignForm.bin_number) {
+      api.get(`/materials/bins/check?bin_id=${assignForm.bin_id}&bin_number=${assignForm.bin_number}`)
+        .then(r => setBinCheck(r.data))
+        .catch(() => setBinCheck(null));
+    } else {
+      setBinCheck(null);
+    }
+  }, [assignForm.bin_id, assignForm.bin_number]);
+
   const assignMutation = useMutation({
     mutationFn: (data) => api.post('/materials/bins', data),
     onSuccess: () => {
       qc.invalidateQueries(['prof-bins']);
-      setAssignForm({ professor_id: '', bin_id: '', bin_number: '', comment: '' });
+      setAssignForm({ ...assignForm, bin_number: '', comment: '' });
+      setBinCheck(null);
     },
   });
 
@@ -56,12 +69,16 @@ export default function BinManagerPage() {
     onSuccess: () => qc.invalidateQueries(['prof-bins']),
   });
 
+  const transferMutation = useMutation({
+    mutationFn: ({ has_bin_id, to_professor_id }) => api.post('/materials/bins/transfer', { has_bin_id, to_professor_id }),
+    onSuccess: () => { qc.invalidateQueries(['prof-bins']); setShowTransfer(null); setTransferTo(''); },
+  });
+
   return (
     <AppShell>
       <PageHeader title="Bin Manager" />
 
       <div className="p-6">
-        {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
           {[['assign', 'Assign / View'], ['lookup', 'Lookup']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
@@ -90,12 +107,23 @@ export default function BinManagerPage() {
                   <option value="">Select bin type...</option>
                   {bins.map(b => <option key={b.id} value={b.id}>{b.bin_name}</option>)}
                 </Select>
-                <Input label="Bin Number" type="number" value={assignForm.bin_number}
-                  onChange={e => setAssignForm({ ...assignForm, bin_number: e.target.value })} />
+                <div>
+                  <Input label="Bin Number" type="number" value={assignForm.bin_number}
+                    onChange={e => setAssignForm({ ...assignForm, bin_number: e.target.value })} />
+                  {/* Duplicate check indicator */}
+                  {binCheck && !binCheck.available && (
+                    <div className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                      Already assigned to <strong>{binCheck.current_holder?.professor_name}</strong>
+                    </div>
+                  )}
+                  {binCheck && binCheck.available && assignForm.bin_number && (
+                    <div className="mt-1 text-xs text-green-600">Available</div>
+                  )}
+                </div>
                 <Input label="Comment" value={assignForm.comment}
                   onChange={e => setAssignForm({ ...assignForm, comment: e.target.value })} />
                 <Button onClick={() => assignMutation.mutate(assignForm)}
-                  disabled={!assignForm.professor_id || !assignForm.bin_id || !assignForm.bin_number || assignMutation.isPending}>
+                  disabled={!assignForm.professor_id || !assignForm.bin_id || !assignForm.bin_number || assignMutation.isPending || (binCheck && !binCheck.available)}>
                   {assignMutation.isPending ? 'Assigning...' : 'Assign Bin'}
                 </Button>
                 {assignMutation.isError && <p className="text-sm text-red-600">{assignMutation.error?.response?.data?.error || 'Failed'}</p>}
@@ -103,7 +131,7 @@ export default function BinManagerPage() {
               </div>
             </div>
 
-            {/* Current bins for selected professor */}
+            {/* Current bins */}
             <div className="bg-white rounded-lg border border-gray-200 p-5">
               <h3 className="font-semibold text-gray-900 mb-4">
                 {searchProfId ? 'Current Bins' : 'Select a professor to view bins'}
@@ -114,14 +142,42 @@ export default function BinManagerPage() {
                 ) : (
                   <div className="space-y-2">
                     {profBinsData.data.map(b => (
-                      <div key={b.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded">
-                        <div>
-                          <div className="text-sm font-medium text-gray-800">{b.bin_name}</div>
-                          <div className="text-xs text-gray-500">#{b.bin_number}</div>
+                      <div key={b.id} className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-medium text-gray-800">{b.bin_name}</div>
+                            <div className="text-lg font-bold text-[#1e3a5f]">#{b.bin_number}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => { setShowTransfer(b.id); setTransferTo(''); }}
+                              className="text-xs text-[#1e3a5f] hover:underline">Transfer</button>
+                            <button onClick={() => { if (confirm('Remove this bin assignment?')) updateMutation.mutate({ id: b.id, data: { active: 0 } }); }}
+                              className="text-xs text-red-500 hover:underline">Remove</button>
+                          </div>
                         </div>
-                        {b.comment && <div className="text-xs text-gray-400 max-w-[200px] truncate">{b.comment}</div>}
-                        <button onClick={() => { if (confirm('Remove this bin assignment?')) updateMutation.mutate({ id: b.id, data: { active: 0 } }); }}
-                          className="text-xs text-gray-400 hover:text-red-500">Remove</button>
+                        {b.comment && <div className="text-xs text-gray-400 mt-1">{b.comment}</div>}
+
+                        {/* Transfer form */}
+                        {showTransfer === b.id && (
+                          <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                            <label className="block text-xs font-medium text-gray-600">Transfer to:</label>
+                            <select value={transferTo} onChange={e => setTransferTo(e.target.value)}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm">
+                              <option value="">Select professor...</option>
+                              {professors.filter(p => String(p.id) !== searchProfId).map(p => (
+                                <option key={p.id} value={p.id}>{p.professor_nickname} {p.last_name}</option>
+                              ))}
+                            </select>
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => transferMutation.mutate({ has_bin_id: b.id, to_professor_id: Number(transferTo) })}
+                                disabled={!transferTo || transferMutation.isPending}>
+                                {transferMutation.isPending ? 'Transferring...' : 'Transfer'}
+                              </Button>
+                              <button onClick={() => setShowTransfer(null)} className="text-xs text-gray-500">Cancel</button>
+                            </div>
+                            {transferMutation.isError && <p className="text-xs text-red-600">{transferMutation.error?.response?.data?.error || 'Failed'}</p>}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

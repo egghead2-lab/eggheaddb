@@ -523,11 +523,55 @@ router.post('/bins', async (req, res, next) => {
   try {
     const { professor_id, bin_id, bin_number, comment } = req.body;
     if (!professor_id || !bin_id || !bin_number) return res.status(400).json({ success: false, error: 'Professor, bin type, and number required' });
+
+    // Check if this bin number is already assigned to someone else
+    const [existing] = await pool.query(
+      'SELECT hb.id, CONCAT(p.professor_nickname, " ", p.last_name) AS professor_name FROM has_bin hb JOIN professor p ON p.id = hb.professor_id WHERE hb.bin_id = ? AND hb.bin_number = ? AND hb.active = 1',
+      [bin_id, bin_number]
+    );
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, error: `Bin #${bin_number} is already assigned to ${existing[0].professor_name}`, current_holder: existing[0] });
+    }
+
     const [result] = await pool.query(
       'INSERT INTO has_bin (professor_id, bin_id, bin_number, comment, active) VALUES (?, ?, ?, ?, 1)',
       [professor_id, bin_id, bin_number, comment || null]
     );
     res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// POST /api/materials/bins/transfer — transfer a bin from one professor to another
+router.post('/bins/transfer', async (req, res, next) => {
+  try {
+    const { has_bin_id, to_professor_id, comment } = req.body;
+    if (!has_bin_id || !to_professor_id) return res.status(400).json({ success: false, error: 'Bin assignment and target professor required' });
+
+    const [[bin]] = await pool.query('SELECT * FROM has_bin WHERE id = ? AND active = 1', [has_bin_id]);
+    if (!bin) return res.status(404).json({ success: false, error: 'Bin assignment not found' });
+
+    // Deactivate old assignment
+    await pool.query('UPDATE has_bin SET active = 0 WHERE id = ?', [has_bin_id]);
+
+    // Create new assignment
+    const [result] = await pool.query(
+      'INSERT INTO has_bin (professor_id, bin_id, bin_number, comment, active) VALUES (?, ?, ?, ?, 1)',
+      [to_professor_id, bin.bin_id, bin.bin_number, comment || `Transferred from professor #${bin.professor_id}`]
+    );
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// GET /api/materials/bins/check — check if a bin number is available
+router.get('/bins/check', async (req, res, next) => {
+  try {
+    const { bin_id, bin_number } = req.query;
+    const [existing] = await pool.query(
+      'SELECT hb.id, CONCAT(p.professor_nickname, " ", p.last_name) AS professor_name, p.id AS professor_id FROM has_bin hb JOIN professor p ON p.id = hb.professor_id WHERE hb.bin_id = ? AND hb.bin_number = ? AND hb.active = 1',
+      [bin_id, bin_number]
+    );
+    res.json({ success: true, available: existing.length === 0, current_holder: existing[0] || null });
   } catch (err) { next(err); }
 });
 

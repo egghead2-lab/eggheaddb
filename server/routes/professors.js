@@ -345,6 +345,25 @@ router.put('/:id', authenticate, async (req, res, next) => {
       }
     }
 
+    // Block deactivation/termination if professor has outstanding bins
+    const isDeactivating = data.active === 0 || data.active === '0';
+    const isTerminating = data.professor_status_id && (() => {
+      // Check if the new status is a terminated/inactive one
+      // We'll check after query, but for now check the termination_date being set
+      return !!data.termination_date;
+    })();
+    if (isDeactivating || isTerminating) {
+      const [[binCount]] = await pool.query(
+        'SELECT COUNT(*) as cnt FROM has_bin WHERE professor_id = ? AND active = 1', [id]
+      );
+      if (binCount.cnt > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot deactivate: professor has ${binCount.cnt} outstanding bin(s). Transfer or return bins first.`
+        });
+      }
+    }
+
     const updateFields = fields.filter(f => data[f] !== undefined);
     const values = updateFields.map(f => data[f] === '' ? null : data[f]);
 
