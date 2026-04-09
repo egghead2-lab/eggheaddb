@@ -412,7 +412,8 @@ const { addPartyToCalendar, syncPartyCalendarEvent, deletePartyCalendarEvent } =
 // POST /api/parties/:id/calendar — create calendar event
 router.post('/:id/calendar', authenticate, async (req, res, next) => {
   try {
-    const result = await addPartyToCalendar(req.params.id);
+    const dryRun = req.query.dry_run === 'true' || req.body.dry_run === true;
+    const result = await addPartyToCalendar(req.params.id, { dryRun });
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Calendar error: ' + err.message });

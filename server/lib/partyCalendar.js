@@ -91,14 +91,18 @@ async function fetchPartyRow(partyId) {
   return row;
 }
 
-async function addPartyToCalendar(partyId) {
+async function addPartyToCalendar(partyId, { dryRun = false } = {}) {
   const party = await fetchPartyRow(partyId);
   if (!party) throw new Error('Party not found');
   if (party.calendar_event_id) return { eventId: party.calendar_event_id, alreadyExists: true };
 
-  const calendar = await getCalendarClient();
   const event = buildCalendarEvent(party);
 
+  if (dryRun) {
+    return { dryRun: true, event, calendarId: PARTY_CALENDAR_ID };
+  }
+
+  const calendar = await getCalendarClient();
   const { data } = await calendar.events.insert({
     calendarId: PARTY_CALENDAR_ID,
     requestBody: event,

@@ -10,12 +10,18 @@ import { formatDate, formatTime } from '../lib/utils';
 
 export default function PartyCalendarPage() {
   const qc = useQueryClient();
+  const [preview, setPreview] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['party-calendar-pending'],
     queryFn: () => api.get('/parties/calendar/pending').then(r => r.data),
   });
   const parties = data?.data || [];
+
+  const previewMutation = useMutation({
+    mutationFn: (id) => api.post(`/parties/${id}/calendar?dry_run=true`).then(r => r.data),
+    onSuccess: (res) => setPreview(res),
+  });
 
   const addMutation = useMutation({
     mutationFn: (id) => api.post(`/parties/${id}/calendar`),
@@ -81,15 +87,43 @@ export default function PartyCalendarPage() {
                       {p.birthday_kid_name ? `${p.birthday_kid_name}${p.birthday_kid_age ? ` (${p.birthday_kid_age})` : ''}` : '—'}
                     </td>
                     <td className="px-2 py-2 text-right">
-                      <button onClick={() => addMutation.mutate(p.id)} disabled={addMutation.isPending}
-                        className="text-xs text-white bg-[#1e3a5f] px-2 py-0.5 rounded hover:bg-[#152a47] disabled:opacity-50">
-                        Add
-                      </button>
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => previewMutation.mutate(p.id)} disabled={previewMutation.isPending}
+                          className="text-[10px] text-gray-500 hover:text-[#1e3a5f] underline">
+                          Preview
+                        </button>
+                        <button onClick={() => addMutation.mutate(p.id)} disabled={addMutation.isPending}
+                          className="text-xs text-white bg-[#1e3a5f] px-2 py-0.5 rounded hover:bg-[#152a47] disabled:opacity-50">
+                          Add
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Preview panel */}
+        {preview?.event && (
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold text-blue-800">Preview (Dry Run — nothing sent)</div>
+              <button onClick={() => setPreview(null)} className="text-xs text-gray-400 hover:text-gray-600">&times; Close</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div><span className="text-blue-600 font-medium">Summary:</span> {preview.event.summary}</div>
+              <div><span className="text-blue-600 font-medium">Location:</span> {preview.event.location}</div>
+              <div><span className="text-blue-600 font-medium">Start:</span> {preview.event.start?.dateTime}</div>
+              <div><span className="text-blue-600 font-medium">End:</span> {preview.event.end?.dateTime}</div>
+              <div><span className="text-blue-600 font-medium">Calendar:</span> {preview.calendarId}</div>
+              <div><span className="text-blue-600 font-medium">Attendees:</span> {preview.event.attendees?.map(a => a.email).join(', ')}</div>
+            </div>
+            <div className="mt-2">
+              <span className="text-blue-600 font-medium text-xs">Description:</span>
+              <pre className="text-xs text-gray-700 bg-white rounded p-2 mt-1 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto border border-blue-100">{preview.event.description}</pre>
+            </div>
           </div>
         )}
       </div>
