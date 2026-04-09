@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { getLocation, createLocation, updateLocation } from '../api/locations';
 import { updateProgram } from '../api/programs';
 import { useGeneralData } from '../hooks/useReferenceData';
+import api from '../api/client';
 import { toFormData, formatDate } from '../lib/utils';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
@@ -35,7 +36,7 @@ export default function LocationDetailPage() {
   // Client manager users
   const { data: cmUsersData } = useQuery({
     queryKey: ['users-cm'],
-    queryFn: () => fetch('http://localhost:3002/api/users?role=Client+Manager&limit=100', { credentials: 'include' }).then(r => r.json()),
+    queryFn: () => api.get('/users?role=Client+Manager&limit=100').then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
   const cmUsers = cmUsersData?.data || [];

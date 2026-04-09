@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getLesson, createLesson, updateLesson, deleteLesson, addLessonClass, removeLessonClass } from '../api/lessons';
+import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
@@ -56,7 +57,7 @@ export default function LessonDetailPage() {
 
   const { data: classListData } = useQuery({
     queryKey: ['classes'],
-    queryFn: () => fetch('http://localhost:3002/api/classes', { credentials: 'include' }).then(r => r.json()),
+    queryFn: () => api.get('/classes').then(r => r.data),
     staleTime: 10 * 60 * 1000,
   });
   const classList = classListData?.data || [];

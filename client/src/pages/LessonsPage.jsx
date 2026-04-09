@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getLessonsPage, createLesson, deleteLesson } from '../api/lessons';
 import { createClass, reorderLessons } from '../api/classes';
+import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -60,7 +61,7 @@ export default function LessonsPage() {
 
   const { data: classListData } = useQuery({
     queryKey: ['classes'],
-    queryFn: () => fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/classes`, { credentials: 'include' }).then(r => r.json()),
+    queryFn: () => api.get('/classes').then(r => r.data),
     staleTime: 10 * 60 * 1000,
   });
   const classList = classListData?.data || [];

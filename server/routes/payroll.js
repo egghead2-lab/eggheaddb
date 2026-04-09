@@ -322,6 +322,193 @@ router.patch('/mileage/:id/process', authenticate, async (req, res, next) => {
 });
 
 // ============================================================
+// WEEKLY MILEAGE (new odometer-based system)
+// ============================================================
+
+// GET /mileage-weeks — list weekly submissions (admin: all, FM: own)
+router.get('/mileage-weeks', authenticate, async (req, res, next) => {
+  try {
+    const { professor_id, status } = req.query;
+    let where = ['1=1'];
+    const params = [];
+    if (professor_id) { where.push('mw.professor_id = ?'); params.push(professor_id); }
+    if (status) { where.push('mw.status = ?'); params.push(status); }
+    const [rows] = await pool.query(
+      `SELECT mw.*, CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
+       FROM mileage_weeks mw LEFT JOIN professor p ON p.id = mw.professor_id
+       WHERE ${where.join(' AND ')} ORDER BY mw.week_start DESC`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /mileage-weeks/:id — single week with daily entries
+router.get('/mileage-weeks/:id', authenticate, async (req, res, next) => {
+  try {
+    const [[week]] = await pool.query(
+      `SELECT mw.*, CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
+       FROM mileage_weeks mw LEFT JOIN professor p ON p.id = mw.professor_id WHERE mw.id = ?`, [req.params.id]
+    );
+    if (!week) return res.status(404).json({ success: false, error: 'Not found' });
+    const [entries] = await pool.query(
+      'SELECT * FROM mileage_daily_entries WHERE mileage_week_id = ? ORDER BY entry_date', [req.params.id]
+    );
+    res.json({ success: true, data: { ...week, entries } });
+  } catch (err) { next(err); }
+});
+
+// POST /mileage-weeks — create or get draft week for a professor
+router.post('/mileage-weeks', authenticate, async (req, res, next) => {
+  try {
+    const { professor_id, week_start } = req.body;
+    if (!professor_id || !week_start) return res.status(400).json({ success: false, error: 'professor_id and week_start required' });
+
+    // Calculate week_end (Sunday)
+    const ws = new Date(week_start);
+    const we = new Date(ws); we.setDate(ws.getDate() + 6);
+    const weekEnd = we.toISOString().split('T')[0];
+
+    // Get current rate
+    const [[rateSetting]] = await pool.query("SELECT setting_value FROM app_settings WHERE setting_key = 'mileage_reimbursement_rate'");
+    const rate = parseFloat(rateSetting?.setting_value) || 0.70;
+
+    // Upsert — return existing draft if one exists
+    const [[existing]] = await pool.query(
+      'SELECT id FROM mileage_weeks WHERE professor_id = ? AND week_start = ?', [professor_id, week_start]
+    );
+    if (existing) return res.json({ success: true, id: existing.id, existing: true });
+
+    const [result] = await pool.query(
+      'INSERT INTO mileage_weeks (professor_id, week_start, week_end, reimbursement_rate) VALUES (?,?,?,?)',
+      [professor_id, week_start, weekEnd, rate]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// POST /mileage-weeks/:id/entries — add daily entry
+router.post('/mileage-weeks/:id/entries', authenticate, async (req, res, next) => {
+  try {
+    const { entry_date, odometer_start, odometer_end, description } = req.body;
+    if (!entry_date || odometer_start == null || odometer_end == null || !description) {
+      return res.status(400).json({ success: false, error: 'Date, odometer start/end, and description required' });
+    }
+    if (parseFloat(odometer_end) <= parseFloat(odometer_start)) {
+      return res.status(400).json({ success: false, error: 'Odometer end must be greater than start' });
+    }
+
+    // Verify week is still draft
+    const [[week]] = await pool.query('SELECT status, reimbursement_rate FROM mileage_weeks WHERE id = ?', [req.params.id]);
+    if (!week) return res.status(404).json({ success: false, error: 'Week not found' });
+    if (week.status !== 'draft') return res.status(400).json({ success: false, error: 'Cannot edit a submitted week' });
+
+    const [result] = await pool.query(
+      'INSERT INTO mileage_daily_entries (mileage_week_id, entry_date, odometer_start, odometer_end, description) VALUES (?,?,?,?,?)',
+      [req.params.id, entry_date, odometer_start, odometer_end, description]
+    );
+
+    // Recalculate totals
+    await recalcMileageWeek(req.params.id, week.reimbursement_rate);
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// DELETE /mileage-weeks/:weekId/entries/:entryId — remove daily entry
+router.delete('/mileage-weeks/:weekId/entries/:entryId', authenticate, async (req, res, next) => {
+  try {
+    const [[week]] = await pool.query('SELECT status, reimbursement_rate FROM mileage_weeks WHERE id = ?', [req.params.weekId]);
+    if (!week) return res.status(404).json({ success: false, error: 'Week not found' });
+    if (week.status !== 'draft') return res.status(400).json({ success: false, error: 'Cannot edit a submitted week' });
+
+    await pool.query('DELETE FROM mileage_daily_entries WHERE id = ? AND mileage_week_id = ?', [req.params.entryId, req.params.weekId]);
+    await recalcMileageWeek(req.params.weekId, week.reimbursement_rate);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PATCH /mileage-weeks/:id/submit — FM submits the week
+router.patch('/mileage-weeks/:id/submit', authenticate, async (req, res, next) => {
+  try {
+    const [[week]] = await pool.query('SELECT status FROM mileage_weeks WHERE id = ?', [req.params.id]);
+    if (!week) return res.status(404).json({ success: false, error: 'Not found' });
+    if (week.status !== 'draft') return res.status(400).json({ success: false, error: 'Already submitted' });
+
+    // Must have at least one entry
+    const [[{ cnt }]] = await pool.query('SELECT COUNT(*) as cnt FROM mileage_daily_entries WHERE mileage_week_id = ?', [req.params.id]);
+    if (cnt === 0) return res.status(400).json({ success: false, error: 'Add at least one daily entry before submitting' });
+
+    await pool.query("UPDATE mileage_weeks SET status = 'submitted', submitted_at = NOW() WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PATCH /mileage-weeks/:id/approve — admin approves
+router.patch('/mileage-weeks/:id/approve', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      "UPDATE mileage_weeks SET status = 'approved', approved_by = ?, approved_at = NOW() WHERE id = ?",
+      [req.body.approved_by || req.user?.name || 'admin', req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PATCH /mileage-weeks/:id/reject — admin rejects with note
+router.patch('/mileage-weeks/:id/reject', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      "UPDATE mileage_weeks SET status = 'rejected', rejection_note = ? WHERE id = ?",
+      [req.body.note || null, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PATCH /mileage-weeks/:id/reopen — reopen rejected week back to draft
+router.patch('/mileage-weeks/:id/reopen', authenticate, async (req, res, next) => {
+  try {
+    await pool.query("UPDATE mileage_weeks SET status = 'draft', rejection_note = NULL WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Helper: recalculate week totals
+async function recalcMileageWeek(weekId, rate) {
+  const [[{ total }]] = await pool.query(
+    'SELECT COALESCE(SUM(odometer_end - odometer_start), 0) as total FROM mileage_daily_entries WHERE mileage_week_id = ?', [weekId]
+  );
+  await pool.query(
+    'UPDATE mileage_weeks SET total_miles = ?, reimbursement_total = ? WHERE id = ?',
+    [total, (total * rate).toFixed(2), weekId]
+  );
+}
+
+// ============================================================
+// APP SETTINGS (mileage rate, etc.)
+// ============================================================
+router.get('/settings', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM app_settings');
+    const settings = {};
+    rows.forEach(r => { settings[r.setting_key] = r.setting_value; });
+    res.json({ success: true, data: settings });
+  } catch (err) { next(err); }
+});
+
+router.put('/settings/:key', authenticate, async (req, res, next) => {
+  try {
+    const adminRoles = ['Admin', 'CEO'];
+    if (!adminRoles.includes(req.user?.role)) return res.status(403).json({ success: false, error: 'Admin only' });
+    await pool.query(
+      'INSERT INTO app_settings (setting_key, setting_value, updated_by) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)',
+      [req.params.key, req.body.value, req.user?.name || 'admin']
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
 // PAYROLL SUMMARY CALCULATION
 // ============================================================
 router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, next) => {

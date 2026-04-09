@@ -118,7 +118,7 @@ export default function ReportBuilderPage() {
       setPreviewData(res);
       setPreviewId(id);
     } catch (err) {
-      console.error('Report run failed:', err);
+      // error is surfaced in previewData.error below
       setPreviewData({ data: [], count: 0, error: err.message });
       setPreviewId(id);
     }

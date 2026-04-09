@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createFmTime, createMileage } from '../api/payroll';
+import { createFmTime } from '../api/payroll';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -51,7 +51,6 @@ export default function FmWorkdayPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState('log');
   const [showLogForm, setShowLogForm] = useState(false);
-  const [showMileageForm, setShowMileageForm] = useState(false);
 
   // Resolve logged-in user to professor_id
   const { data: profMatch, isLoading: profLoading } = useQuery({
@@ -81,13 +80,21 @@ export default function FmWorkdayPage() {
   });
   const logEntries = logData?.data || [];
 
-  // Mileage entries
-  const { data: mileData, isLoading: mileLoading } = useQuery({
-    queryKey: ['mileage', 'mine', myProfId],
-    queryFn: () => api.get(`/payroll/mileage?professor_id=${myProfId}`).then(r => r.data),
+  // Weekly mileage submissions
+  const { data: mileWeeksData, isLoading: mileLoading } = useQuery({
+    queryKey: ['mileage-weeks', 'mine', myProfId],
+    queryFn: () => api.get(`/payroll/mileage-weeks?professor_id=${myProfId}`).then(r => r.data),
     enabled: !!myProfId,
   });
-  const mileEntries = mileData?.data || [];
+  const mileWeeks = mileWeeksData?.data || [];
+
+  // Mileage reimbursement rate
+  const { data: settingsData } = useQuery({
+    queryKey: ['payroll-settings'],
+    queryFn: () => api.get('/payroll/settings').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const mileageRate = parseFloat(settingsData?.data?.mileage_reimbursement_rate) || 0.70;
 
   // Weekly summary
   const weekSummary = useMemo(() => {
@@ -151,32 +158,75 @@ export default function FmWorkdayPage() {
     });
   };
 
-  // --- Mileage Form ---
-  const [mileForm, setMileForm] = useState({
-    submission_date: new Date().toISOString().split('T')[0],
-    miles_claimed: '', reimbursement_total: '', pdf_link: '',
-  });
-  const setMile = (k, v) => setMileForm(f => ({ ...f, [k]: v }));
+  // --- Weekly Mileage ---
+  const [activeWeekId, setActiveWeekId] = useState(null);
+  const [entryForm, setEntryForm] = useState({ entry_date: '', odometer_start: '', odometer_end: '', description: '' });
+  const setEntry = (k, v) => setEntryForm(f => ({ ...f, [k]: v }));
 
-  const mileMutation = useMutation({
-    mutationFn: (d) => createMileage(d),
-    onSuccess: () => {
-      qc.invalidateQueries(['mileage']);
-      setShowMileageForm(false);
-      setMileForm({ submission_date: new Date().toISOString().split('T')[0], miles_claimed: '', reimbursement_total: '', pdf_link: '' });
+  // Get current week's Monday
+  const getMonday = useCallback((d = new Date()) => {
+    const dt = new Date(d);
+    const day = dt.getDay();
+    dt.setDate(dt.getDate() - ((day + 6) % 7));
+    return dt.toISOString().split('T')[0];
+  }, []);
+
+  // Active week detail
+  const { data: activeWeekData } = useQuery({
+    queryKey: ['mileage-week-detail', activeWeekId],
+    queryFn: () => api.get(`/payroll/mileage-weeks/${activeWeekId}`).then(r => r.data),
+    enabled: !!activeWeekId,
+  });
+  const activeWeek = activeWeekData?.data;
+
+  const createWeekMutation = useMutation({
+    mutationFn: (d) => api.post('/payroll/mileage-weeks', d).then(r => r.data),
+    onSuccess: (res) => {
+      setActiveWeekId(res.id);
+      qc.invalidateQueries(['mileage-weeks']);
     },
   });
 
-  const submitMileage = () => {
-    if (!myProfId || !mileForm.miles_claimed) return;
-    mileMutation.mutate({
-      professor_id: myProfId,
-      submission_date: mileForm.submission_date,
-      miles_claimed: parseInt(mileForm.miles_claimed),
-      reimbursement_total: parseFloat(mileForm.reimbursement_total) || 0,
-      pdf_link: mileForm.pdf_link || null,
-      submitted_by: user?.name || '',
-    });
+  const addEntryMutation = useMutation({
+    mutationFn: (d) => api.post(`/payroll/mileage-weeks/${activeWeekId}/entries`, d).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries(['mileage-week-detail', activeWeekId]);
+      qc.invalidateQueries(['mileage-weeks']);
+      setEntryForm({ entry_date: '', odometer_start: '', odometer_end: '', description: '' });
+    },
+  });
+
+  const deleteEntryMutation = useMutation({
+    mutationFn: (entryId) => api.delete(`/payroll/mileage-weeks/${activeWeekId}/entries/${entryId}`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries(['mileage-week-detail', activeWeekId]);
+      qc.invalidateQueries(['mileage-weeks']);
+    },
+  });
+
+  const submitWeekMutation = useMutation({
+    mutationFn: () => api.patch(`/payroll/mileage-weeks/${activeWeekId}/submit`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries(['mileage-week-detail', activeWeekId]);
+      qc.invalidateQueries(['mileage-weeks']);
+    },
+  });
+
+  const reopenWeekMutation = useMutation({
+    mutationFn: () => api.patch(`/payroll/mileage-weeks/${activeWeekId}/reopen`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries(['mileage-week-detail', activeWeekId]);
+      qc.invalidateQueries(['mileage-weeks']);
+    },
+  });
+
+  const startCurrentWeek = () => {
+    createWeekMutation.mutate({ professor_id: myProfId, week_start: getMonday() });
+  };
+
+  const addDailyEntry = () => {
+    if (!entryForm.entry_date || !entryForm.odometer_start || !entryForm.odometer_end || !entryForm.description) return;
+    addEntryMutation.mutate(entryForm);
   };
 
   if (profLoading) return <AppShell><div className="flex items-center justify-center h-64"><Spinner className="w-8 h-8" /></div></AppShell>;
@@ -195,7 +245,8 @@ export default function FmWorkdayPage() {
   }
 
   const pendingLogs = logEntries.filter(e => !e.is_approved).length;
-  const pendingMiles = mileEntries.filter(e => !e.is_processed).length;
+  const pendingMiles = mileWeeks.filter(e => e.status === 'submitted').length;
+  const draftMiles = mileWeeks.filter(e => e.status === 'draft').length;
 
   return (
     <AppShell>
@@ -215,9 +266,11 @@ export default function FmWorkdayPage() {
             <div className="text-xs text-gray-400 mt-0.5">awaiting approval</div>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-xs text-gray-500 uppercase tracking-wide">Pending Mileage</div>
-            <div className={`text-2xl font-bold mt-1 ${pendingMiles > 0 ? 'text-amber-600' : 'text-green-600'}`}>{pendingMiles}</div>
-            <div className="text-xs text-gray-400 mt-0.5">awaiting processing</div>
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Mileage</div>
+            <div className={`text-2xl font-bold mt-1 ${draftMiles > 0 ? 'text-amber-600' : pendingMiles > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+              {draftMiles > 0 ? draftMiles : pendingMiles}
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">{draftMiles > 0 ? 'draft — needs submission' : pendingMiles > 0 ? 'submitted — awaiting approval' : 'all clear'}</div>
           </div>
         </div>
 
@@ -377,58 +430,179 @@ export default function FmWorkdayPage() {
         {/* ========== MILEAGE TAB ========== */}
         {tab === 'mileage' && (
           <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button onClick={() => setShowMileageForm(!showMileageForm)}>{showMileageForm ? 'Cancel' : '+ New Mileage'}</Button>
+            {/* Rate info */}
+            <div className="text-xs text-gray-400">
+              Current reimbursement rate: <strong className="text-gray-600">${mileageRate.toFixed(2)}/mile</strong>
+              <span className="ml-2">(Due by Monday at noon each week)</span>
             </div>
 
-            {showMileageForm && (
+            {/* Active week editor */}
+            {activeWeekId && activeWeek ? (
               <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-800">Mileage Submission</h3>
-                <div className="grid grid-cols-4 gap-4">
-                  <Input label="Date" type="date" value={mileForm.submission_date} onChange={e => setMile('submission_date', e.target.value)} />
-                  <Input label="Miles Claimed" type="number" value={mileForm.miles_claimed} onChange={e => setMile('miles_claimed', e.target.value)} />
-                  <Input label="Reimbursement Total" type="number" step="0.01" prefix="$" value={mileForm.reimbursement_total} onChange={e => setMile('reimbursement_total', e.target.value)} />
-                  <Input label="PDF Link (optional)" value={mileForm.pdf_link} onChange={e => setMile('pdf_link', e.target.value)} placeholder="URL..." />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800">
+                      Week of {formatDate(activeWeek.week_start)} — {formatDate(activeWeek.week_end)}
+                    </h3>
+                    <div className="flex gap-4 mt-1 text-sm">
+                      <span className="text-gray-500">Total: <strong className="text-[#1e3a5f]">{parseFloat(activeWeek.total_miles || 0).toFixed(1)} miles</strong></span>
+                      <span className="text-gray-500">Reimbursement: <strong className="text-green-700">${parseFloat(activeWeek.reimbursement_total || 0).toFixed(2)}</strong></span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                        activeWeek.status === 'draft' ? 'bg-gray-100 text-gray-600' :
+                        activeWeek.status === 'submitted' ? 'bg-blue-100 text-blue-700' :
+                        activeWeek.status === 'approved' ? 'bg-green-100 text-green-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>{activeWeek.status}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveWeekId(null)} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
                 </div>
-                <div className="flex gap-3 items-center">
-                  <Button onClick={submitMileage} disabled={mileMutation.isPending || !mileForm.miles_claimed}>
-                    {mileMutation.isPending ? 'Submitting...' : 'Submit Mileage'}
-                  </Button>
-                  {mileMutation.isError && <span className="text-sm text-red-600">{mileMutation.error?.response?.data?.error || 'Failed'}</span>}
-                  {mileMutation.isSuccess && <span className="text-sm text-green-600">Mileage submitted!</span>}
-                </div>
+
+                {activeWeek.status === 'rejected' && activeWeek.rejection_note && (
+                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
+                    <strong>Rejected:</strong> {activeWeek.rejection_note}
+                    <div className="mt-2">
+                      <Button size="sm" onClick={() => reopenWeekMutation.mutate()} disabled={reopenWeekMutation.isPending}>
+                        {reopenWeekMutation.isPending ? 'Reopening...' : 'Reopen & Edit'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Daily entries table */}
+                {(activeWeek.entries || []).length > 0 && (
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-600">Odometer Start</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-600">Odometer End</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-600">Miles</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-600">Reimb.</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-600">Description</th>
+                        {activeWeek.status === 'draft' && <th className="w-12"></th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {activeWeek.entries.map(e => (
+                        <tr key={e.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2">{formatDate(e.entry_date)}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{parseFloat(e.odometer_start).toFixed(1)}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{parseFloat(e.odometer_end).toFixed(1)}</td>
+                          <td className="px-3 py-2 text-right font-medium">{parseFloat(e.miles).toFixed(1)}</td>
+                          <td className="px-3 py-2 text-right text-green-700">${(parseFloat(e.miles) * activeWeek.reimbursement_rate).toFixed(2)}</td>
+                          <td className="px-3 py-2 text-gray-600">{e.description}</td>
+                          {activeWeek.status === 'draft' && (
+                            <td className="px-3 py-2 text-center">
+                              <button onClick={() => { if (confirm('Remove this entry?')) deleteEntryMutation.mutate(e.id); }}
+                                className="text-xs text-red-400 hover:text-red-600">Remove</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50 font-medium">
+                        <td className="px-3 py-2" colSpan={3}>Week Total</td>
+                        <td className="px-3 py-2 text-right text-[#1e3a5f]">{parseFloat(activeWeek.total_miles || 0).toFixed(1)}</td>
+                        <td className="px-3 py-2 text-right text-green-700">${parseFloat(activeWeek.reimbursement_total || 0).toFixed(2)}</td>
+                        <td colSpan={activeWeek.status === 'draft' ? 2 : 1}></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Add entry form (draft only) */}
+                {activeWeek.status === 'draft' && (
+                  <div className="border-t border-gray-200 pt-4 space-y-3">
+                    <h4 className="text-xs font-semibold text-gray-600 uppercase">Add Daily Entry</h4>
+                    <div className="grid grid-cols-5 gap-3">
+                      <Input label="Date" type="date" value={entryForm.entry_date}
+                        min={activeWeek.week_start} max={activeWeek.week_end}
+                        onChange={e => setEntry('entry_date', e.target.value)} />
+                      <Input label="Odometer Start" type="number" step="0.1" value={entryForm.odometer_start}
+                        onChange={e => setEntry('odometer_start', e.target.value)} />
+                      <Input label="Odometer End" type="number" step="0.1" value={entryForm.odometer_end}
+                        onChange={e => setEntry('odometer_end', e.target.value)} />
+                      <div className="col-span-2">
+                        <Input label="Where did you go?" value={entryForm.description}
+                          onChange={e => setEntry('description', e.target.value)}
+                          placeholder="e.g. Drove to Oak Park Elementary for observation" />
+                      </div>
+                    </div>
+                    {entryForm.odometer_start && entryForm.odometer_end && parseFloat(entryForm.odometer_end) > parseFloat(entryForm.odometer_start) && (
+                      <div className="text-sm text-gray-500">
+                        This trip: <strong className="text-gray-700">{(parseFloat(entryForm.odometer_end) - parseFloat(entryForm.odometer_start)).toFixed(1)} miles</strong>
+                        {' '}= <strong className="text-green-700">${((parseFloat(entryForm.odometer_end) - parseFloat(entryForm.odometer_start)) * mileageRate).toFixed(2)}</strong>
+                      </div>
+                    )}
+                    <div className="flex gap-3 items-center">
+                      <Button size="sm" onClick={addDailyEntry}
+                        disabled={addEntryMutation.isPending || !entryForm.entry_date || !entryForm.odometer_start || !entryForm.odometer_end || !entryForm.description}>
+                        {addEntryMutation.isPending ? 'Adding...' : '+ Add Entry'}
+                      </Button>
+                      {addEntryMutation.isError && <span className="text-xs text-red-600">{addEntryMutation.error?.response?.data?.error || 'Failed'}</span>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit week button */}
+                {activeWeek.status === 'draft' && (activeWeek.entries || []).length > 0 && (
+                  <div className="border-t border-gray-200 pt-4 flex items-center gap-3">
+                    <Button onClick={() => submitWeekMutation.mutate()} disabled={submitWeekMutation.isPending}>
+                      {submitWeekMutation.isPending ? 'Submitting...' : 'Submit Week for Approval'}
+                    </Button>
+                    <span className="text-xs text-gray-400">Once submitted, you cannot edit entries until an admin reopens it.</span>
+                    {submitWeekMutation.isError && <span className="text-xs text-red-600">{submitWeekMutation.error?.response?.data?.error || 'Failed'}</span>}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex justify-end">
+                <Button onClick={startCurrentWeek} disabled={createWeekMutation.isPending}>
+                  {createWeekMutation.isPending ? 'Creating...' : '+ Start Current Week'}
+                </Button>
               </div>
             )}
 
+            {/* Past weeks list */}
+            <h3 className="text-sm font-semibold text-gray-700 mt-2">Weekly Submissions</h3>
             {mileLoading ? <Spinner className="w-6 h-6" /> : (
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-600">Miles</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Week</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Total Miles</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Rate</th>
                       <th className="text-right px-3 py-2 font-medium text-gray-600">Reimbursement</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">PDF</th>
-                      <th className="text-center px-3 py-2 font-medium text-gray-600 w-20">Status</th>
+                      <th className="text-center px-3 py-2 font-medium text-gray-600 w-24">Status</th>
+                      <th className="w-16"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {mileEntries.length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-8 text-gray-400">No mileage submissions</td></tr>
-                    ) : mileEntries.map((e, i) => (
-                      <tr key={e.id} className={!e.is_processed ? 'bg-amber-50/30' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                        <td className="px-3 py-2 font-medium">{formatDate(e.submission_date)}</td>
-                        <td className="px-3 py-2 text-right">{e.miles_claimed}</td>
-                        <td className="px-3 py-2 text-right font-medium">${parseFloat(e.reimbursement_total || 0).toFixed(2)}</td>
-                        <td className="px-3 py-2">
-                          {e.pdf_link ? <a href={e.pdf_link} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1e3a5f] hover:underline">View</a> : '—'}
+                    {mileWeeks.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-8 text-gray-400">No mileage weeks yet</td></tr>
+                    ) : mileWeeks.map((w, i) => (
+                      <tr key={w.id} className={`hover:bg-gray-50 ${
+                        w.status === 'rejected' ? 'bg-red-50/30' :
+                        w.status === 'draft' ? 'bg-amber-50/30' :
+                        i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                      }`}>
+                        <td className="px-3 py-2 font-medium">{formatDate(w.week_start)} — {formatDate(w.week_end)}</td>
+                        <td className="px-3 py-2 text-right">{parseFloat(w.total_miles || 0).toFixed(1)}</td>
+                        <td className="px-3 py-2 text-right text-gray-500">${parseFloat(w.reimbursement_rate).toFixed(2)}/mi</td>
+                        <td className="px-3 py-2 text-right font-medium text-green-700">${parseFloat(w.reimbursement_total || 0).toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                            w.status === 'draft' ? 'bg-gray-100 text-gray-600' :
+                            w.status === 'submitted' ? 'bg-blue-100 text-blue-700' :
+                            w.status === 'approved' ? 'bg-green-100 text-green-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>{w.status}</span>
                         </td>
                         <td className="px-3 py-2 text-center">
-                          {e.is_processed ? (
-                            <span className="text-xs text-green-600 font-medium">Processed</span>
-                          ) : (
-                            <span className="text-xs text-amber-600 font-medium">Pending</span>
-                          )}
+                          <button onClick={() => setActiveWeekId(w.id)} className="text-xs text-[#1e3a5f] hover:underline">
+                            {w.status === 'draft' ? 'Edit' : 'View'}
+                          </button>
                         </td>
                       </tr>
                     ))}

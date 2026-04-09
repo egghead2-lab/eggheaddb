@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getContractor, updateContractor } from '../api/contractors';
+import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
@@ -28,7 +29,7 @@ export default function ContractorDetailPage() {
   // Get users for salesperson dropdown
   const { data: usersData } = useQuery({
     queryKey: ['users-list'],
-    queryFn: () => fetch('http://localhost:3002/api/users', { credentials: 'include' }).then(r => r.json()),
+    queryFn: () => api.get('/users').then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
   const users = usersData?.data || [];

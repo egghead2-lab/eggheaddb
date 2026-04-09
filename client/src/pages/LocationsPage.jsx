@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getLocations, updateLocation } from '../api/locations';
+import api from '../api/client';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -48,7 +49,7 @@ export default function LocationsPage() {
   // Get Client Manager users
   const { data: cmUsersData } = useQuery({
     queryKey: ['users-cm'],
-    queryFn: () => fetch('http://localhost:3002/api/users?role=Client+Manager&limit=100', { credentials: 'include' }).then(r => r.json()),
+    queryFn: () => api.get('/users?role=Client+Manager&limit=100').then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
   const cmUsers = cmUsersData?.data || [];
