@@ -283,6 +283,12 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
     if (oldRow) logAudit('program', id, req.user, oldRow, data);
 
+    // Auto-sync party calendar if this is a confirmed party with a calendar event
+    try {
+      const { syncPartyCalendarEvent } = require('../lib/partyCalendar');
+      await syncPartyCalendarEvent(id);
+    } catch (e) { /* calendar sync failure shouldn't break the save */ }
+
     res.json({ success: true });
   } catch (err) {
     next(err);

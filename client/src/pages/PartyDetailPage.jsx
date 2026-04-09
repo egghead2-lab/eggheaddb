@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getParty, createParty, updateParty } from '../api/parties';
+import api from '../api/client';
 import { searchParents } from '../api/parents';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
@@ -136,6 +137,8 @@ export default function PartyDetailPage() {
               <Input label="# Kids" type="number" {...register('total_kids_attended')} />
               <Input label="Duration (min)" type="number" {...register('class_length_minutes')} />
               <Input label="Shirt Size" {...register('shirt_size')} />
+              <Input label="Birthday Kid" placeholder="Name" {...register('birthday_kid_name')} />
+              <Input label="Turning Age" type="number" {...register('birthday_kid_age')} />
               <div className="col-span-5">
                 <Input label="Location Name / Address" placeholder="e.g. Willard Elementary, 12345 Main St, Los Angeles" {...register('party_location_text')} />
               </div>
@@ -241,6 +244,25 @@ export default function PartyDetailPage() {
               <Toggle label="Emailed Follow Up" checked={!!watch('emailed_follow_up')} onChange={v => setValue('emailed_follow_up', v ? 1 : 0, { shouldDirty: true })} />
             </div>
           </Section>
+
+          {/* Calendar */}
+          {!isNew && (
+            <Section title="Google Calendar" defaultOpen={false}>
+              {party.calendar_event_id ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-green-600 font-medium">Event created</span>
+                  <span className="text-[10px] text-gray-400 font-mono truncate">{party.calendar_event_id}</span>
+                  <CalendarSyncButton partyId={id} />
+                  <CalendarDeleteButton partyId={id} />
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500">Not on calendar yet</span>
+                  <CalendarCreateButton partyId={id} />
+                </div>
+              )}
+            </Section>
+          )}
         </div>
 
         {/* Sticky Footer */}
@@ -256,5 +278,43 @@ export default function PartyDetailPage() {
         </div>
       </form>
     </AppShell>
+  );
+}
+
+function CalendarCreateButton({ partyId }) {
+  const qc = useQueryClient();
+  const mut = useMutation({
+    mutationFn: () => api.post(`/parties/${partyId}/calendar`),
+    onSuccess: () => qc.invalidateQueries(['parties', partyId]),
+  });
+  return (
+    <button onClick={() => mut.mutate()} disabled={mut.isPending}
+      className="text-xs text-white bg-[#1e3a5f] px-3 py-1 rounded hover:bg-[#152a47] disabled:opacity-50">
+      {mut.isPending ? 'Creating…' : 'Add to Calendar'}
+    </button>
+  );
+}
+
+function CalendarSyncButton({ partyId }) {
+  const mut = useMutation({ mutationFn: () => api.post(`/parties/${partyId}/calendar/sync`) });
+  return (
+    <button onClick={() => mut.mutate()} disabled={mut.isPending}
+      className="text-[10px] text-[#1e3a5f] hover:underline">
+      {mut.isPending ? 'Syncing…' : mut.isSuccess ? 'Synced!' : 'Sync now'}
+    </button>
+  );
+}
+
+function CalendarDeleteButton({ partyId }) {
+  const qc = useQueryClient();
+  const mut = useMutation({
+    mutationFn: () => api.delete(`/parties/${partyId}/calendar`),
+    onSuccess: () => qc.invalidateQueries(['parties', partyId]),
+  });
+  return (
+    <button onClick={() => { if (confirm('Remove from Google Calendar?')) mut.mutate(); }} disabled={mut.isPending}
+      className="text-[10px] text-red-500 hover:underline">
+      {mut.isPending ? 'Removing…' : 'Remove from calendar'}
+    </button>
   );
 }

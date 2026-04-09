@@ -176,6 +176,36 @@ router.get('/email-templates', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/parties/calendar/pending — MUST be before /:id
+router.get('/calendar/pending', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.start_time,
+              prog.class_length_minutes, prog.party_location_text, prog.calendar_event_id,
+              prog.calendar_event, prog.birthday_kid_name, prog.birthday_kid_age,
+              cs.class_status_name,
+              pf.party_format_name,
+              cl.class_name AS party_theme,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              CONCAT(par.first_name, ' ', par.last_name) AS contact_name
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN parent par ON par.id = prog.parent_id
+       WHERE prog.active = 1
+         AND pt.program_type_name = 'Party'
+         AND cs.confirmed = 1
+         AND prog.first_session_date >= CURDATE()
+         AND prog.calendar_event_id IS NULL
+       ORDER BY prog.first_session_date ASC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/parties/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
@@ -233,7 +263,7 @@ router.post('/', authenticate, async (req, res, next) => {
       'final_charge_type', 'shirt_size', 'glow_slime_amount_needed',
       'first_session_date', 'start_time', 'class_length_minutes',
       'party_format_id', 'party_location_text', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
-      'demo_professor_id', 'demo_notes', 'parent_id',
+      'demo_professor_id', 'demo_notes', 'parent_id', 'birthday_kid_name', 'birthday_kid_age',
     ];
 
     const insertFields = fields.filter(f => data[f] !== undefined);
@@ -270,7 +300,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'final_charge_type', 'shirt_size', 'glow_slime_amount_needed',
       'first_session_date', 'start_time', 'class_length_minutes',
       'party_format_id', 'party_location_text', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
-      'demo_professor_id', 'demo_notes', 'parent_id', 'active',
+      'demo_professor_id', 'demo_notes', 'parent_id', 'birthday_kid_name', 'birthday_kid_age', 'active',
     ];
 
     const updateFields = fields.filter(f => data[f] !== undefined);
@@ -371,6 +401,42 @@ router.delete('/email-templates/:id', authenticate, async (req, res, next) => {
     await pool.query('UPDATE party_email_template SET active = 0 WHERE id = ?', [req.params.id]);
     res.json({ success: true });
   } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// PARTY CALENDAR
+// ═══════════════════════════════════════════════════════════════════
+
+const { addPartyToCalendar, syncPartyCalendarEvent, deletePartyCalendarEvent } = require('../lib/partyCalendar');
+
+// POST /api/parties/:id/calendar — create calendar event
+router.post('/:id/calendar', authenticate, async (req, res, next) => {
+  try {
+    const result = await addPartyToCalendar(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Calendar error: ' + err.message });
+  }
+});
+
+// POST /api/parties/:id/calendar/sync — update existing calendar event
+router.post('/:id/calendar/sync', authenticate, async (req, res, next) => {
+  try {
+    const result = await syncPartyCalendarEvent(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Calendar sync error: ' + err.message });
+  }
+});
+
+// DELETE /api/parties/:id/calendar — remove calendar event
+router.delete('/:id/calendar', authenticate, async (req, res, next) => {
+  try {
+    const result = await deletePartyCalendarEvent(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Calendar delete error: ' + err.message });
+  }
 });
 
 module.exports = router;

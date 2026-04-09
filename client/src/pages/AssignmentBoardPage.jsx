@@ -79,10 +79,22 @@ export default function AssignmentBoardPage() {
   }, [programs]);
 
   const saveMutation = useMutation({
-    mutationFn: (changes) => api.post('/assignment-board/assign', { changes }),
+    mutationFn: ({ changes, force }) => api.post('/assignment-board/assign', { changes, force }),
     onSuccess: () => {
       setOriginals({ ...assignments });
+      setSaveError(null);
       refetch();
+    },
+    onError: (err) => {
+      if (err.response?.status === 409) {
+        const conflicts = err.response.data.conflicts || [];
+        const msgs = conflicts.map(c =>
+          `${c.conflicts.map(x => `${x.conflicting_program} (${x.days?.join(', ')})`).join(', ')}`
+        );
+        setSaveError({ message: 'Schedule conflicts detected:\n' + msgs.join('\n'), conflicts });
+      } else {
+        setSaveError({ message: err.response?.data?.error || 'Save failed' });
+      }
     },
   });
 
@@ -116,12 +128,18 @@ export default function AssignmentBoardPage() {
     });
   }, [programs, assignments]);
 
+  const [saveError, setSaveError] = useState(null);
+
   const handleDrop = (profId, day) => {
     if (!dragItem) return;
     const prog = programs.find(p => p.id === dragItem);
     if (!prog || prog.displayDay !== day) return;
     setAssignments(prev => ({ ...prev, [dragItem]: profId }));
     setDragItem(null);
+  };
+
+  const handleClickAssign = (programId, newProfId) => {
+    setAssignments(prev => ({ ...prev, [programId]: newProfId }));
   };
 
   // Sort professors: with assignments first, then by status
@@ -176,14 +194,25 @@ export default function AssignmentBoardPage() {
 
       {/* Unsaved banner */}
       {changes.length > 0 && (
-        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between">
-          <span className="text-sm text-amber-800 font-medium">{changes.length} unsaved change{changes.length !== 1 ? 's' : ''}</span>
-          <Button onClick={() => saveMutation.mutate(changes)} disabled={saveMutation.isPending}>
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-3">
+          <span className="text-sm text-amber-800 font-medium flex-1">{changes.length} unsaved change{changes.length !== 1 ? 's' : ''}</span>
+          <Button onClick={() => saveMutation.mutate({ changes, force: false })} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'Saving…' : 'Push Changes'}
           </Button>
         </div>
       )}
-      {saveMutation.isSuccess && changes.length === 0 && (
+      {saveError && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-2">
+          <div className="text-sm text-red-700 font-medium mb-1">Conflicts detected</div>
+          <div className="text-xs text-red-600 whitespace-pre-line mb-2">{saveError.message}</div>
+          <div className="flex gap-2">
+            <button onClick={() => saveMutation.mutate({ changes, force: true })}
+              className="px-3 py-1 text-xs text-white bg-red-600 rounded hover:bg-red-700">Save Anyway (override conflicts)</button>
+            <button onClick={() => setSaveError(null)} className="text-xs text-gray-500">Dismiss</button>
+          </div>
+        </div>
+      )}
+      {saveMutation.isSuccess && changes.length === 0 && !saveError && (
         <div className="bg-green-50 border-b border-green-200 px-6 py-2 text-sm text-green-700 font-medium">Changes saved successfully</div>
       )}
 
@@ -222,7 +251,8 @@ export default function AssignmentBoardPage() {
             {WEEKDAYS.map(day => (
               <DroppableCell key={`unassigned-${day}`} day={day} profId={null}
                 programs={getCell(null, day)} assignments={assignments} originals={originals}
-                onDrop={handleDrop} onDragStart={setDragItem} getProfessorName={getProfessorName} />
+                onDrop={handleDrop} onDragStart={setDragItem} getProfessorName={getProfessorName}
+                allProfessors={professors} onClickAssign={handleClickAssign} />
             ))}
 
             {/* Professor rows */}
@@ -246,7 +276,8 @@ export default function AssignmentBoardPage() {
                   <DroppableCell key={`${prof.id}-${day}`} day={day} profId={prof.id}
                     programs={getCell(prof.id, day)} assignments={assignments} originals={originals}
                     unavailable={!prof.availability[day]} profStatus={prof.status}
-                    onDrop={handleDrop} onDragStart={setDragItem} getProfessorName={getProfessorName} />
+                    onDrop={handleDrop} onDragStart={setDragItem} getProfessorName={getProfessorName}
+                    allProfessors={professors} onClickAssign={handleClickAssign} />
                 ))}
               </>
             ))}
@@ -294,9 +325,11 @@ function PendingHiresPanel() {
   );
 }
 
-function DroppableCell({ day, profId, programs, assignments, originals, unavailable, profStatus, onDrop, onDragStart, getProfessorName }) {
+function DroppableCell({ day, profId, programs, assignments, originals, unavailable, profStatus, onDrop, onDragStart, getProfessorName, allProfessors, onClickAssign }) {
   const ref = useRef(null);
   const [over, setOver] = useState(false);
+  const [assigningId, setAssigningId] = useState(null);
+  const [searchQ, setSearchQ] = useState('');
 
   return (
     <div ref={ref}
@@ -309,20 +342,48 @@ function DroppableCell({ day, profId, programs, assignments, originals, unavaila
         const isChanged = (assignments[p.id] ?? p.professorId) !== originals[p.id];
         const prevName = isChanged ? (getProfessorName(originals[p.id]) || 'Unasgn') : null;
         const typeClass = TYPE_BORDER[p.programType] || '';
+        const isAssigning = assigningId === p.id;
 
         return (
-          <div key={p.id}
-            draggable
-            onDragStart={() => onDragStart(p.id)}
-            title={`${p.nickname}\n${p.className || ''}\n${p.startTime ? formatTimeRange(p.startTime, p.classLength) : ''}`}
-            className={`rounded px-1 py-0.5 mb-0.5 cursor-grab border ${typeClass} ${
-              isChanged ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-200'
-            } ${unavailable && profStatus !== 'Inactive' ? 'ring-1 ring-red-300' : ''}`}
-          >
-            <div className="text-[10px] font-medium text-gray-900 truncate leading-tight">{p.nickname}</div>
-            <div className="text-[9px] text-gray-400 truncate leading-tight">{p.startTime ? formatTimeRange(p.startTime, p.classLength) : ''}</div>
-            {unavailable && <div className="text-[9px] text-red-500 font-bold">Unavail</div>}
-            {prevName && <div className="text-[9px] text-gray-400 italic truncate">was: {prevName}</div>}
+          <div key={p.id} className="relative">
+            <div draggable onDragStart={() => onDragStart(p.id)}
+              title={`${p.nickname}\n${p.className || ''}\n${p.startTime ? formatTimeRange(p.startTime, p.classLength) : ''}`}
+              className={`rounded px-1 py-0.5 mb-0.5 cursor-grab border ${typeClass} ${
+                isChanged ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-200'
+              } ${unavailable && profStatus !== 'Inactive' ? 'ring-1 ring-red-300' : ''}`}
+            >
+              <div className="flex items-center gap-0.5">
+                <div className="text-[10px] font-medium text-gray-900 truncate leading-tight flex-1">{p.nickname}</div>
+                <button onClick={e => { e.stopPropagation(); setAssigningId(isAssigning ? null : p.id); setSearchQ(''); }}
+                  className="text-[8px] text-gray-400 hover:text-[#1e3a5f] shrink-0 leading-none" title="Click to reassign">
+                  {isAssigning ? '×' : '✎'}
+                </button>
+              </div>
+              <div className="text-[9px] text-gray-400 truncate leading-tight">{p.startTime ? formatTimeRange(p.startTime, p.classLength) : ''}</div>
+              {unavailable && <div className="text-[9px] text-red-500 font-bold">Unavail</div>}
+              {prevName && <div className="text-[9px] text-gray-400 italic truncate">was: {prevName}</div>}
+            </div>
+            {isAssigning && (
+              <div className="absolute z-30 left-0 right-0 bg-white border border-gray-300 rounded shadow-lg" style={{ top: '100%' }}>
+                <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} autoFocus
+                  placeholder="Search professor…"
+                  className="w-full px-1.5 py-1 text-[10px] border-b border-gray-200 focus:outline-none" />
+                <div className="max-h-32 overflow-y-auto">
+                  {allProfessors
+                    .filter(pr => !searchQ || pr.name.toLowerCase().includes(searchQ.toLowerCase()))
+                    .slice(0, 15)
+                    .map(pr => (
+                      <button key={pr.id} onClick={() => { onClickAssign(p.id, pr.id); setAssigningId(null); }}
+                        className="w-full text-left px-1.5 py-1 text-[10px] hover:bg-[#1e3a5f]/10 flex items-center gap-1">
+                        <span className="truncate flex-1">{pr.name}</span>
+                        <span className={`text-[8px] px-0.5 rounded ${STATUS_PILL[pr.status] || 'text-gray-400'}`}>{pr.status?.charAt(0)}</span>
+                      </button>
+                    ))}
+                  <button onClick={() => { onClickAssign(p.id, null); setAssigningId(null); }}
+                    className="w-full text-left px-1.5 py-1 text-[10px] text-red-500 hover:bg-red-50">Unassign</button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
