@@ -1153,7 +1153,6 @@ export default function ProfessorDetailPage() {
             <div className="grid grid-cols-3 gap-4">
               <Input label="Base Pay" type="number" step="0.01" {...register('base_pay')} />
               <Input label="Assist Pay" type="number" step="0.01" {...register('assist_pay')} />
-              <Input label="Pickup Pay" type="number" step="0.01" {...register('pickup_pay')} />
               <Input label="Party Pay" type="number" step="0.01" {...register('party_pay')} />
               <Input label="Camp Pay" type="number" step="0.01" {...register('camp_pay')} />
             </div>

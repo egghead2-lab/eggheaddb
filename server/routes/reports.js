@@ -271,10 +271,31 @@ const HAVING_COLS = new Set([
   'active_program_count', 'unpaid_invoice_count', 'lead_has_livescan_at_location',
 ]);
 
-function buildFilterClause(fieldDef, f) {
+async function buildRuntimeContext(user, pool) {
+  const ctx = { userId: user?.userId, role: user?.role, userAreas: [] };
+  if (ctx.userId) {
+    // Get areas this user manages (as SC or FM)
+    const [scAreas] = await pool.query(
+      'SELECT id FROM geographic_area WHERE (scheduling_coordinator_user_id = ? OR field_manager_user_id = ?) AND active = 1',
+      [ctx.userId, ctx.userId]
+    );
+    ctx.userAreas = scAreas.map(a => a.id);
+  }
+  return ctx;
+}
+
+function buildFilterClause(fieldDef, f, runtimeContext = {}) {
   const col = fieldDef.col || f.field;
   const op = f.operator || '=';
   const params = [];
+
+  // Resolve dynamic values
+  if (f.value === 'CURRENT_USER' && runtimeContext.userId) {
+    return { clause: `${col} = ?`, params: [runtimeContext.userId] };
+  }
+  if (f.value === 'CURRENT_USER_AREAS' && runtimeContext.userAreas?.length) {
+    return { clause: `${col} IN (${runtimeContext.userAreas.map(() => '?').join(',')})`, params: runtimeContext.userAreas };
+  }
 
   if (fieldDef.type === 'timeframe') {
     if (f.value === 'current') return { clause: `(prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)`, params };
@@ -349,7 +370,7 @@ function buildFilterClause(fieldDef, f) {
   return { clause: `${col} = ?`, params };
 }
 
-function buildWhereFromFilters(entity, filters) {
+function buildWhereFromFilters(entity, filters, runtimeContext = {}) {
   const def = ENTITIES[entity];
   if (!def || !filters || !Array.isArray(filters)) return { where: '', having: '', params: [], havingParams: [] };
 
@@ -362,7 +383,7 @@ function buildWhereFromFilters(entity, filters) {
     const fieldDef = def.fields[f.field];
     if (!fieldDef) continue;
 
-    const result = buildFilterClause(fieldDef, f);
+    const result = buildFilterClause(fieldDef, f, runtimeContext);
     if (!result) continue;
 
     const col = fieldDef.col || f.field;
@@ -557,8 +578,13 @@ router.get('/:id/run', authenticate, async (req, res, next) => {
     const entity = ENTITIES[report.entity];
     if (!entity) return res.status(400).json({ success: false, error: 'Unknown entity' });
 
-    const filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
-    const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters);
+    let filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
+    // If show_all=true, strip out CURRENT_USER filters so you see everything
+    if (req.query.show_all === 'true') {
+      filters = filters.filter(f => f.value !== 'CURRENT_USER' && f.value !== 'CURRENT_USER_AREAS');
+    }
+    const runtimeCtx = await buildRuntimeContext(req.user, pool);
+    const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters, runtimeCtx);
 
     const query = `${entity.baseQuery}${where}${having} ORDER BY ${entity.defaultSort} LIMIT 500`;
     const [rows] = await pool.query(query, [...params, ...havingParams]);
@@ -594,12 +620,13 @@ router.get('/dashboard/my', authenticate, async (req, res, next) => {
     }
 
     // Execute each report to get counts
+    const runtimeCtx = await buildRuntimeContext(req.user, pool);
     const results = [];
     for (const report of reports) {
       const entity = ENTITIES[report.entity];
       if (!entity) continue;
       const filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
-      const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters);
+      const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters, runtimeCtx);
       try {
         const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}${having}) AS sub`;
         const [[{ cnt }]] = await pool.query(countQuery, [...params, ...havingParams]);
@@ -633,12 +660,13 @@ router.get('/dashboard/user/:userId', authenticate, async (req, res, next) => {
       [userRole?.id || 0, userId]
     );
 
+    const runtimeCtx = await buildRuntimeContext({ userId: parseInt(userId), role: user.role_name }, pool);
     const results = [];
     for (const report of reports) {
       const entity = ENTITIES[report.entity];
       if (!entity) continue;
       const filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
-      const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters);
+      const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters, runtimeCtx);
       try {
         const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}${having}) AS sub`;
         const [[{ cnt }]] = await pool.query(countQuery, [...params, ...havingParams]);

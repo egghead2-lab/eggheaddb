@@ -353,10 +353,20 @@ function DynamicValueInput({ entity, field, value, onChange }) {
       <select value={value} onChange={e => onChange(e.target.value)}
         className="rounded border border-gray-300 px-2 py-1 text-sm flex-1">
         <option value="">Select...</option>
+        <option value="CURRENT_USER" className="font-bold text-blue-700">Current User (dynamic)</option>
+        <option value="CURRENT_USER_AREAS" className="font-bold text-blue-700">Current User's Areas (dynamic)</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     );
   }
 
-  return <input value={value} onChange={e => onChange(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" placeholder="Value..." />;
+  return (
+    <div className="flex-1 flex gap-1">
+      <input value={value} onChange={e => onChange(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" placeholder="Value..." />
+      <button type="button" onClick={() => onChange('CURRENT_USER')}
+        className={`text-[9px] px-1.5 py-1 rounded border whitespace-nowrap ${value === 'CURRENT_USER' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'border-gray-200 text-gray-400 hover:text-blue-600'}`}>
+        Current User
+      </button>
+    </div>
+  );
 }

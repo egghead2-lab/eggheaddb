@@ -137,11 +137,21 @@ function DailyTasksAndKpis() {
 
 function TaskRow({ report }) {
   const [expanded, setExpanded] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [results, setResults] = useState(null);
 
   const handleExpand = async () => {
-    if (expanded) { setExpanded(false); return; }
-    const res = await runReport(report.id);
+    if (expanded && !showAll) { setExpanded(false); return; }
+    const res = await runReport(report.id, showAll);
+    setResults(res);
+    setExpanded(true);
+  };
+
+  const toggleShowAll = async (e) => {
+    e.stopPropagation();
+    const next = !showAll;
+    setShowAll(next);
+    const res = await runReport(report.id, next);
     setResults(res);
     setExpanded(true);
   };
@@ -160,6 +170,13 @@ function TaskRow({ report }) {
       </button>
       {expanded && results?.data && (
         <div className="px-5 pb-3">
+          <div className="flex items-center gap-2 mb-1">
+            <button onClick={toggleShowAll}
+              className={`text-[10px] px-2 py-0.5 rounded transition-colors ${showAll ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+              {showAll ? 'Showing All' : 'Show All'}
+            </button>
+            {showAll && <span className="text-[10px] text-gray-400">{results.data.length} total</span>}
+          </div>
           <div className="bg-gray-50 rounded border border-gray-200 overflow-x-auto max-h-60 overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-100 sticky top-0">

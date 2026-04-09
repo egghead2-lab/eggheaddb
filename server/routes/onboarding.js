@@ -8,6 +8,7 @@ const { searchThreads, sendEmail, getGmailAddress } = require('../lib/gmail');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { checkCandidateScheduleConflicts } = require('../lib/scheduleConflict');
 
 const CANDIDATE_ROLE_ID = 16;
 
@@ -1439,8 +1440,14 @@ router.get('/missing-pay', async (req, res, next) => {
 router.post('/candidates/:id/schedule', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { program_id, role, notes } = req.body;
+    const { program_id, role, notes, force } = req.body;
     if (!program_id) return res.status(400).json({ success: false, error: 'Program required' });
+
+    // Check schedule conflicts
+    const conflicts = await checkCandidateScheduleConflicts(id, program_id);
+    if (conflicts.length && !force) {
+      return res.status(409).json({ success: false, error: 'Schedule conflicts detected', conflicts });
+    }
 
     const [result] = await pool.query(
       `INSERT INTO candidate_schedule (candidate_id, program_id, role, assigned_by_user_id, notes, status)

@@ -5,6 +5,6 @@ export const getReports = () => api.get('/reports').then(r => r.data);
 export const createReport = (data) => api.post('/reports', data).then(r => r.data);
 export const updateReport = (id, data) => api.put(`/reports/${id}`, data).then(r => r.data);
 export const deleteReport = (id) => api.delete(`/reports/${id}`).then(r => r.data);
-export const runReport = (id) => api.get(`/reports/${id}/run`).then(r => r.data);
+export const runReport = (id, showAll) => api.get(`/reports/${id}/run`, { params: showAll ? { show_all: 'true' } : {} }).then(r => r.data);
 export const getMyDashboard = () => api.get('/reports/dashboard/my').then(r => r.data);
 export const getUserDashboard = (userId) => api.get(`/reports/dashboard/user/${userId}`).then(r => r.data);

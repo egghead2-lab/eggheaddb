@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { checkProfessorConflicts } = require('../lib/scheduleConflict');
 
 // GET /api/assignment-board/data — load board data filtered by areas and date range
 router.get('/data', authenticate, async (req, res, next) => {
@@ -148,6 +149,21 @@ router.post('/assign', authenticate, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'changes array required' });
     }
 
+    // Check conflicts for all assignments
+    const allConflicts = [];
+    for (const { programId, newProfessorId } of changes) {
+      if (!newProfessorId) continue;
+      const conflicts = await checkProfessorConflicts(newProfessorId, programId);
+      if (conflicts.length) {
+        allConflicts.push({ programId, professorId: newProfessorId, conflicts });
+      }
+    }
+
+    // If force=true in body, proceed despite conflicts; otherwise warn
+    if (allConflicts.length > 0 && !req.body.force) {
+      return res.status(409).json({ success: false, error: 'Schedule conflicts detected', conflicts: allConflicts });
+    }
+
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -160,7 +176,7 @@ router.post('/assign', authenticate, async (req, res, next) => {
       }
 
       await conn.commit();
-      res.json({ success: true, updated: changes.length });
+      res.json({ success: true, updated: changes.length, conflicts_overridden: allConflicts.length });
     } catch (err) {
       await conn.rollback();
       throw err;

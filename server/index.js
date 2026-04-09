@@ -25,6 +25,7 @@ const lessonsRoutes = require('./routes/lessons');
 const classesRoutes = require('./routes/classes');
 const subManagementRoutes = require('./routes/sub-management');
 const evaluationsRoutes = require('./routes/evaluations');
+const hiringRequestsRoutes = require('./routes/hiring-requests');
 const materialsRoutes = require('./routes/materials');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -95,6 +96,7 @@ app.use('/api/assignment-board', assignmentBoardRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/sub-management', subManagementRoutes);
 app.use('/api/evaluations', evaluationsRoutes);
+app.use('/api/hiring-requests', hiringRequestsRoutes);
 app.use('/api/materials', materialsRoutes);
 
 // Error handler

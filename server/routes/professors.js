@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { logAudit } = require('../lib/audit');
+const { checkProfessorConflicts } = require('../lib/scheduleConflict');
 
 // GET /api/professors
 router.get('/', authenticate, async (req, res, next) => {
@@ -662,8 +663,15 @@ router.post('/:id/regenerate-password', authenticate, async (req, res, next) => 
 router.post('/:id/observations', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { program_id, observation_date, observation_type, pay_amount, is_paid, evaluator_id, notes } = req.body;
+    const { program_id, observation_date, observation_type, pay_amount, is_paid, evaluator_id, notes, force } = req.body;
     if (!program_id || !observation_date) return res.status(400).json({ success: false, error: 'Program and date required' });
+
+    // Check conflicts for the observer (this professor or the evaluator)
+    const observerId = evaluator_id || id;
+    const conflicts = await checkProfessorConflicts(observerId, program_id, { checkDate: observation_date });
+    if (conflicts.length && !force) {
+      return res.status(409).json({ success: false, error: 'Schedule conflicts detected', conflicts });
+    }
 
     const type = observation_type || 'observation';
     const paid = is_paid !== undefined ? (is_paid ? 1 : 0) : 1;

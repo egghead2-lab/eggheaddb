@@ -530,6 +530,86 @@ router.get('/audit/:table/:recordId', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// AREA PAY RATES
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/area-pay-rates — all areas with pay rates + professor counts
+router.get('/area-pay-rates', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ga.id, ga.geographic_area_name,
+              ga.base_pay_rate, ga.assist_pay_rate, ga.party_pay_rate, ga.pickup_pay_rate, ga.camp_pay_rate,
+              (SELECT COUNT(*) FROM professor p WHERE p.geographic_area_id = ga.id AND p.active = 1) AS professor_count
+       FROM geographic_area ga
+       WHERE ga.active = 1
+       ORDER BY ga.geographic_area_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/area-pay-rates/impact — check how many professors would be affected
+router.get('/area-pay-rates/impact', authenticate, async (req, res, next) => {
+  try {
+    const { area_id, field, new_rate } = req.query;
+    if (!area_id || !field) return res.json({ success: true, data: { total: 0, would_update: 0, already_higher: 0 } });
+
+    const rate = parseFloat(new_rate) || 0;
+    const [[{ total }]] = await pool.query(
+      'SELECT COUNT(*) as total FROM professor WHERE geographic_area_id = ? AND active = 1', [area_id]
+    );
+    const [[{ would_update }]] = await pool.query(
+      `SELECT COUNT(*) as would_update FROM professor WHERE geographic_area_id = ? AND active = 1 AND (${pool.escapeId(field)} IS NULL OR ${pool.escapeId(field)} <= ?)`,
+      [area_id, rate]
+    );
+    const already_higher = total - would_update;
+
+    res.json({ success: true, data: { total, would_update, already_higher } });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/area-pay-rates/:id — update pay rates, optionally cascade to professors
+router.put('/area-pay-rates/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { base_pay_rate, assist_pay_rate, party_pay_rate, camp_pay_rate, cascade, protect_higher } = req.body;
+
+    // Update area rates
+    const sets = []; const vals = [];
+    if (base_pay_rate !== undefined) { sets.push('base_pay_rate = ?'); vals.push(base_pay_rate || null); }
+    if (assist_pay_rate !== undefined) { sets.push('assist_pay_rate = ?'); vals.push(assist_pay_rate || null); }
+    if (party_pay_rate !== undefined) { sets.push('party_pay_rate = ?'); vals.push(party_pay_rate || null); }
+    if (camp_pay_rate !== undefined) { sets.push('camp_pay_rate = ?'); vals.push(camp_pay_rate || null); }
+    if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+
+    await pool.query(`UPDATE geographic_area SET ${sets.join(', ')} WHERE id = ?`, [...vals, id]);
+
+    // Cascade to professors if requested — protect those with higher pay
+    let cascaded = 0;
+    if (cascade) {
+      const rateMap = { base_pay_rate: 'base_pay', assist_pay_rate: 'assist_pay', party_pay_rate: 'party_pay', camp_pay_rate: 'camp_pay' };
+      const updates = { base_pay_rate, assist_pay_rate, party_pay_rate, camp_pay_rate };
+
+      for (const [areaField, profField] of Object.entries(rateMap)) {
+        const newRate = updates[areaField];
+        if (newRate === undefined) continue;
+        const rate = parseFloat(newRate) || 0;
+        // Only update professors whose current pay is <= new rate (don't lower anyone)
+        const condition = protect_higher ? `AND (${profField} IS NULL OR ${profField} <= ?)` : '';
+        const params = protect_higher ? [rate, id, rate] : [rate, id];
+        const [result] = await pool.query(
+          `UPDATE professor SET ${profField} = ?, ts_updated = NOW() WHERE geographic_area_id = ? AND active = 1 ${condition}`,
+          params
+        );
+        cascaded += result.affectedRows;
+      }
+    }
+
+    res.json({ success: true, cascaded });
+  } catch (err) { next(err); }
+});
+
 // GET /api/weekly-overview — sessions for a given week
 router.get('/weekly-overview', authenticate, async (req, res, next) => {
   try {

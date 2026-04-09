@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { checkProfessorConflicts } = require('../lib/scheduleConflict');
 
 router.use(authenticate);
 
@@ -188,8 +189,20 @@ router.get('/available-professors', async (req, res, next) => {
 // POST /api/sub-management/assign — assign a professor as sub on a session
 router.post('/assign', async (req, res, next) => {
   try {
-    const { session_id, professor_id, role } = req.body;
+    const { session_id, professor_id, role, force } = req.body;
     if (!session_id || !professor_id) return res.status(400).json({ success: false, error: 'Session and professor required' });
+
+    // Get session date + program for conflict check
+    const [[session]] = await pool.query(
+      'SELECT s.session_date, s.program_id, s.session_time, prog.start_time, prog.class_length_minutes FROM session s JOIN program prog ON prog.id = s.program_id WHERE s.id = ?',
+      [session_id]
+    );
+    if (session) {
+      const conflicts = await checkProfessorConflicts(professor_id, session.program_id, { checkDate: session.session_date?.toISOString().split('T')[0] });
+      if (conflicts.length && !force) {
+        return res.status(409).json({ success: false, error: 'Schedule conflicts detected', conflicts });
+      }
+    }
 
     if (role === 'Assistant') {
       await pool.query('UPDATE session SET assistant_id = ?, ts_updated = NOW() WHERE id = ?', [professor_id, session_id]);

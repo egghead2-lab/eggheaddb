@@ -53,6 +53,8 @@ import WeeklyOverviewPage from './pages/WeeklyOverviewPage';
 import ObservationLookupPage from './pages/ObservationLookupPage';
 import ObservationHistoryPage from './pages/ObservationHistoryPage';
 import PartyConfirmsPage from './pages/PartyConfirmsPage';
+import HiringRequestsPage from './pages/HiringRequestsPage';
+import AreaPayRatesPage from './pages/AreaPayRatesPage';
 import PartyEmailTemplatesPage from './pages/PartyEmailTemplatesPage';
 import ShipmentCyclesPage from './pages/ShipmentCyclesPage';
 import StandardOrderBuilderPage from './pages/StandardOrderBuilderPage';
@@ -133,6 +135,8 @@ export default function App() {
       <Route path="/observation-lookup" element={<ProtectedRoute><ObservationLookupPage /></ProtectedRoute>} />
       <Route path="/observation-history" element={<ProtectedRoute><ObservationHistoryPage /></ProtectedRoute>} />
       <Route path="/party-confirms" element={<ProtectedRoute><PartyConfirmsPage /></ProtectedRoute>} />
+      <Route path="/hiring-requests" element={<ProtectedRoute><HiringRequestsPage /></ProtectedRoute>} />
+      <Route path="/area-pay-rates" element={<ProtectedRoute><AreaPayRatesPage /></ProtectedRoute>} />
       <Route path="/party-email-templates" element={<ProtectedRoute><PartyEmailTemplatesPage /></ProtectedRoute>} />
       <Route path="/materials/cycles" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
       <Route path="/materials/standard-order" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
