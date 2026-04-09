@@ -39,6 +39,7 @@ export default function ProfessorsPage() {
   const [status, setStatus] = useState('');
   const [area, setArea] = useState('');
   const [training, setTraining] = useState('');
+  const [coordinator, setCoordinator] = useState('');
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('');
   const [dir, setDir] = useState('asc');
@@ -57,6 +58,7 @@ export default function ProfessorsPage() {
     status: status || undefined,
     area: area || undefined,
     training: training || undefined,
+    coordinator: coordinator || undefined,
     sort: sort || undefined,
     dir: sort ? dir : undefined,
     page,
@@ -81,14 +83,15 @@ export default function ProfessorsPage() {
     { key: 'active', label: 'Active', type: 'toggle' },
     { key: 'science_trained_id', label: 'Science Trained', type: 'toggle' },
     { key: 'engineering_trained_id', label: 'Engineering Trained', type: 'toggle' },
-    { key: 'demo_trained_id', label: 'Demo Trained', type: 'toggle' },
     { key: 'show_party_trained_id', label: 'Show Party Trained', type: 'toggle' },
     { key: 'camp_trained_id', label: 'Camp Trained', type: 'toggle' },
+    { key: 'studysmart_trained_id', label: 'StudySmart Trained', type: 'toggle' },
+    { key: 'robotics_trained_id', label: 'Robotics Trained', type: 'toggle' },
   ];
   const limit = data?.limit || 50;
 
-  const reset = () => { setSearch(''); setStatus(''); setArea(''); setTraining(''); setPage(1); };
-  const hasFilters = search || status || area || training;
+  const reset = () => { setSearch(''); setStatus(''); setArea(''); setTraining(''); setCoordinator(''); setPage(1); };
+  const hasFilters = search || status || area || training || coordinator;
 
   return (
     <AppShell>
@@ -122,6 +125,12 @@ export default function ProfessorsPage() {
           <option value="">All Areas</option>
           {(ref.areas || []).map(a => (
             <option key={a.id} value={a.geographic_area_name}>{a.geographic_area_name}</option>
+          ))}
+        </Select>
+        <Select value={coordinator} onChange={e => { setCoordinator(e.target.value); setPage(1); }} className="w-44">
+          <option value="">All Coordinators</option>
+          {(ref.staffUsers || []).map(u => (
+            <option key={u.id} value={u.id}>{u.display_name}</option>
           ))}
         </Select>
         <Select value={training} onChange={e => { setTraining(e.target.value); setPage(1); }} className="w-40">

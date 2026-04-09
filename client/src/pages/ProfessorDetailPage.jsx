@@ -1078,10 +1078,16 @@ export default function ProfessorDetailPage() {
                 <Input label="State" defaultValue={prof.state_code || ''} {...register('_state_code')} maxLength={2} />
                 <Input label="Zip" defaultValue={prof.zip_code || ''} {...register('_zip_code')} />
               </div>
-              <Select label="Geographic Area" {...register('scheduling_coordinator_owner_id')}>
+              <Select label="Geographic Area" {...register('geographic_area_id')}>
                 <option value="">None</option>
                 {(ref.areas || []).map(a => (
                   <option key={a.id} value={a.id}>{a.geographic_area_name}</option>
+                ))}
+              </Select>
+              <Select label="Scheduling Coordinator" {...register('scheduling_coordinator_owner_id')}>
+                <option value="">None</option>
+                {(ref.staffUsers || []).map(u => (
+                  <option key={u.id} value={u.id}>{u.display_name}</option>
                 ))}
               </Select>
               <div className="col-span-2">

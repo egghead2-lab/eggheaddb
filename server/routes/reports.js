@@ -63,7 +63,7 @@ const ENTITIES = {
       lead_professor: { label: 'Lead Professor', type: 'text', col: "CONCAT(lp.professor_nickname, ' ', lp.last_name)" },
       assistant_professor: { label: 'Assistant Professor', type: 'text', col: "CONCAT(ap.professor_nickname, ' ', ap.last_name)" },
       has_assistant: { label: 'Has Assistant', type: 'boolean', col: 'prog.assistant_professor_id IS NOT NULL', raw: true },
-      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'text', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
+      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
       field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)" },
       client_manager: { label: 'Client Manager', type: 'text', col: "CONCAT(cmgr.first_name, ' ', cmgr.last_name)" },
       // Financials
@@ -122,7 +122,7 @@ const ENTITIES = {
       c.city_name, os.onboard_status_name AS onboard_status,
       CONCAT(sc.first_name, ' ', sc.last_name) AS scheduling_coordinator,
       p.science_trained_id, p.engineering_trained_id, p.show_party_trained_id,
-      p.slime_party_trained_id, p.demo_trained_id, p.studysmart_trained_id, p.camp_trained_id,
+      p.studysmart_trained_id, p.camp_trained_id, p.robotics_trained_id,
       p.virtus, p.virtus_date, p.tb_test, p.tb_date,
       (SELECT COUNT(*) FROM program pr LEFT JOIN class_status cs2 ON cs2.id = pr.class_status_id
        WHERE pr.active = 1 AND (pr.lead_professor_id = p.id OR pr.assistant_professor_id = p.id)
@@ -134,7 +134,7 @@ const ENTITIES = {
     FROM professor p
     LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
     LEFT JOIN city c ON c.id = p.city_id
-    LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+    LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
     LEFT JOIN onboard_status os ON os.id = p.onboard_status_id
     LEFT JOIN user sc ON sc.id = p.scheduling_coordinator_owner_id
     WHERE p.active = 1`,
@@ -143,7 +143,7 @@ const ENTITIES = {
       status: { label: 'Professor Status', type: 'select', options: 'professor_status' },
       area: { label: 'Geographic Area', type: 'select', options: 'area' },
       onboard_status: { label: 'Onboard Status', type: 'text', col: 'os.onboard_status_name' },
-      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'text', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
+      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
       city: { label: 'City', type: 'text', col: 'c.city_name' },
       email: { label: 'Email', type: 'text', col: 'p.email' },
       phone: { label: 'Phone', type: 'text', col: 'p.phone_number' },
@@ -160,8 +160,6 @@ const ENTITIES = {
       science_trained: { label: 'Science Trained', type: 'boolean', col: 'p.science_trained_id' },
       engineering_trained: { label: 'Engineering Trained', type: 'boolean', col: 'p.engineering_trained_id' },
       party_trained: { label: 'Show Party Trained', type: 'boolean', col: 'p.show_party_trained_id' },
-      slime_party_trained: { label: 'Slime Party Trained', type: 'boolean', col: 'p.slime_party_trained_id' },
-      demo_trained: { label: 'Demo Trained', type: 'boolean', col: 'p.demo_trained_id' },
       studysmart_trained: { label: 'StudySmart Trained', type: 'boolean', col: 'p.studysmart_trained_id' },
       camp_trained: { label: 'Camp Trained', type: 'boolean', col: 'p.camp_trained_id' },
       robotics_trained: { label: 'Robotics Trained', type: 'boolean', col: 'p.robotics_trained_id' },
@@ -216,7 +214,7 @@ const ENTITIES = {
       // People
       client_manager: { label: 'Client Manager', type: 'text', col: "COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm.first_name, ' ', cm.last_name))" },
       field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)" },
-      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'text', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
+      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
       point_of_contact: { label: 'Point of Contact', type: 'text', col: 'loc.point_of_contact' },
       poc_email: { label: 'Contact Email', type: 'text', col: 'loc.poc_email' },
       poc_phone: { label: 'Contact Phone', type: 'text', col: 'loc.poc_phone' },
@@ -267,90 +265,122 @@ const ENTITIES = {
 // ============================================================
 // FILTER INTERPRETER — converts JSON filters to SQL
 // ============================================================
+// Subquery alias columns that must use HAVING instead of WHERE
+const HAVING_COLS = new Set([
+  'program_count', 'livescan_count', 'bin_count', 'bin_names',
+  'active_program_count', 'unpaid_invoice_count', 'lead_has_livescan_at_location',
+]);
+
+function buildFilterClause(fieldDef, f) {
+  const col = fieldDef.col || f.field;
+  const op = f.operator || '=';
+  const params = [];
+
+  if (fieldDef.type === 'timeframe') {
+    if (f.value === 'current') return { clause: `(prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)`, params };
+    if (f.value === 'past') return { clause: `prog.last_session_date < CURDATE()`, params };
+    return null;
+  }
+
+  if (fieldDef.type === 'invoice') {
+    if (f.value === 'paid') return { clause: `prog.invoice_paid = 1`, params };
+    if (f.value === 'sent') return { clause: `prog.invoice_paid = 0 AND prog.invoice_date_sent IS NOT NULL`, params };
+    if (f.value === 'not_sent') return { clause: `prog.invoice_paid = 0 AND prog.invoice_date_sent IS NULL`, params };
+    return null;
+  }
+
+  if (op === 'is_empty') return { clause: `(${col} IS NULL OR ${col} = '' OR ${col} = 0)`, params };
+  if (op === 'is_not_empty') return { clause: `(${col} IS NOT NULL AND ${col} != '' AND ${col} != 0)`, params };
+
+  if (fieldDef.type === 'boolean') {
+    params.push(f.value ? 1 : 0);
+    return { clause: `${col} = ?`, params };
+  }
+
+  if (fieldDef.type === 'date') {
+    const ops = { '=': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
+    params.push(f.value);
+    return { clause: `${col} ${ops[op] || '='} ?`, params };
+  }
+
+  if (fieldDef.type === 'number') {
+    const ops = { '=': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
+    params.push(parseFloat(f.value));
+    return { clause: `${col} ${ops[op] || '='} ?`, params };
+  }
+
+  if (op === 'contains') {
+    params.push(`%${f.value}%`);
+    return { clause: `${col} LIKE ?`, params };
+  }
+
+  if (op === 'not') {
+    let resolvedCol = col;
+    if (fieldDef.type === 'select') {
+      if (fieldDef.options === 'class_status') resolvedCol = 'cs.class_status_name';
+      else if (fieldDef.options === 'program_type') resolvedCol = 'pt.program_type_name';
+      else if (fieldDef.options === 'class_type') resolvedCol = 'ct.class_type_name';
+      else if (fieldDef.options === 'area') resolvedCol = 'ga.geographic_area_name';
+      else if (fieldDef.options === 'professor_status') resolvedCol = 'ps.professor_status_name';
+      else if (fieldDef.options === 'scheduling_coordinator') resolvedCol = "CONCAT(sc.first_name, ' ', sc.last_name)";
+    }
+    params.push(f.value);
+    return { clause: `${resolvedCol} != ?`, params };
+  }
+
+  if (op === 'starts_with') {
+    params.push(`${f.value}%`);
+    return { clause: `${col} LIKE ?`, params };
+  }
+
+  // Select or exact match
+  if (fieldDef.type === 'select') {
+    if (fieldDef.options === 'class_status') { params.push(f.value); return { clause: `cs.class_status_name = ?`, params }; }
+    if (fieldDef.options === 'program_type') { params.push(f.value); return { clause: `pt.program_type_name = ?`, params }; }
+    if (fieldDef.options === 'class_type') { params.push(f.value); return { clause: `ct.class_type_name = ?`, params }; }
+    if (fieldDef.options === 'area') { params.push(f.value); return { clause: `ga.geographic_area_name = ?`, params }; }
+    if (fieldDef.options === 'professor_status') { params.push(f.value); return { clause: `ps.professor_status_name = ?`, params }; }
+    if (fieldDef.options === 'scheduling_coordinator') { params.push(f.value); return { clause: `CONCAT(sc.first_name, ' ', sc.last_name) = ?`, params }; }
+    params.push(f.value);
+    return { clause: `${f.field} = ?`, params };
+  }
+
+  params.push(f.value);
+  return { clause: `${col} = ?`, params };
+}
+
 function buildWhereFromFilters(entity, filters) {
   const def = ENTITIES[entity];
-  if (!def || !filters || !Array.isArray(filters)) return { where: '', params: [] };
+  if (!def || !filters || !Array.isArray(filters)) return { where: '', having: '', params: [], havingParams: [] };
 
-  const clauses = [];
-  const params = [];
+  const whereClauses = [];
+  const havingClauses = [];
+  const whereParams = [];
+  const havingParams = [];
 
   for (const f of filters) {
     const fieldDef = def.fields[f.field];
     if (!fieldDef) continue;
 
-    if (fieldDef.type === 'timeframe') {
-      if (f.value === 'current') clauses.push(`(prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)`);
-      else if (f.value === 'past') clauses.push(`prog.last_session_date < CURDATE()`);
-      continue;
-    }
-
-    if (fieldDef.type === 'invoice') {
-      if (f.value === 'paid') clauses.push(`prog.invoice_paid = 1`);
-      else if (f.value === 'sent') clauses.push(`prog.invoice_paid = 0 AND prog.invoice_date_sent IS NOT NULL`);
-      else if (f.value === 'not_sent') clauses.push(`prog.invoice_paid = 0 AND prog.invoice_date_sent IS NULL`);
-      continue;
-    }
+    const result = buildFilterClause(fieldDef, f);
+    if (!result) continue;
 
     const col = fieldDef.col || f.field;
-    const op = f.operator || '=';
-
-    // Empty/not-empty checks (work for any type)
-    if (op === 'is_empty') {
-      clauses.push(`(${col} IS NULL OR ${col} = '' OR ${col} = 0)`);
-      continue;
-    }
-    if (op === 'is_not_empty') {
-      clauses.push(`(${col} IS NOT NULL AND ${col} != '' AND ${col} != 0)`);
-      continue;
-    }
-
-    if (fieldDef.type === 'boolean') {
-      clauses.push(`${col} = ?`);
-      params.push(f.value ? 1 : 0);
-    } else if (fieldDef.type === 'date') {
-      const ops = { '=': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
-      clauses.push(`${col} ${ops[op] || '='} ?`);
-      params.push(f.value);
-    } else if (fieldDef.type === 'number') {
-      const ops = { '=': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
-      clauses.push(`${col} ${ops[op] || '='} ?`);
-      params.push(parseFloat(f.value));
-    } else if (op === 'contains') {
-      clauses.push(`${col} LIKE ?`);
-      params.push(`%${f.value}%`);
-    } else if (op === 'not') {
-      // Resolve select column names the same way as '='
-      let resolvedCol = col;
-      if (fieldDef.type === 'select') {
-        if (fieldDef.options === 'class_status') resolvedCol = 'cs.class_status_name';
-        else if (fieldDef.options === 'program_type') resolvedCol = 'pt.program_type_name';
-        else if (fieldDef.options === 'class_type') resolvedCol = 'ct.class_type_name';
-        else if (fieldDef.options === 'area') resolvedCol = 'ga.geographic_area_name';
-        else if (fieldDef.options === 'professor_status') resolvedCol = 'ps.professor_status_name';
-      }
-      clauses.push(`${resolvedCol} != ?`);
-      params.push(f.value);
-    } else if (op === 'starts_with') {
-      clauses.push(`${col} LIKE ?`);
-      params.push(`${f.value}%`);
+    if (HAVING_COLS.has(col)) {
+      havingClauses.push(result.clause);
+      havingParams.push(...result.params);
     } else {
-      // Select or exact match
-      if (fieldDef.type === 'select') {
-        if (fieldDef.options === 'class_status') clauses.push(`cs.class_status_name = ?`);
-        else if (fieldDef.options === 'program_type') clauses.push(`pt.program_type_name = ?`);
-        else if (fieldDef.options === 'class_type') clauses.push(`ct.class_type_name = ?`);
-        else if (fieldDef.options === 'area') clauses.push(`ga.geographic_area_name = ?`);
-        else if (fieldDef.options === 'professor_status') clauses.push(`ps.professor_status_name = ?`);
-        else clauses.push(`${f.field} = ?`);
-        params.push(f.value);
-      } else {
-        clauses.push(`${col} = ?`);
-        params.push(f.value);
-      }
+      whereClauses.push(result.clause);
+      whereParams.push(...result.params);
     }
   }
 
-  return { where: clauses.length ? ' AND ' + clauses.join(' AND ') : '', params };
+  return {
+    where: whereClauses.length ? ' AND ' + whereClauses.join(' AND ') : '',
+    having: havingClauses.length ? ' HAVING ' + havingClauses.join(' AND ') : '',
+    params: whereParams,
+    havingParams,
+  };
 }
 
 // ============================================================
@@ -373,6 +403,7 @@ router.get('/field-options', authenticate, async (req, res, next) => {
       'class_type': "SELECT DISTINCT class_type_name AS val FROM class_type WHERE active = 1 ORDER BY val",
       'area': "SELECT DISTINCT geographic_area_name AS val FROM geographic_area WHERE active = 1 ORDER BY val",
       'professor_status': "SELECT DISTINCT professor_status_name AS val FROM professor_status WHERE active = 1 ORDER BY val",
+      'scheduling_coordinator': "SELECT DISTINCT CONCAT(u.first_name, ' ', u.last_name) AS val FROM user u WHERE u.active = 1 AND u.role_id IN (2, 8) ORDER BY val",
     };
 
     if (fieldDef.type === 'select' && typeof fieldDef.options === 'string' && optionQueries[fieldDef.options]) {
@@ -527,14 +558,14 @@ router.get('/:id/run', authenticate, async (req, res, next) => {
     if (!entity) return res.status(400).json({ success: false, error: 'Unknown entity' });
 
     const filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
-    const { where, params } = buildWhereFromFilters(report.entity, filters);
+    const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters);
 
-    const query = `${entity.baseQuery}${where} ORDER BY ${entity.defaultSort} LIMIT 500`;
-    const [rows] = await pool.query(query, params);
+    const query = `${entity.baseQuery}${where}${having} ORDER BY ${entity.defaultSort} LIMIT 500`;
+    const [rows] = await pool.query(query, [...params, ...havingParams]);
 
     // Also get count
-    const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}) AS sub`;
-    const [[{ cnt }]] = await pool.query(countQuery, params);
+    const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}${having}) AS sub`;
+    const [[{ cnt }]] = await pool.query(countQuery, [...params, ...havingParams]);
 
     res.json({ success: true, data: rows, count: cnt, report });
   } catch (err) { next(err); }
@@ -568,10 +599,10 @@ router.get('/dashboard/my', authenticate, async (req, res, next) => {
       const entity = ENTITIES[report.entity];
       if (!entity) continue;
       const filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
-      const { where, params } = buildWhereFromFilters(report.entity, filters);
+      const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters);
       try {
-        const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}) AS sub`;
-        const [[{ cnt }]] = await pool.query(countQuery, params);
+        const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}${having}) AS sub`;
+        const [[{ cnt }]] = await pool.query(countQuery, [...params, ...havingParams]);
         results.push({ ...report, filters, count: cnt });
       } catch {
         results.push({ ...report, filters, count: 0, error: true });
@@ -607,10 +638,10 @@ router.get('/dashboard/user/:userId', authenticate, async (req, res, next) => {
       const entity = ENTITIES[report.entity];
       if (!entity) continue;
       const filters = typeof report.filters === 'string' ? JSON.parse(report.filters) : (report.filters || []);
-      const { where, params } = buildWhereFromFilters(report.entity, filters);
+      const { where, having, params, havingParams } = buildWhereFromFilters(report.entity, filters);
       try {
-        const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}) AS sub`;
-        const [[{ cnt }]] = await pool.query(countQuery, params);
+        const countQuery = `SELECT COUNT(*) as cnt FROM (${entity.baseQuery}${where}${having}) AS sub`;
+        const [[{ cnt }]] = await pool.query(countQuery, [...params, ...havingParams]);
         results.push({ ...report, filters, count: cnt });
       } catch {
         results.push({ ...report, filters, count: 0, error: true });

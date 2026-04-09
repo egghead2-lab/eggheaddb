@@ -23,8 +23,8 @@ router.put('/bulk-update', authenticate, async (req, res, next) => {
         'tb_required', 'livescan_required', 'virtus_required', 'invoice_needed',
         'open_blast_sent', 'two_week_blast_sent', 'one_week_blast_sent', 'final_blast_sent', 'parent_feedback_requested'],
       professor: ['professor_status_id', 'geographic_area_id', 'scheduling_coordinator_user_id',
-        'base_pay', 'active', 'science_trained_id', 'engineering_trained_id', 'demo_trained_id',
-        'show_party_trained_id', 'slime_party_trained_id', 'camp_trained_id', 'studysmart_trained_id'],
+        'base_pay', 'active', 'science_trained_id', 'engineering_trained_id',
+        'show_party_trained_id', 'camp_trained_id', 'studysmart_trained_id', 'robotics_trained_id'],
     };
 
     const allowed = fieldWhitelist[table] || [];
@@ -329,6 +329,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
       pool.query(`SELECT p.id, p.professor_nickname, p.last_name, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND p.show_party_trained_id = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
       pool.query(`SELECT p.id, p.professor_nickname, p.last_name, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
       pool.query(`SELECT id, reason_name FROM substitute_reason WHERE active = 1 ORDER BY sort_order, reason_name`),
+      pool.query(`SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS display_name FROM user WHERE active = 1 AND role_id IN (2, 8) ORDER BY first_name`),
     ];
 
     const results = await Promise.all(queries);
@@ -360,6 +361,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
         partyLeadProfessors: results[21][0],
         partyAssistProfessors: results[22][0],
         substituteReasons: results[23][0],
+        staffUsers: results[24][0],
       },
     });
   } catch (err) {

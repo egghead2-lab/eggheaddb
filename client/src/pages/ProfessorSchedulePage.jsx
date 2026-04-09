@@ -283,10 +283,9 @@ export default function ProfessorSchedulePage() {
                   ['Science', prof.science_trained_id],
                   ['Engineering', prof.engineering_trained_id],
                   ['Show Party', prof.show_party_trained_id],
-                  ['Slime Party', prof.slime_party_trained_id],
-                  ['Demo', prof.demo_trained_id],
                   ['StudySmart', prof.studysmart_trained_id],
                   ['Camp', prof.camp_trained_id],
+                  ['Robotics', prof.robotics_trained_id],
                 ].map(([label, val]) => (
                   <div key={label} className="flex justify-between">
                     <span className="text-gray-500">{label}</span>

@@ -5,10 +5,9 @@ export const TRAINING_FIELDS = [
   { key: 'science_trained_id', label: 'Science', short: 'S' },
   { key: 'engineering_trained_id', label: 'Engineering', short: 'E' },
   { key: 'show_party_trained_id', label: 'Show Party', short: 'SP' },
-  { key: 'slime_party_trained_id', label: 'Slime Party', short: 'SL' },
-  { key: 'demo_trained_id', label: 'Demo', short: 'D' },
   { key: 'studysmart_trained_id', label: 'StudySmart', short: 'SS' },
   { key: 'camp_trained_id', label: 'Camp', short: 'C' },
+  { key: 'robotics_trained_id', label: 'Robotics', short: 'R' },
 ];
 
 export const STATUS_COLORS = {

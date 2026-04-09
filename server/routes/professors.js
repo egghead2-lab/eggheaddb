@@ -7,7 +7,7 @@ const { logAudit } = require('../lib/audit');
 // GET /api/professors
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const { search, status, area, training, sort, dir, page = 1, limit = 50 } = req.query;
+    const { search, status, area, training, coordinator, sort, dir, page = 1, limit = 50 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClauses = ['p.active = 1'];
@@ -25,8 +25,12 @@ router.get('/', authenticate, async (req, res, next) => {
       whereClauses.push(`ps.professor_status_name != 'Terminated'`);
     }
     if (area) {
-      whereClauses.push(`p.geographic_area = ?`);
+      whereClauses.push(`ga.geographic_area_name = ?`);
       params.push(area);
+    }
+    if (coordinator) {
+      whereClauses.push(`p.scheduling_coordinator_owner_id = ?`);
+      params.push(coordinator);
     }
     if (training) {
       const trainingMap = {
@@ -45,7 +49,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
     const sortMap = {
       nickname: 'p.professor_nickname', status: 'ps.professor_status_name',
-      area: 'p.geographic_area', base_pay: 'p.base_pay', rating: 'p.rating',
+      area: 'ga.geographic_area_name', base_pay: 'p.base_pay', rating: 'p.rating',
       programs: 'active_program_count',
     };
     const sortCol = sortMap[sort] || 'p.professor_nickname';
@@ -53,7 +57,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, p.phone_number,
-              p.base_pay, p.rating, p.virtus, p.tb_test, p.geographic_area,
+              p.base_pay, p.rating, p.virtus, p.tb_test, ga.geographic_area_name AS geographic_area,
               p.science_trained_id, p.engineering_trained_id, p.robotics_trained_id,
               p.show_party_trained_id, p.studysmart_trained_id, p.camp_trained_id,
               ps.professor_status_name,
@@ -66,6 +70,7 @@ router.get('/', authenticate, async (req, res, next) => {
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN user sc_user ON sc_user.id = p.scheduling_coordinator_owner_id
        ${where}
        ORDER BY ${sortCol} ${sortDir}, p.last_name ASC
@@ -78,6 +83,7 @@ router.get('/', authenticate, async (req, res, next) => {
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        ${where}`,
       params
     );
@@ -147,7 +153,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
        LEFT JOIN state st ON st.id = c.state_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN onboard_status os ON os.id = p.onboard_status_id
        LEFT JOIN user pu ON pu.id = p.user_id
        LEFT JOIN role pr ON pr.id = pu.role_id
@@ -299,9 +305,10 @@ router.post('/', authenticate, async (req, res, next) => {
       'emergency_contact_number', 'birthday', 'hire_date', 'termination_date',
       'termination_rason', 'schedule_link', 'base_pay', 'assist_pay', 'pickup_pay',
       'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
-      'show_party_trained_id', 'demo_trained_id',
+      'show_party_trained_id', 'robotics_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
       'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
+      'geographic_area_id',
     ];
 
     const insertFields = fields.filter(f => data[f] !== undefined);
@@ -332,10 +339,10 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'emergency_contact', 'emergency_contact_number', 'birthday', 'hire_date',
       'termination_date', 'termination_rason', 'schedule_link', 'base_pay', 'assist_pay',
       'pickup_pay', 'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
-      'show_party_trained_id', 'demo_trained_id',
+      'show_party_trained_id', 'robotics_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
       'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
-      'active',
+      'geographic_area_id', 'active',
     ];
 
     // Handle city/state/zip → city_id resolution
