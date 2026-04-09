@@ -74,7 +74,7 @@ async function fetchPartyRow(partyId) {
   const [[row]] = await pool.query(
     `SELECT p.id, p.program_nickname, p.first_session_date, p.start_time, p.class_length_minutes,
             p.party_location_text, p.lead_professor_pay, p.lead_professor_drive_fee,
-            p.assistant_professor_pay, p.number_enrolled AS kids_expected,
+            p.assistant_professor_pay, p.total_kids_attended AS kids_expected,
             p.shirt_size, p.general_notes, p.glow_slime_amount_needed,
             p.birthday_kid_name, p.birthday_kid_age, p.calendar_event_id,
             c.class_name,
