@@ -21,7 +21,7 @@ function ToolbarButton({ active, onClick, title, children }) {
  * Rich text editor based on TipTap.
  * @param {{ value?: string, onChange: (html: string) => void, placeholder?: string, minHeight?: string }} props
  */
-export function RichTextEditor({ value, onChange, placeholder = 'Write something…', minHeight = '120px' }) {
+export function RichTextEditor({ value, onChange, placeholder = 'Write something…', minHeight = '120px', editorRef }) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
@@ -35,6 +35,11 @@ export function RichTextEditor({ value, onChange, placeholder = 'Write something
       onChange(editor.getHTML());
     },
   });
+
+  // Expose editor via ref
+  useEffect(() => {
+    if (editorRef && editor) editorRef.current = editor;
+  }, [editor, editorRef]);
 
   // Sync external value changes (e.g. loading template)
   useEffect(() => {

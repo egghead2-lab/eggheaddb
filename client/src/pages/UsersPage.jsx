@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getUsers } from '../api/users';
-import { getRoles, createRole, updateRole } from '../api/reference';
+import { getRoles, createRole, updateRole, deleteRole } from '../api/reference';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -38,6 +38,11 @@ export default function UsersPage() {
   const roleUpdateMutation = useMutation({
     mutationFn: ({ id, role_name }) => updateRole(id, { role_name }),
     onSuccess: () => { qc.invalidateQueries(['roles']); qc.invalidateQueries(['users']); setEditingRoleId(null); },
+  });
+
+  const roleDeleteMutation = useMutation({
+    mutationFn: (id) => deleteRole(id),
+    onSuccess: () => { qc.invalidateQueries(['roles']); qc.invalidateQueries(['users']); },
   });
 
   const handleSort = (col) => {
@@ -127,14 +132,22 @@ export default function UsersPage() {
                       <button onClick={() => setEditingRoleId(null)} className="text-xs text-gray-400">Cancel</button>
                     </div>
                   ) : (
-                    <button onClick={() => { setEditingRoleId(r.id); setEditingRoleName(r.role_name); }} className="group flex items-center gap-1" title="Click to rename">
-                      <Badge status={r.role_name} />
-                      <span className="text-xs text-gray-300 group-hover:text-gray-500">edit</span>
-                    </button>
+                    <div className="group flex items-center gap-1">
+                      <button onClick={() => { setEditingRoleId(r.id); setEditingRoleName(r.role_name); }} title="Click to rename">
+                        <Badge status={r.role_name} />
+                      </button>
+                      <span onClick={() => { setEditingRoleId(r.id); setEditingRoleName(r.role_name); }}
+                        className="text-xs text-gray-300 group-hover:text-gray-500 cursor-pointer">edit</span>
+                      <button onClick={() => { if (confirm(`Delete role "${r.role_name}"?`)) roleDeleteMutation.mutate(r.id); }}
+                        className="text-xs text-gray-300 group-hover:text-red-400 ml-0.5" title="Delete role">×</button>
+                    </div>
                   )}
                 </div>
               ))}
             </div>
+            {roleDeleteMutation.isError && (
+              <p className="text-sm text-red-600 mt-2">{roleDeleteMutation.error?.response?.data?.error || 'Failed to delete role'}</p>
+            )}
           </div>
         )}
 
@@ -150,7 +163,7 @@ export default function UsersPage() {
                     <SortTh col="username" sort={sort} dir={dir} onSort={handleSort}>Username</SortTh>
                     <SortTh col="email" sort={sort} dir={dir} onSort={handleSort}>Email</SortTh>
                     {viewType === 'staff' && <SortTh col="role" sort={sort} dir={dir} onSort={handleSort}>Role</SortTh>}
-                    <th className="text-left px-3 py-3 font-semibold text-gray-700">Last Login</th>
+                    <SortTh col="last_login" sort={sort} dir={dir} onSort={handleSort}>Last Login</SortTh>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">

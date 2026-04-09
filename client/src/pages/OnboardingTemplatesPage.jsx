@@ -49,6 +49,11 @@ export default function OnboardingTemplatesPage() {
     onSuccess: () => { qc.invalidateQueries(['onboarding-template', selectedId]); qc.invalidateQueries(['onboarding-templates']); },
   });
 
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id) => api.delete(`/onboarding/templates/${id}`),
+    onSuccess: () => { qc.invalidateQueries(['onboarding-templates']); setSelectedId(null); },
+  });
+
   return (
     <AppShell>
       <PageHeader title="Onboarding Templates" action={
@@ -92,7 +97,11 @@ export default function OnboardingTemplatesPage() {
             <div className="bg-white rounded-lg border border-gray-200">
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                 <h3 className="font-bold text-gray-900">{detail.name}</h3>
-                <span className="text-xs text-gray-400">{detail.items?.length || 0} requirements</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">{detail.items?.length || 0} requirements</span>
+                  <button onClick={() => { if (confirm(`Delete template "${detail.name}"? This cannot be undone.`)) deleteTemplateMutation.mutate(selectedId); }}
+                    className="text-xs text-gray-300 hover:text-red-500">Delete</button>
+                </div>
               </div>
 
               <div className="p-4">

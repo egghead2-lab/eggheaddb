@@ -82,10 +82,13 @@ export default function ProgramDetailPage() {
               </div>
             </div>
             {!isNew && (
-              <button type="button" onClick={async () => {
-                const res = await copyProgram(id);
-                if (res?.id) navigate(`/programs/${res.id}`);
-              }} className="text-xs text-gray-400 hover:text-[#1e3a5f]">Duplicate</button>
+              <div className="flex items-center gap-3">
+                <Link to={`/programs/${id}/classroom`} className="text-xs font-medium text-[#1e3a5f] hover:underline">Classroom</Link>
+                <button type="button" onClick={async () => {
+                  const res = await copyProgram(id);
+                  if (res?.id) navigate(`/programs/${res.id}`);
+                }} className="text-xs text-gray-400 hover:text-[#1e3a5f]">Duplicate</button>
+              </div>
             )}
           </div>
           {!isNew && (

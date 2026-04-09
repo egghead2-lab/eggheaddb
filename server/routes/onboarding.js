@@ -786,6 +786,15 @@ router.delete('/template-items/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// DELETE /api/onboarding/templates/:id
+router.delete('/templates/:id', async (req, res, next) => {
+  try {
+    await pool.query('DELETE FROM onboarding_template_item WHERE template_id = ?', [req.params.id]);
+    await pool.query('DELETE FROM onboarding_template WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // POST /api/onboarding/candidates/:id/apply-template
 router.post('/candidates/:id/apply-template', async (req, res, next) => {
   try {
@@ -1075,10 +1084,19 @@ router.post('/candidates/:id/emails', upload.array('attachments', 10), async (re
 // EMAIL TEMPLATES
 // ═══════════════════════════════════════════════════════════════════
 
+const templateUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, path.join(__dirname, '../../uploads/email-template-attachments')),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
 // GET /api/onboarding/email-templates
 router.get('/email-templates', async (req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT * FROM email_template WHERE active = 1 ORDER BY sort_order, name');
+    rows.forEach(r => { r.attachments = r.attachments ? (typeof r.attachments === 'string' ? JSON.parse(r.attachments) : r.attachments) : []; });
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
@@ -1099,13 +1117,58 @@ router.post('/email-templates', async (req, res, next) => {
 // PUT /api/onboarding/email-templates/:id
 router.put('/email-templates/:id', async (req, res, next) => {
   try {
-    const fields = ['name', 'subject', 'body_html', 'category', 'sort_order', 'active'];
+    const fields = ['name', 'subject', 'body_html', 'category', 'sort_order', 'active', 'attachments'];
     const updates = fields.filter(f => req.body[f] !== undefined);
     if (updates.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     const setClauses = updates.map(f => `${f} = ?`).join(', ');
-    const values = updates.map(f => req.body[f] === '' ? null : req.body[f]);
+    const values = updates.map(f => {
+      const v = req.body[f];
+      if (f === 'attachments') return JSON.stringify(v);
+      return v === '' ? null : v;
+    });
     await pool.query(`UPDATE email_template SET ${setClauses} WHERE id = ?`, [...values, req.params.id]);
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/email-templates/:id/upload — add attachment file
+router.post('/email-templates/:id/upload', templateUpload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
+    const [[template]] = await pool.query('SELECT attachments FROM email_template WHERE id = ?', [req.params.id]);
+    if (!template) return res.status(404).json({ success: false, error: 'Template not found' });
+
+    const existing = template.attachments ? (typeof template.attachments === 'string' ? JSON.parse(template.attachments) : template.attachments) : [];
+    existing.push({ filename: req.file.originalname, storageName: req.file.filename, size: req.file.size });
+    await pool.query('UPDATE email_template SET attachments = ? WHERE id = ?', [JSON.stringify(existing), req.params.id]);
+    res.json({ success: true, attachments: existing });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/onboarding/email-templates/:id/attachment/:filename — remove attachment
+router.delete('/email-templates/:id/attachment/:filename', async (req, res, next) => {
+  try {
+    const [[template]] = await pool.query('SELECT attachments FROM email_template WHERE id = ?', [req.params.id]);
+    if (!template) return res.status(404).json({ success: false, error: 'Template not found' });
+
+    const existing = template.attachments ? (typeof template.attachments === 'string' ? JSON.parse(template.attachments) : template.attachments) : [];
+    const updated = existing.filter(a => a.storageName !== req.params.filename);
+
+    // Delete file from disk
+    const filePath = path.join(__dirname, '../../uploads/email-template-attachments', req.params.filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    await pool.query('UPDATE email_template SET attachments = ? WHERE id = ?', [JSON.stringify(updated), req.params.id]);
+    res.json({ success: true, attachments: updated });
+  } catch (err) { next(err); }
+});
+
+// GET /api/onboarding/email-templates/attachment/:filename — serve attachment file
+router.get('/email-templates/attachment/:filename', async (req, res, next) => {
+  try {
+    const filePath = path.join(__dirname, '../../uploads/email-template-attachments', req.params.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File not found' });
+    res.download(filePath);
   } catch (err) { next(err); }
 });
 

@@ -1068,24 +1068,24 @@ export default function ProfessorDetailPage() {
               </Select>
               <Input label="First Name" required {...register('first_name', { required: 'Required' })} error={errors.first_name?.message} />
               <Input label="Last Name" required {...register('last_name', { required: 'Required' })} error={errors.last_name?.message} />
-              <Input label="Email" type="email" {...register('email')} />
-              <Input label="Phone Number" {...register('phone_number')} />
+              <Input label="Email" type="email" required {...register('email', { required: 'Required' })} error={errors.email?.message} />
+              <Input label="Phone Number" required {...register('phone_number', { required: 'Required' })} error={errors.phone_number?.message} />
               <div className="col-span-2">
-                <Input label="Street Address" {...register('address')} />
+                <Input label="Street Address" required {...register('address', { required: 'Required' })} error={errors.address?.message} />
               </div>
-              <Input label="City" defaultValue={prof.city_name || ''} {...register('_city_name')} />
+              <Input label="City" required defaultValue={prof.city_name || ''} {...register('_city_name', { required: 'Required' })} error={errors._city_name?.message} />
               <div className="grid grid-cols-2 gap-4">
-                <Input label="State" defaultValue={prof.state_code || ''} {...register('_state_code')} maxLength={2} />
-                <Input label="Zip" defaultValue={prof.zip_code || ''} {...register('_zip_code')} />
+                <Input label="State" required defaultValue={prof.state_code || ''} {...register('_state_code', { required: 'Required' })} error={errors._state_code?.message} maxLength={2} />
+                <Input label="Zip" required defaultValue={prof.zip_code || ''} {...register('_zip_code', { required: 'Required' })} error={errors._zip_code?.message} />
               </div>
-              <Select label="Geographic Area" {...register('geographic_area_id')}>
-                <option value="">None</option>
+              <Select label="Geographic Area" required {...register('geographic_area_id', { required: 'Required' })} error={errors.geographic_area_id?.message}>
+                <option value="">Select...</option>
                 {(ref.areas || []).map(a => (
                   <option key={a.id} value={a.id}>{a.geographic_area_name}</option>
                 ))}
               </Select>
-              <Select label="Scheduling Coordinator" {...register('scheduling_coordinator_owner_id')}>
-                <option value="">None</option>
+              <Select label="Scheduling Coordinator" required {...register('scheduling_coordinator_owner_id', { required: 'Required' })} error={errors.scheduling_coordinator_owner_id?.message}>
+                <option value="">Select...</option>
                 {(ref.staffUsers || []).map(u => (
                   <option key={u.id} value={u.id}>{u.display_name}</option>
                 ))}
@@ -1151,8 +1151,8 @@ export default function ProfessorDetailPage() {
           {/* Section 2: Pay Info */}
           <Section title="Pay Info">
             <div className="grid grid-cols-3 gap-4">
-              <Input label="Base Pay" type="number" step="0.01" {...register('base_pay')} />
-              <Input label="Assist Pay" type="number" step="0.01" {...register('assist_pay')} />
+              <Input label="Base Pay" type="number" step="0.01" required {...register('base_pay', { required: 'Required' })} error={errors.base_pay?.message} />
+              <Input label="Assist Pay" type="number" step="0.01" required {...register('assist_pay', { required: 'Required' })} error={errors.assist_pay?.message} />
               <Input label="Party Pay" type="number" step="0.01" {...register('party_pay')} />
               <Input label="Camp Pay" type="number" step="0.01" {...register('camp_pay')} />
             </div>
@@ -1178,7 +1178,7 @@ export default function ProfessorDetailPage() {
               <Toggle label="Virtus" checked={!!watch('virtus')} onChange={v => setValue('virtus', v ? 1 : 0, { shouldDirty: true })} />
               <Input label="Virtus Date" type="date" {...register('virtus_date')} />
               <Toggle label="TB Test" checked={!!watch('tb_test')} onChange={v => setValue('tb_test', v ? 1 : 0, { shouldDirty: true })} />
-              <Input label="TB Date" type="date" {...register('tb_date')} />
+              <Input label="TB Date" type="date" required {...register('tb_date', { required: 'Required' })} error={errors.tb_date?.message} />
             </div>
             {/* Livescans */}
             {!isNew && (
@@ -1235,18 +1235,13 @@ export default function ProfessorDetailPage() {
             )}
           </Section>
 
-          {/* Section 5: Emergency & HR */}
-          <Section title="Emergency & HR Info">
+          {/* Section 5: HR Info */}
+          <Section title="HR Info">
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Emergency Contact" {...register('emergency_contact')} />
-              <Input label="Emergency Contact Number" {...register('emergency_contact_number')} />
-              <Input label="Birthday" type="date" {...register('birthday')} />
-              <Input label="Hire Date" type="date" {...register('hire_date')} />
+              <Input label="Birthday" type="date" required {...register('birthday', { required: 'Required' })} error={errors.birthday?.message} />
+              <Input label="Hire Date" type="date" required {...register('hire_date', { required: 'Required' })} error={errors.hire_date?.message} />
               <Input label="Termination Date" type="date" {...register('termination_date')} />
               <Input label="Termination Reason" {...register('termination_rason')} />
-              <div className="col-span-2">
-                <Input label="Schedule Link" {...register('schedule_link')} />
-              </div>
               <Input label="Rating" type="number" step="0.1" min="0" max="5" {...register('rating')} />
             </div>
           </Section>

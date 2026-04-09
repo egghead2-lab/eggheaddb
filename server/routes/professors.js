@@ -302,9 +302,9 @@ router.post('/', authenticate, async (req, res, next) => {
 
     const fields = [
       'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email',
-      'phone_number', 'address', 'city_id', 'general_notes', 'emergency_contact',
-      'emergency_contact_number', 'birthday', 'hire_date', 'termination_date',
-      'termination_rason', 'schedule_link', 'base_pay', 'assist_pay', 'pickup_pay',
+      'phone_number', 'address', 'city_id', 'general_notes',
+      'birthday', 'hire_date', 'termination_date',
+      'termination_rason', 'base_pay', 'assist_pay', 'pickup_pay',
       'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
       'show_party_trained_id', 'robotics_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
@@ -314,6 +314,10 @@ router.post('/', authenticate, async (req, res, next) => {
 
     const insertFields = fields.filter(f => data[f] !== undefined);
     const values = insertFields.map(f => data[f] === '' ? null : data[f]);
+
+    // Default virtus and tb_test to 0 if not provided
+    if (!insertFields.includes('virtus')) { insertFields.push('virtus'); values.push(0); }
+    if (!insertFields.includes('tb_test')) { insertFields.push('tb_test'); values.push(0); }
 
     const [result] = await pool.query(
       `INSERT INTO professor (${insertFields.join(', ')}, active, ts_inserted, ts_updated)
@@ -337,8 +341,8 @@ router.put('/:id', authenticate, async (req, res, next) => {
     const fields = [
       'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email',
       'phone_number', 'address', 'city_id', 'general_notes', 'availability_notes',
-      'emergency_contact', 'emergency_contact_number', 'birthday', 'hire_date',
-      'termination_date', 'termination_rason', 'schedule_link', 'base_pay', 'assist_pay',
+      'birthday', 'hire_date',
+      'termination_date', 'termination_rason', 'base_pay', 'assist_pay',
       'pickup_pay', 'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
       'show_party_trained_id', 'robotics_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',

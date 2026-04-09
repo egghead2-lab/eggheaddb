@@ -125,6 +125,21 @@ router.get('/', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/programs/student-search — search students to add to roster
+router.get('/student-search', authenticate, async (req, res, next) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) return res.json({ success: true, data: [] });
+    const [rows] = await pool.query(
+      `SELECT id, first_name, last_name, birthday FROM student
+       WHERE active = 1 AND (first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name, ' ', last_name) LIKE ?)
+       ORDER BY last_name, first_name LIMIT 20`,
+      [`%${q}%`, `%${q}%`, `%${q}%`]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/programs/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
@@ -762,6 +777,127 @@ router.post('/:id/copy', authenticate, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ============================================================
+// ATTENDANCE
+// ============================================================
+
+// GET /api/programs/:id/attendance/:sessionId — attendance for a specific session
+router.get('/:id/attendance/:sessionId', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT a.*, st.first_name, st.last_name
+       FROM attendance a
+       LEFT JOIN student st ON st.id = a.student_id
+       WHERE a.session_id = ?
+       ORDER BY st.last_name, st.first_name`,
+      [req.params.sessionId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/programs/:id/attendance-summary — attendance counts per session for a program
+router.get('/:id/attendance-summary', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT a.session_id,
+              SUM(a.status = 'present') AS present_count,
+              SUM(a.status = 'absent') AS absent_count,
+              SUM(a.status = 'late') AS late_count,
+              SUM(a.status = 'excused') AS excused_count,
+              COUNT(*) AS total_marked
+       FROM attendance a
+       JOIN session s ON s.id = a.session_id AND s.program_id = ?
+       GROUP BY a.session_id`,
+      [req.params.id]
+    );
+    const map = {};
+    rows.forEach(r => { map[r.session_id] = r; });
+    res.json({ success: true, data: map });
+  } catch (err) { next(err); }
+});
+
+// POST /api/programs/:id/attendance/:sessionId — bulk save attendance for a session
+router.post('/:id/attendance/:sessionId', authenticate, async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const { entries } = req.body; // [{ student_id, status, notes }]
+    if (!Array.isArray(entries)) return res.status(400).json({ success: false, error: 'entries array required' });
+
+    const markedBy = req.user?.userId || null;
+    for (const e of entries) {
+      await pool.query(
+        `INSERT INTO attendance (session_id, student_id, status, notes, marked_by, marked_at)
+         VALUES (?,?,?,?,?,NOW())
+         ON DUPLICATE KEY UPDATE status = VALUES(status), notes = VALUES(notes), marked_by = VALUES(marked_by), marked_at = NOW()`,
+        [sessionId, e.student_id, e.status || 'present', e.notes || null, markedBy]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/programs/:id/classroom — combined data for the classroom view (roster + sessions + attendance summary)
+router.get('/:id/classroom', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Program info
+    const [[program]] = await pool.query(
+      `SELECT prog.*, cs.class_status_name, cl.class_name,
+              loc.nickname AS location_nickname, loc.school_name,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_name
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id
+       WHERE prog.id = ? AND prog.active = 1`, [id]
+    );
+    if (!program) return res.status(404).json({ success: false, error: 'Program not found' });
+
+    // Roster
+    const [roster] = await pool.query(
+      `SELECT pr.id AS roster_id, pr.student_id, pr.notes, pr.date_dropped,
+              st.first_name, st.last_name, st.birthday,
+              g.grade_name
+       FROM program_roster pr
+       LEFT JOIN student st ON st.id = pr.student_id
+       LEFT JOIN grade g ON g.id = pr.grade_id
+       WHERE pr.program_id = ? AND pr.active = 1
+       ORDER BY pr.date_dropped IS NOT NULL, st.last_name, st.first_name`, [id]
+    );
+
+    // Sessions
+    const [sessions] = await pool.query(
+      `SELECT s.id, s.session_date, s.session_time, s.lesson_id, s.specific_notes,
+              l.lesson_name
+       FROM session s
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       WHERE s.program_id = ? AND s.active = 1
+       ORDER BY s.session_date ASC`, [id]
+    );
+
+    // Attendance summary per session
+    const [attRows] = await pool.query(
+      `SELECT a.session_id, a.student_id, a.status, a.notes AS att_notes
+       FROM attendance a
+       JOIN session s ON s.id = a.session_id AND s.program_id = ?`, [id]
+    );
+    // Build map: { session_id: { student_id: { status, notes } } }
+    const attendanceMap = {};
+    attRows.forEach(r => {
+      if (!attendanceMap[r.session_id]) attendanceMap[r.session_id] = {};
+      attendanceMap[r.session_id][r.student_id] = { status: r.status, notes: r.att_notes };
+    });
+
+    // Available students for adding to roster (search endpoint)
+    res.json({ success: true, data: { program, roster, sessions, attendanceMap } });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

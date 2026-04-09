@@ -68,6 +68,7 @@ import TrackingImportPage from './pages/TrackingImportPage';
 import WeeklyRequirementsPage from './pages/WeeklyRequirementsPage';
 import PartyShipmentsPage from './pages/PartyShipmentsPage';
 import FmWorkdayPage from './pages/FmWorkdayPage';
+import ClassRoomPage from './pages/ClassRoomPage';
 
 export default function App() {
   return (
@@ -83,6 +84,7 @@ export default function App() {
       <Route path="/programs" element={<ProtectedRoute><ProgramsPage /></ProtectedRoute>} />
       <Route path="/programs/new" element={<ProtectedRoute><ProgramDetailPage /></ProtectedRoute>} />
       <Route path="/programs/:id" element={<ProtectedRoute><ProgramDetailPage /></ProtectedRoute>} />
+      <Route path="/programs/:id/classroom" element={<ProtectedRoute><ClassRoomPage /></ProtectedRoute>} />
       <Route path="/parties" element={<ProtectedRoute><PartiesPage /></ProtectedRoute>} />
       <Route path="/parties/new" element={<ProtectedRoute><PartyDetailPage /></ProtectedRoute>} />
       <Route path="/parties/:id" element={<ProtectedRoute><PartyDetailPage /></ProtectedRoute>} />

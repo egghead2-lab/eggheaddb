@@ -31,9 +31,9 @@ export function ProtectedRoute({ children }) {
     return <Navigate to="/candidate-portal" replace />;
   }
 
-  // Professors can only access their schedule
+  // Professors can access their schedule and classroom pages
   if (role === 'Professor') {
-    if (location.pathname.startsWith('/schedule')) return children;
+    if (location.pathname.startsWith('/schedule') || location.pathname.match(/^\/programs\/\d+\/classroom/)) return children;
     return <Navigate to="/schedule" replace />;
   }
 

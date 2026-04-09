@@ -33,7 +33,7 @@ router.get('/', async (req, res, next) => {
 
     const where = `WHERE ${whereClauses.join(' AND ')}`;
     const sortMap = {
-      name: 'u.last_name', role: 'r.role_name', email: 'u.email', username: 'u.user_name',
+      name: 'u.last_name', role: 'r.role_name', email: 'u.email', username: 'u.user_name', last_login: 'u.last_login_at',
     };
     const sortCol = sortMap[sort] || 'u.last_name';
     const sortDir = dir === 'desc' ? 'DESC' : 'ASC';

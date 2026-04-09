@@ -32,6 +32,7 @@ function ProgramTable({ programs, profId, isLead, viewOnly }) {
             <th className="text-left px-3 py-2 font-medium text-gray-600">Dates</th>
             <th className="text-right px-3 py-2 font-medium text-gray-600">Per Session</th>
             <th className="text-center px-3 py-2 font-medium text-gray-600 w-16">Role</th>
+            <th className="w-20"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -56,6 +57,11 @@ function ProgramTable({ programs, profId, isLead, viewOnly }) {
                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
                   isLead(p) ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
                 }`}>{isLead(p) ? 'Lead' : 'Assist'}</span>
+              </td>
+              <td className="px-3 py-2 text-center">
+                <Link to={`/programs/${p.id}/classroom`} className="text-xs text-[#1e3a5f] hover:underline font-medium">
+                  Classroom
+                </Link>
               </td>
             </tr>
           ))}

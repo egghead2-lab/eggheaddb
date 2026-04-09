@@ -414,6 +414,21 @@ router.put('/roles/:id', authenticate, async (req, res, next) => {
   }
 });
 
+router.delete('/roles/:id', authenticate, async (req, res, next) => {
+  try {
+    // Check if any users are assigned to this role
+    const [[{ cnt }]] = await pool.query(
+      'SELECT COUNT(*) as cnt FROM user WHERE role_id = ? AND active = 1', [req.params.id]
+    );
+    if (cnt > 0) return res.status(400).json({ success: false, error: `Cannot delete — ${cnt} user${cnt > 1 ? 's' : ''} assigned to this role` });
+
+    // Check tool_role assignments
+    await pool.query('DELETE FROM tool_role WHERE role_id = ?', [req.params.id]);
+    await pool.query('UPDATE role SET active = 0 WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/lessons
 router.get('/lessons', authenticate, async (req, res, next) => {
   try {
