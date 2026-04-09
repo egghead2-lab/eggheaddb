@@ -96,25 +96,42 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
 
 function DeleteCell({ s, idx, dateStr, onDelete, onDeleteAndShift }) {
   const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState('');
   const hasLesson = !!s.lesson_id;
+
+  const doDelete = (shift) => {
+    const fn = shift ? onDeleteAndShift : onDelete;
+    fn(s.id, reason || undefined, undefined);
+    setConfirming(false);
+    setReason('');
+  };
 
   if (confirming) {
     return (
       <td className="px-2 py-1 text-center">
-        <div className="flex flex-col gap-1 items-center min-w-[100px]">
+        <div className="flex flex-col gap-1 items-center min-w-[120px]">
           <span className="text-[10px] text-red-600 font-medium">Delete #{idx + 1}?</span>
-          <button onClick={() => { onDelete(s.id); setConfirming(false); }}
+          <select value={reason} onChange={e => setReason(e.target.value)}
+            className="text-[10px] w-full rounded border border-gray-300 px-1 py-0.5">
+            <option value="">Reason (optional)</option>
+            <option value="staffing">Staffing issue</option>
+            <option value="client">Client request</option>
+            <option value="holiday">Holiday</option>
+            <option value="schedule_change">Schedule change</option>
+            <option value="other">Other</option>
+          </select>
+          <button onClick={() => doDelete(false)}
             className="text-[10px] px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600 w-full">
             Delete
           </button>
           {hasLesson && (
-            <button onClick={() => { onDeleteAndShift(s.id); setConfirming(false); }}
+            <button onClick={() => doDelete(true)}
               className="text-[10px] px-2 py-0.5 bg-amber-500 text-white rounded hover:bg-amber-600 w-full"
-              title="Delete this session and shift remaining lessons up to maintain order">
-              Delete & Shift Lessons
+              title="Delete and shift remaining lessons up">
+              Delete & Shift
             </button>
           )}
-          <button onClick={() => setConfirming(false)}
+          <button onClick={() => { setConfirming(false); setReason(''); }}
             className="text-[10px] text-gray-400 hover:text-gray-600">Cancel</button>
         </div>
       </td>
@@ -165,7 +182,7 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (sessionId) => deleteSession(programId, sessionId),
+    mutationFn: ({ sessionId, reason, notes }) => deleteSession(programId, sessionId, { reason, notes }),
     onSuccess: invalidate,
   });
 
@@ -207,11 +224,11 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
     updateMutation.mutate({ sessionId: s.id, data: { not_billed: s.not_billed ? 0 : 1 } });
   }, []);
 
-  const handleDelete = useCallback((sessionId) => {
-    deleteMutation.mutate(sessionId);
+  const handleDelete = useCallback((sessionId, reason, notes) => {
+    deleteMutation.mutate({ sessionId, reason, notes });
   }, []);
 
-  const handleDeleteAndShift = useCallback((sessionId) => {
+  const handleDeleteAndShift = useCallback((sessionId, reason, notes) => {
     // Find the index of the session being deleted
     const idx = sessions.findIndex(s => s.id === sessionId);
     if (idx === -1) return;
@@ -220,7 +237,7 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
     const subsequentSessions = sessions.slice(idx + 1);
 
     // Delete the session first
-    deleteMutation.mutate(sessionId, {
+    deleteMutation.mutate({ sessionId, reason, notes }, {
       onSuccess: () => {
         // Shift lessons: each subsequent session takes the lesson from the one before it
         // The deleted session's lesson disappears, the last session loses its lesson

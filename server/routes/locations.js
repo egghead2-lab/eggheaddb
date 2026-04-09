@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { logAudit } = require('../lib/audit');
 
 // GET /api/locations
 router.get('/', authenticate, async (req, res, next) => {
@@ -219,11 +220,15 @@ router.put('/:id', authenticate, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'No fields to update' });
     }
 
+    const [[oldRow]] = await pool.query('SELECT * FROM location WHERE id = ?', [id]);
+
     await pool.query(
       `UPDATE location SET ${updateFields.map(f => `${f} = ?`).join(', ')}, ts_updated = NOW()
        WHERE id = ?`,
       [...values, id]
     );
+
+    if (oldRow) logAudit('location', id, req.user, oldRow, data);
 
     res.json({ success: true });
   } catch (err) {

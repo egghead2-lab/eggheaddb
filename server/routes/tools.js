@@ -106,6 +106,16 @@ router.put('/:id', authenticate, async (req, res, next) => {
   }
 });
 
+// POST /api/tools/rename-group — rename a nav_group across all tools
+router.post('/rename-group', authenticate, async (req, res, next) => {
+  try {
+    const { old_name, new_name } = req.body;
+    if (!old_name || !new_name) return res.status(400).json({ success: false, error: 'Both old and new name required' });
+    const [result] = await pool.query('UPDATE tool SET nav_group = ? WHERE nav_group = ?', [new_name.trim(), old_name]);
+    res.json({ success: true, updated: result.affectedRows });
+  } catch (err) { next(err); }
+});
+
 // PUT /api/tools/:id/roles — set role assignments (replaces all)
 router.put('/:id/roles', authenticate, async (req, res, next) => {
   try {

@@ -10,7 +10,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { useAuth } from '../hooks/useAuth';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
 
 const FIELD_ACTIVITIES = [
@@ -270,7 +270,7 @@ export default function FmDailyLogPage() {
                           'bg-gray-100 text-gray-600'
                         }`}>{locLabel}</span>
                       </td>
-                      <td className="px-3 py-2 text-gray-600 text-xs">{e.time_in?.slice(0, 5)} – {e.time_out?.slice(0, 5)}</td>
+                      <td className="px-3 py-2 text-gray-600 text-xs">{e.time_in ? formatTime(e.time_in) : '—'} – {e.time_out ? formatTime(e.time_out) : '—'}</td>
                       <td className="px-3 py-2 text-right font-medium">{e.total_hours || '—'}</td>
                       <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[200px]">{e.field_activities || e.wfh_activities || '—'}</td>
                       <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[150px]">{e.professors_contacted || '—'}</td>

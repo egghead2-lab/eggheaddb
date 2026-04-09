@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
 import { useAuth } from '../hooks/useAuth';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
 
 const FIELD_ACTIVITIES = [
@@ -351,8 +351,8 @@ export default function FmWorkdayPage() {
                             {LOC_LABEL[e.work_location] || '—'}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-gray-600">{e.time_in?.slice(0, 5)}</td>
-                        <td className="px-3 py-2 text-gray-600">{e.time_out?.slice(0, 5)}</td>
+                        <td className="px-3 py-2 text-gray-600">{e.time_in ? formatTime(e.time_in) : '—'}</td>
+                        <td className="px-3 py-2 text-gray-600">{e.time_out ? formatTime(e.time_out) : '—'}</td>
                         <td className="px-3 py-2 text-gray-500">{e.break_minutes || 0}m</td>
                         <td className="px-3 py-2 text-right font-medium">{e.total_hours || calcHours(e.time_in, e.time_out, e.break_minutes) || '—'}</td>
                         <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[250px]">

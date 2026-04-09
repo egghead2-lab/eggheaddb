@@ -187,6 +187,24 @@ router.get('/dashboard', async (req, res, next) => {
       [...areaParams]
     );
 
+    // Bulk fetch last rating for all professors
+    const profIds = professors.map(p => p.id);
+    const ratingMap = {};
+    if (profIds.length > 0) {
+      const [ratings] = await pool.query(
+        `SELECT pe.professor_id, pe.form_data FROM professor_evaluation pe
+         INNER JOIN (SELECT professor_id, MAX(evaluation_date) as max_date FROM professor_evaluation WHERE active = 1 AND form_status = 'completed' AND professor_id IN (?) GROUP BY professor_id) latest
+         ON pe.professor_id = latest.professor_id AND pe.evaluation_date = latest.max_date
+         WHERE pe.active = 1 AND pe.form_status = 'completed'`,
+        [profIds]
+      );
+      ratings.forEach(r => {
+        const fd = typeof r.form_data === 'string' ? JSON.parse(r.form_data || '{}') : (r.form_data || {});
+        const rating = fd.overall_rating || (fd.ratings ? Math.round(Object.values(fd.ratings).filter(v => v > 0).reduce((a, b) => a + b, 0) / Math.max(Object.values(fd.ratings).filter(v => v > 0).length, 1)) : null);
+        ratingMap[r.professor_id] = rating;
+      });
+    }
+
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
 
@@ -238,6 +256,7 @@ router.get('/dashboard', async (req, res, next) => {
         days_until_due: daysUntilDue,
         overdue_days: overdueDays,
         is_overdue: overdueDays !== null && overdueDays > 0,
+        current_rating: ratingMap[p.id] || null,
       };
     });
 
@@ -433,6 +452,64 @@ router.post('/observations/:id/submit-form', async (req, res, next) => {
     }
 
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// OBSERVATION HISTORY — all submitted observations
+// ═══════════════════════════════════════════════════════════════════
+
+router.get('/observations/history', async (req, res, next) => {
+  try {
+    const { professor_id, evaluator, start_date, end_date, limit = 200 } = req.query;
+
+    let where = "WHERE pe.active = 1 AND pe.form_status = 'completed'";
+    const params = [];
+
+    if (professor_id) { where += ' AND pe.professor_id = ?'; params.push(professor_id); }
+    if (evaluator) { where += ' AND pe.evaluator_professor_id = ?'; params.push(evaluator); }
+    if (start_date) { where += ' AND pe.evaluation_date >= ?'; params.push(start_date); }
+    if (end_date) { where += ' AND pe.evaluation_date <= ?'; params.push(end_date); }
+
+    const [rows] = await pool.query(
+      `SELECT pe.id, pe.professor_id, pe.evaluation_date, pe.evaluation_type, pe.result,
+              pe.form_link, pe.form_data, pe.form_status, pe.notes,
+              pe.evaluator_professor_id, pe.remediation_followup, pe.ts_inserted,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              CONCAT(ep.professor_nickname, ' ', ep.last_name) AS evaluator_name,
+              CONCAT(u.first_name, ' ', u.last_name) AS logged_by_name
+       FROM professor_evaluation pe
+       JOIN professor p ON p.id = pe.professor_id
+       LEFT JOIN professor ep ON ep.id = pe.evaluator_professor_id
+       LEFT JOIN user u ON u.id = pe.evaluator_user_id
+       ${where}
+       ORDER BY pe.evaluation_date DESC
+       LIMIT ?`,
+      [...params, parseInt(limit)]
+    );
+
+    // Attach previous rating for each row
+    for (const row of rows) {
+      const fd = typeof row.form_data === 'string' ? JSON.parse(row.form_data || '{}') : (row.form_data || {});
+      row.overall_rating = fd.overall_rating || fd.ratings ? Math.round(Object.values(fd.ratings || {}).filter(v => v > 0).reduce((a, b) => a + b, 0) / Math.max(Object.values(fd.ratings || {}).filter(v => v > 0).length, 1)) : null;
+      row.observation_type = fd.observation_type || row.evaluation_type || null;
+      row.remediation = fd.remediation || row.remediation_followup || null;
+      row.class_name = fd.location || null;
+
+      // Get previous rating for this professor before this date
+      const [prev] = await pool.query(
+        "SELECT form_data, result FROM professor_evaluation WHERE professor_id = ? AND evaluation_date < ? AND form_status = 'completed' AND active = 1 ORDER BY evaluation_date DESC LIMIT 1",
+        [row.professor_id, row.evaluation_date]
+      );
+      if (prev[0]) {
+        const pfd = typeof prev[0].form_data === 'string' ? JSON.parse(prev[0].form_data || '{}') : (prev[0].form_data || {});
+        row.previous_rating = pfd.overall_rating || (pfd.ratings ? Math.round(Object.values(pfd.ratings).filter(v => v > 0).reduce((a, b) => a + b, 0) / Math.max(Object.values(pfd.ratings).filter(v => v > 0).length, 1)) : null);
+      } else {
+        row.previous_rating = null;
+      }
+    }
+
+    res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 

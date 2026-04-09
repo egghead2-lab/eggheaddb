@@ -6,6 +6,7 @@ import { getProgram, createProgram, updateProgram, copyProgram } from '../api/pr
 import { useGeneralData, useProfessorList, useLocationList, useLessons } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
+import { AuditHistory } from '../components/AuditHistory';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
@@ -347,6 +348,9 @@ export default function ProgramDetailPage() {
             </div>
           </Section>
         </div>
+
+        {/* Audit History */}
+          {!isNew && <AuditHistory table="program" recordId={id} />}
 
         {/* Sticky Footer */}
         <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">

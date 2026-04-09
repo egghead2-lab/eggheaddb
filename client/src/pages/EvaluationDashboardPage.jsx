@@ -13,6 +13,24 @@ import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate } from '../lib/utils';
 
+const RATING_LABELS = { 1: 'Emerging', 2: 'Developing', 3: 'Performing', 4: 'Excelling', 5: 'Distinguished' };
+const RATING_COLORS = {
+  1: 'bg-red-100 text-red-700 border-red-300',
+  2: 'bg-orange-100 text-orange-700 border-orange-300',
+  3: 'bg-amber-100 text-amber-700 border-amber-300',
+  4: 'bg-green-100 text-green-700 border-green-300',
+  5: 'bg-blue-100 text-blue-700 border-blue-300',
+};
+function RatingBadge({ rating }) {
+  if (!rating) return <span className="text-gray-300 text-xs">—</span>;
+  const r = Math.round(rating);
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold ${RATING_COLORS[r] || 'bg-gray-100 text-gray-600'}`}>
+      {r} {RATING_LABELS[r] || ''}
+    </span>
+  );
+}
+
 const RESULT_COLORS = {
   pass: 'bg-green-100 text-green-700',
   needs_improvement: 'bg-amber-100 text-amber-700',
@@ -102,25 +120,29 @@ export default function EvaluationDashboardPage() {
                   <div key={area} className="mb-4">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">{area} ({profs.length})</div>
                     <div className="bg-white rounded-lg border border-red-200 overflow-hidden">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-xs table-fixed">
+                        <colgroup><col style={{width:'25%'}}/><col style={{width:'12%'}}/><col style={{width:'14%'}}/><col style={{width:'14%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/></colgroup>
+                        <thead className="bg-red-50 border-b border-red-200">
+                          <tr>
+                            <th className="text-left px-3 py-1.5 font-medium text-gray-600">Professor</th>
+                            <th className="text-left px-2 py-1.5 font-medium text-gray-600">Tier</th>
+                            <th className="text-left px-2 py-1.5 font-medium text-gray-600">Last Eval</th>
+                            <th className="text-center px-2 py-1.5 font-medium text-gray-600">Rating</th>
+                            <th className="text-left px-2 py-1.5 font-medium text-gray-600">Area</th>
+                            <th className="text-right px-2 py-1.5 font-medium text-gray-600">Status</th>
+                          </tr>
+                        </thead>
                         <tbody className="divide-y divide-gray-100">
                           {profs.map(p => (
                             <tr key={p.id} className="bg-red-50/30">
-                              <td className="px-3 py-2 w-48">
+                              <td className="px-3 py-1.5 truncate">
                                 <Link to={`/professors/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.professor_nickname} {p.last_name}</Link>
-                                <div className="text-[10px] text-gray-400">{p.professor_status_name}</div>
                               </td>
-                              <td className="px-3 py-2 text-xs text-gray-600">{p.tier_name}</td>
-                              <td className="px-3 py-2 text-xs">
-                                {p.last_evaluation_date ? (
-                                  <span className="text-gray-500">Last: {formatDate(p.last_evaluation_date)}</span>
-                                ) : (
-                                  <span className="text-amber-600 font-medium">Never evaluated</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                <span className="text-xs font-bold text-red-600">{p.overdue_days}d overdue</span>
-                              </td>
+                              <td className="px-2 py-1.5 text-gray-600">{p.tier_name}</td>
+                              <td className="px-2 py-1.5 text-gray-500">{p.last_evaluation_date ? formatDate(p.last_evaluation_date) : 'Never'}</td>
+                              <td className="px-2 py-1.5 text-center"><RatingBadge rating={p.current_rating} /></td>
+                              <td className="px-2 py-1.5 text-gray-500">{p.geographic_area_name || '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-bold text-red-600">{p.overdue_days}d overdue</td>
                             </tr>
                           ))}
                         </tbody>
@@ -176,78 +198,61 @@ export default function EvaluationDashboardPage() {
             {/* Due within 30 days */}
             {upcoming.length > 0 && (
               <Section title={`Due Within 30 Days (${upcoming.length})`} defaultOpen={true}>
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Professor</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Area</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Last Eval</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Result</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Tier</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-600">Due In</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {upcoming.map(p => (
-                        <tr key={p.id}>
-                          <td className="px-3 py-2">
-                            <Link to={`/professors/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.professor_nickname} {p.last_name}</Link>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-600">{p.geographic_area_name || '—'}</td>
-                          <td className="px-3 py-2 text-xs text-gray-600">{formatDate(p.last_evaluation_date)}</td>
-                          <td className="px-3 py-2">
-                            {p.last_evaluation_result && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${RESULT_COLORS[p.last_evaluation_result] || ''}`}>{p.last_evaluation_result.replace('_', ' ')}</span>}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-600">{p.tier_name}</td>
-                          <td className="px-3 py-2 text-right text-xs text-blue-600 font-medium">{p.days_until_due}d</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <EvalTable professors={upcoming} statusCol="due" />
               </Section>
             )}
 
             {/* On track — collapsed */}
             {onTrack.length > 0 && (
               <Section title={`On Track (${onTrack.length})`} defaultOpen={false}>
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Professor</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Area</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Last Eval</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Result</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-600">Tier</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-600">Due In</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {onTrack.map(p => (
-                        <tr key={p.id}>
-                          <td className="px-3 py-2">
-                            <Link to={`/professors/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.professor_nickname} {p.last_name}</Link>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-600">{p.geographic_area_name || '—'}</td>
-                          <td className="px-3 py-2 text-xs text-gray-600">{formatDate(p.last_evaluation_date)}</td>
-                          <td className="px-3 py-2">
-                            {p.last_evaluation_result && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${RESULT_COLORS[p.last_evaluation_result] || ''}`}>{p.last_evaluation_result.replace('_', ' ')}</span>}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-600">{p.tier_name}</td>
-                          <td className="px-3 py-2 text-right text-xs text-green-600">{p.days_until_due}d</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <EvalTable professors={onTrack} statusCol="due" />
               </Section>
             )}
           </>
         )}
       </div>
     </AppShell>
+  );
+}
+
+// Reusable evaluation table with aligned columns
+function EvalTable({ professors, statusCol }) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <table className="w-full text-xs table-fixed">
+        <colgroup><col style={{width:'22%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/><col style={{width:'16%'}}/><col style={{width:'12%'}}/><col style={{width:'14%'}}/><col style={{width:'12%'}}/></colgroup>
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="text-left px-2 py-2 font-medium text-gray-600">Professor</th>
+            <th className="text-left px-2 py-2 font-medium text-gray-600">Area</th>
+            <th className="text-left px-2 py-2 font-medium text-gray-600">Last Eval</th>
+            <th className="text-center px-2 py-2 font-medium text-gray-600">Rating</th>
+            <th className="text-left px-2 py-2 font-medium text-gray-600">Tier</th>
+            <th className="text-left px-2 py-2 font-medium text-gray-600">Evaluator</th>
+            <th className="text-right px-2 py-2 font-medium text-gray-600">{statusCol === 'due' ? 'Due In' : 'Status'}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {professors.map((p, i) => (
+            <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+              <td className="px-2 py-1.5 truncate">
+                <Link to={`/professors/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.professor_nickname} {p.last_name}</Link>
+              </td>
+              <td className="px-2 py-1.5 text-gray-600 truncate">{p.geographic_area_name || '—'}</td>
+              <td className="px-2 py-1.5 text-gray-600">{p.last_evaluation_date ? formatDate(p.last_evaluation_date) : 'Never'}</td>
+              <td className="px-2 py-1.5 text-center"><RatingBadge rating={p.current_rating} /></td>
+              <td className="px-2 py-1.5 text-gray-600">{p.tier_name}</td>
+              <td className="px-2 py-1.5 text-gray-500 truncate">{p.evaluator_name || '—'}</td>
+              <td className="px-2 py-1.5 text-right font-medium">
+                {p.is_overdue ? <span className="text-red-600">{p.overdue_days}d overdue</span>
+                  : p.days_until_due != null ? <span className={p.days_until_due <= 14 ? 'text-amber-600' : 'text-green-600'}>{p.days_until_due}d</span>
+                  : <span className="text-gray-400">—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

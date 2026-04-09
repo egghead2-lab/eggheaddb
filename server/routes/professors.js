@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { logAudit } = require('../lib/audit');
 
 // GET /api/professors
 router.get('/', authenticate, async (req, res, next) => {
@@ -241,7 +242,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
       [id, id, id]
     );
 
-    // Observations
+    // Observations: where this prof IS the observer, OR is the evaluator (peer-to-peer)
     const [observations] = await pool.query(
       `SELECT po.*, prog.program_nickname, prog.start_time, prog.class_length_minutes,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
@@ -249,17 +250,33 @@ router.get('/:id', authenticate, async (req, res, next) => {
               ga2.geographic_area_name AS program_area,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
               lp.phone_number AS lead_professor_phone,
-              CONCAT(u.first_name, ' ', u.last_name) AS assigned_by_name
+              CONCAT(u.first_name, ' ', u.last_name) AS assigned_by_name,
+              CONCAT(ep.professor_nickname, ' ', ep.last_name) AS evaluator_name,
+              CASE WHEN po.evaluator_professor_id = ? THEN 'evaluator' ELSE 'subject' END AS role_in_obs
        FROM professor_observation po
        JOIN program prog ON prog.id = po.program_id AND prog.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN geographic_area ga2 ON ga2.id = loc.geographic_area_id_online
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN professor ep ON ep.id = po.evaluator_professor_id
        LEFT JOIN user u ON u.id = po.assigned_by_user_id
-       WHERE po.professor_id = ? AND po.active = 1
+       WHERE po.active = 1 AND (po.professor_id = ? OR po.evaluator_professor_id = ?)
        ORDER BY po.observation_date ASC`,
-      [id]
+      [id, id, id]
     );
+
+    // Get this professor's sessions for conflict detection
+    const [profSessions] = await pool.query(
+      `SELECT s.session_date FROM session s
+       JOIN program p ON p.id = s.program_id AND p.active = 1
+       WHERE s.active = 1 AND (s.professor_id = ? OR s.assistant_id = ? OR p.lead_professor_id = ? OR p.assistant_professor_id = ?)
+         AND s.session_date >= CURDATE()`,
+      [id, id, id, id]
+    );
+    const sessionDateSet = new Set(profSessions.map(s => s.session_date?.toISOString().split('T')[0]));
+    observations.forEach(o => {
+      o.has_session_conflict = sessionDateSet.has(o.observation_date?.toISOString().split('T')[0]);
+    });
 
     res.json({
       success: true,
@@ -371,11 +388,16 @@ router.put('/:id', authenticate, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'No fields to update' });
     }
 
+    // Audit: snapshot before update
+    const [[oldRow]] = await pool.query('SELECT * FROM professor WHERE id = ?', [id]);
+
     await pool.query(
       `UPDATE professor SET ${updateFields.map(f => `${f} = ?`).join(', ')}, ts_updated = NOW()
        WHERE id = ?`,
       [...values, id]
     );
+
+    if (oldRow) logAudit('professor', id, req.user, oldRow, data);
 
     res.json({ success: true });
   } catch (err) {
@@ -633,26 +655,17 @@ router.post('/:id/regenerate-password', authenticate, async (req, res, next) => 
 router.post('/:id/observations', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { program_id, observation_date, observation_type, pay_amount, notes } = req.body;
+    const { program_id, observation_date, observation_type, pay_amount, is_paid, evaluator_id, notes } = req.body;
     if (!program_id || !observation_date) return res.status(400).json({ success: false, error: 'Program and date required' });
 
-    // Determine if observer is a field manager (unpaid by default)
-    const [[prof]] = await pool.query(
-      `SELECT p.user_id, u.role_id, r.role_name
-       FROM professor p
-       LEFT JOIN user u ON u.id = p.user_id
-       LEFT JOIN role r ON r.id = u.role_id
-       WHERE p.id = ?`, [id]
-    );
-    const isFieldManager = prof?.role_name === 'Field Manager';
     const type = observation_type || 'observation';
-    const isPaid = isFieldManager ? 0 : 1;
-    const pay = isFieldManager ? 0 : (pay_amount || null);
+    const paid = is_paid !== undefined ? (is_paid ? 1 : 0) : 1;
+    const pay = paid ? (pay_amount || null) : 0;
 
     const [result] = await pool.query(
-      `INSERT INTO professor_observation (professor_id, program_id, observation_date, observation_type, pay_amount, is_paid, assigned_by_user_id, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, program_id, observation_date, type, pay, isPaid, req.user.userId, notes || null]
+      `INSERT INTO professor_observation (professor_id, program_id, observation_date, observation_type, pay_amount, is_paid, assigned_by_user_id, evaluator_professor_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, program_id, observation_date, type, pay, paid, req.user.userId, evaluator_id || null, notes || null]
     );
 
     res.json({ success: true, id: result.insertId });

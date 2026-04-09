@@ -1372,6 +1372,66 @@ router.post('/my-portal/messages', async (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// CANDIDATE PHASE + PAY
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /api/onboarding/candidates/:id/move-to-training
+router.post('/candidates/:id/move-to-training', async (req, res, next) => {
+  try {
+    await pool.query("UPDATE candidate SET phase = 'training' WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/candidates/:id/move-to-onboarding
+router.post('/candidates/:id/move-to-onboarding', async (req, res, next) => {
+  try {
+    await pool.query("UPDATE candidate SET phase = 'onboarding' WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/onboarding/candidates/:id/pay-status
+router.get('/candidates/:id/pay-status', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[candidate]] = await pool.query('SELECT professor_id, onboarding_pay_submitted FROM candidate WHERE id = ?', [id]);
+    const [byCandidate] = await pool.query('SELECT id, total_training_pay, is_reviewed FROM onboarding_pay_entries WHERE candidate_id = ? LIMIT 1', [id]);
+    let payEntry = byCandidate[0] || null;
+    if (!payEntry && candidate?.professor_id) {
+      const [byProf] = await pool.query('SELECT id, total_training_pay, is_reviewed FROM onboarding_pay_entries WHERE professor_id = ? ORDER BY training_date DESC LIMIT 1', [candidate.professor_id]);
+      payEntry = byProf[0] || null;
+    }
+    res.json({ success: true, data: {
+      has_pay_entry: !!payEntry,
+      pay_amount: payEntry?.total_training_pay || 0,
+      is_reviewed: payEntry?.is_reviewed || false,
+      onboarding_pay_submitted: candidate?.onboarding_pay_submitted || false,
+    }});
+  } catch (err) { next(err); }
+});
+
+// GET /api/onboarding/missing-pay — hired candidates without onboarding pay submitted
+router.get('/missing-pay', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT c.id AS candidate_id, c.full_name, c.professor_id, c.trainer_user_id,
+              c.onboarding_pay_submitted, c.status, c.phase,
+              CONCAT(tr.first_name, ' ', tr.last_name) AS trainer_name
+       FROM candidate c
+       LEFT JOIN user tr ON tr.id = c.trainer_user_id
+       LEFT JOIN onboarding_pay_entries ope ON (ope.candidate_id = c.id OR ope.professor_id = c.professor_id)
+       WHERE c.active = 1
+         AND (c.status = 'hired' OR (c.status IN ('complete','in_progress') AND c.phase = 'training'))
+         AND c.onboarding_pay_submitted = 0
+         AND ope.id IS NULL
+       ORDER BY c.full_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // CANDIDATE SCHEDULE
 // ═══════════════════════════════════════════════════════════════════
 

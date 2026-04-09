@@ -513,5 +513,82 @@ router.delete('/substitute-reasons/:id', authenticate, async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
+// GET /api/audit/:table/:recordId — fetch audit history
+router.get('/audit/:table/:recordId', authenticate, async (req, res, next) => {
+  try {
+    const { table, recordId } = req.params;
+    const allowed = ['professor', 'program', 'location'];
+    if (!allowed.includes(table)) return res.status(400).json({ success: false, error: 'Invalid table' });
+
+    const [rows] = await pool.query(
+      'SELECT id, user_name, action, changes, ts_inserted FROM audit_log WHERE table_name = ? AND record_id = ? ORDER BY ts_inserted DESC LIMIT 100',
+      [table, recordId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/weekly-overview — sessions for a given week
+router.get('/weekly-overview', authenticate, async (req, res, next) => {
+  try {
+    let { start_date, areas } = req.query;
+
+    // Default to this Monday
+    if (!start_date) {
+      const today = new Date();
+      const day = today.getDay();
+      const diff = day === 0 ? -6 : 1 - day; // Monday
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + diff);
+      start_date = monday.toISOString().split('T')[0];
+    }
+
+    // End = start + 4 days (Friday)
+    const startD = new Date(start_date + 'T12:00:00');
+    const endD = new Date(startD);
+    endD.setDate(endD.getDate() + 4);
+    const end_date = endD.toISOString().split('T')[0];
+
+    let areaWhere = '';
+    let areaParams = [];
+    if (areas) {
+      const ids = areas.split(',').map(Number).filter(Boolean);
+      if (ids.length) { areaWhere = 'AND ga.id IN (?)'; areaParams = [ids]; }
+    }
+
+    const [rows] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.session_time,
+              s.professor_id AS session_professor_id, s.assistant_id AS session_assistant_id,
+              prog.id AS program_id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.lead_professor_id, prog.assistant_professor_id,
+              prog.first_session_date, prog.last_session_date,
+              cs.class_status_name,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_name,
+              lp.id AS lead_id,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assist_name,
+              ap.id AS assist_id,
+              l.lesson_name, l.trainual_link,
+              loc.nickname AS location_nickname,
+              ga.id AS area_id, ga.geographic_area_name
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN professor lp ON lp.id = COALESCE(s.professor_id, prog.lead_professor_id)
+       LEFT JOIN professor ap ON ap.id = COALESCE(s.assistant_id, prog.assistant_professor_id)
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
+       WHERE s.active = 1
+         AND s.session_date >= ? AND s.session_date <= ?
+         AND cs.class_status_name NOT LIKE 'Cancelled%'
+         ${areaWhere}
+       ORDER BY s.session_date ASC, s.session_time ASC, prog.program_nickname ASC`,
+      [start_date, end_date, ...areaParams]
+    );
+
+    res.json({ success: true, data: rows, start_date, end_date });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
 

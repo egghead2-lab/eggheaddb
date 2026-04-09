@@ -8,6 +8,7 @@ import { useGeneralData } from '../hooks/useReferenceData';
 import { toFormData, formatDate } from '../lib/utils';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
+import { AuditHistory } from '../components/AuditHistory';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
@@ -357,6 +358,9 @@ export default function LocationDetailPage() {
               </>
             );
           })()}
+
+          {/* Audit History */}
+          {!isNew && <AuditHistory table="location" recordId={id} />}
         </div>
 
         <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">

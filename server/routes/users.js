@@ -24,9 +24,11 @@ router.get('/', async (req, res, next) => {
     if (role) {
       whereClauses.push(`r.role_name = ?`);
       params.push(role);
-    } else if (req.query.include_candidates !== 'true') {
-      // By default exclude Candidate-role users from staff lists
-      whereClauses.push(`(u.role_id IS NULL OR u.role_id != 16)`);
+    } else if (req.query.type === 'professors') {
+      whereClauses.push(`r.role_name = 'Professor'`);
+    } else if (req.query.type === 'staff' || !req.query.include_candidates) {
+      // Exclude Candidate and Professor roles from staff view
+      whereClauses.push(`(u.role_id IS NULL OR r.role_name NOT IN ('Candidate', 'Professor'))`);
     }
 
     const where = `WHERE ${whereClauses.join(' AND ')}`;
@@ -38,7 +40,7 @@ router.get('/', async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.user_name,
-              r.role_name, u.ts_inserted, u.ts_updated
+              r.role_name, u.last_login_at, u.ts_inserted, u.ts_updated
        FROM user u
        LEFT JOIN role r ON r.id = u.role_id
        ${where}
@@ -86,7 +88,6 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { first_name, last_name, email, user_name, password, role_id } = req.body;
-    console.log('[POST /users] body:', JSON.stringify(req.body));
 
     if (!first_name || !last_name || !email || !user_name || !password || !role_id || role_id === 'undefined') {
       return res.status(400).json({ success: false, error: 'All fields are required' });
@@ -114,7 +115,6 @@ router.put('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { first_name, last_name, email, user_name, password, role_id, active } = req.body;
-    console.log('[PUT /users/' + id + '] body:', JSON.stringify(req.body));
 
     const fields = [];
     const values = [];

@@ -11,8 +11,10 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { SortTh } from '../components/ui/SortTh';
+import { formatDate } from '../lib/utils';
 
 export default function UsersPage() {
+  const [viewType, setViewType] = useState('staff'); // staff | professors
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
   const [page, setPage] = useState(1);
@@ -25,30 +27,17 @@ export default function UsersPage() {
   const [editingRoleName, setEditingRoleName] = useState('');
   const qc = useQueryClient();
 
-  const { data: rolesData } = useQuery({
-    queryKey: ['roles'],
-    queryFn: getRoles,
-  });
+  const { data: rolesData } = useQuery({ queryKey: ['roles'], queryFn: getRoles });
   const roles = rolesData?.data || [];
 
   const roleMutation = useMutation({
     mutationFn: (data) => createRole(data),
-    onSuccess: () => {
-      qc.invalidateQueries(['roles']);
-      qc.invalidateQueries(['users']);
-      setNewRoleName('');
-      setShowNewRole(false);
-    },
+    onSuccess: () => { qc.invalidateQueries(['roles']); qc.invalidateQueries(['users']); setNewRoleName(''); setShowNewRole(false); },
   });
 
   const roleUpdateMutation = useMutation({
     mutationFn: ({ id, role_name }) => updateRole(id, { role_name }),
-    onSuccess: () => {
-      qc.invalidateQueries(['roles']);
-      qc.invalidateQueries(['users']);
-      setEditingRoleId(null);
-      setEditingRoleName('');
-    },
+    onSuccess: () => { qc.invalidateQueries(['roles']); qc.invalidateQueries(['users']); setEditingRoleId(null); },
   });
 
   const handleSort = (col) => {
@@ -59,10 +48,9 @@ export default function UsersPage() {
 
   const filters = {
     search: search || undefined,
-    role: role || undefined,
-    sort: sort || undefined,
-    dir: sort ? dir : undefined,
-    page,
+    role: viewType === 'professors' ? undefined : (role || undefined),
+    type: viewType,
+    sort, dir, page,
   };
 
   const { data, isLoading } = useQuery({
@@ -74,18 +62,7 @@ export default function UsersPage() {
   const total = data?.total || 0;
   const limit = data?.limit || 50;
 
-  const reset = () => { setSearch(''); setRole(''); setPage(1); };
-  const hasFilters = search || role;
-
-  const startEditRole = (r) => {
-    setEditingRoleId(r.id);
-    setEditingRoleName(r.role_name);
-  };
-
-  const saveEditRole = () => {
-    if (!editingRoleName.trim() || !editingRoleId) return;
-    roleUpdateMutation.mutate({ id: editingRoleId, role_name: editingRoleName.trim() });
-  };
+  const staffRoles = roles.filter(r => r.role_name !== 'Professor' && r.role_name !== 'Candidate');
 
   return (
     <AppShell>
@@ -93,20 +70,14 @@ export default function UsersPage() {
         <div className="flex gap-2 items-center">
           {showNewRole ? (
             <div className="flex gap-2 items-center">
-              <input
-                type="text"
-                placeholder="New role name"
-                value={newRoleName}
+              <input type="text" placeholder="New role name" value={newRoleName}
                 onChange={e => setNewRoleName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && newRoleName.trim() && roleMutation.mutate({ role_name: newRoleName.trim() })}
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f]"
-                autoFocus
-              />
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" autoFocus />
               <Button onClick={() => newRoleName.trim() && roleMutation.mutate({ role_name: newRoleName.trim() })} disabled={roleMutation.isPending}>
                 {roleMutation.isPending ? '…' : 'Add'}
               </Button>
-              <button onClick={() => { setShowNewRole(false); setNewRoleName(''); }} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
-              {roleMutation.isError && <span className="text-xs text-red-600">{roleMutation.error?.response?.data?.error || 'Failed'}</span>}
+              <button onClick={() => { setShowNewRole(false); setNewRoleName(''); }} className="text-sm text-gray-400">Cancel</button>
             </div>
           ) : (
             <>
@@ -119,25 +90,27 @@ export default function UsersPage() {
           <Link to="/users/new"><Button>+ New User</Button></Link>
         </div>
       }>
-        <Input
-          placeholder="Search by name, email, or username…"
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
-          className="w-60"
-        />
-        <Select value={role} onChange={e => { setRole(e.target.value); setPage(1); }} className="w-52">
-          <option value="">All Roles</option>
-          {roles.map(r => (
-            <option key={r.id} value={r.role_name}>{r.role_name}</option>
-          ))}
-        </Select>
-        {hasFilters && (
-          <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-700 underline">Clear</button>
+        <Input placeholder="Search…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} className="w-48" />
+        {viewType === 'staff' && (
+          <Select value={role} onChange={e => { setRole(e.target.value); setPage(1); }} className="w-44">
+            <option value="">All Staff Roles</option>
+            {staffRoles.map(r => <option key={r.id} value={r.role_name}>{r.role_name}</option>)}
+          </Select>
         )}
       </PageHeader>
 
       <div className="p-6">
-        {/* Roles management panel */}
+        {/* View toggle */}
+        <div className="flex gap-1 mb-4">
+          {[['staff', 'Full-Time Staff'], ['professors', 'Professors']].map(([val, label]) => (
+            <button key={val} onClick={() => { setViewType(val); setRole(''); setPage(1); }}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                viewType === val ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>{label}</button>
+          ))}
+        </div>
+
+        {/* Roles panel */}
         {showRoles && (
           <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Roles</h3>
@@ -146,40 +119,22 @@ export default function UsersPage() {
                 <div key={r.id}>
                   {editingRoleId === r.id ? (
                     <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={editingRoleName}
-                        onChange={e => setEditingRoleName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') saveEditRole();
-                          if (e.key === 'Escape') { setEditingRoleId(null); setEditingRoleName(''); }
-                        }}
-                        className="rounded border border-gray-300 px-2 py-1 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f]"
-                        autoFocus
-                      />
-                      <button onClick={saveEditRole} disabled={roleUpdateMutation.isPending}
-                        className="text-xs font-medium text-white bg-[#1e3a5f] px-2 py-1 rounded hover:bg-[#152a47]">
-                        {roleUpdateMutation.isPending ? '…' : 'Save'}
-                      </button>
-                      <button onClick={() => { setEditingRoleId(null); setEditingRoleName(''); }}
-                        className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                      <input type="text" value={editingRoleName} onChange={e => setEditingRoleName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') roleUpdateMutation.mutate({ id: editingRoleId, role_name: editingRoleName.trim() }); if (e.key === 'Escape') setEditingRoleId(null); }}
+                        className="rounded border border-gray-300 px-2 py-1 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" autoFocus />
+                      <button onClick={() => roleUpdateMutation.mutate({ id: editingRoleId, role_name: editingRoleName.trim() })}
+                        className="text-xs font-medium text-white bg-[#1e3a5f] px-2 py-1 rounded">Save</button>
+                      <button onClick={() => setEditingRoleId(null)} className="text-xs text-gray-400">Cancel</button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => startEditRole(r)}
-                      className="group flex items-center gap-1"
-                      title="Click to rename"
-                    >
+                    <button onClick={() => { setEditingRoleId(r.id); setEditingRoleName(r.role_name); }} className="group flex items-center gap-1" title="Click to rename">
                       <Badge status={r.role_name} />
-                      <span className="text-xs text-gray-300 group-hover:text-gray-500 transition-colors">edit</span>
+                      <span className="text-xs text-gray-300 group-hover:text-gray-500">edit</span>
                     </button>
                   )}
                 </div>
               ))}
             </div>
-            {roleUpdateMutation.isError && (
-              <p className="text-xs text-red-600 mt-2">{roleUpdateMutation.error?.response?.data?.error || 'Failed to rename role'}</p>
-            )}
           </div>
         )}
 
@@ -194,12 +149,13 @@ export default function UsersPage() {
                     <SortTh col="name" sort={sort} dir={dir} onSort={handleSort}>Name</SortTh>
                     <SortTh col="username" sort={sort} dir={dir} onSort={handleSort}>Username</SortTh>
                     <SortTh col="email" sort={sort} dir={dir} onSort={handleSort}>Email</SortTh>
-                    <SortTh col="role" sort={sort} dir={dir} onSort={handleSort}>Role</SortTh>
+                    {viewType === 'staff' && <SortTh col="role" sort={sort} dir={dir} onSort={handleSort}>Role</SortTh>}
+                    <th className="text-left px-3 py-3 font-semibold text-gray-700">Last Login</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {users.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center py-12 text-gray-400">No users found</td></tr>
+                    <tr><td colSpan={viewType === 'staff' ? 5 : 4} className="text-center py-12 text-gray-400">No users found</td></tr>
                   ) : users.map((u, i) => (
                     <tr key={u.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className="px-4 py-2.5">
@@ -209,14 +165,17 @@ export default function UsersPage() {
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{u.user_name}</td>
                       <td className="px-4 py-2.5 text-gray-600">{u.email}</td>
-                      <td className="px-4 py-2.5"><Badge status={u.role_name} /></td>
+                      {viewType === 'staff' && <td className="px-4 py-2.5"><Badge status={u.role_name} /></td>}
+                      <td className="px-3 py-2.5 text-xs text-gray-500">
+                        {u.last_login_at ? formatDate(u.last_login_at) : <span className="text-gray-300">Never</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
-              <span>{total} user{total !== 1 ? 's' : ''}</span>
+              <span>{total} {viewType === 'professors' ? 'professor' : 'user'}{total !== 1 ? 's' : ''}</span>
               {total > limit && (
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>

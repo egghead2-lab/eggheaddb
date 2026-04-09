@@ -45,12 +45,14 @@ export default function PayrollDashboardPage() {
   const { data: onboardData } = useQuery({ queryKey: ['payroll-unreviewed-onboard'], queryFn: () => api.get('/payroll/onboarding-pay?reviewed=false').then(r => r.data) });
   const { data: gustoData } = useQuery({ queryKey: ['payroll-missing-gusto'], queryFn: () => api.get('/payroll/missing-gusto-codes').then(r => r.data) });
   const { data: logsData } = useQuery({ queryKey: ['nightly-logs'], queryFn: () => api.get('/payroll/nightly-job/logs').then(r => r.data) });
+  const { data: missingPayData } = useQuery({ queryKey: ['missing-onboard-pay'], queryFn: () => api.get('/onboarding/missing-pay').then(r => r.data), staleTime: 60 * 1000 });
 
   const missing = missingData?.data?.length || 0;
   const unrevMisc = miscData?.data?.length || 0;
   const unrevOnboard = onboardData?.data?.length || 0;
   const missingGusto = gustoData?.data || [];
   const lastLog = logsData?.data?.[0];
+  const missingOnboardPay = missingPayData?.data || [];
 
   const nightlyMutation = useMutation({
     mutationFn: () => api.post('/payroll/nightly-job/run'),
@@ -62,7 +64,7 @@ export default function PayrollDashboardPage() {
       <PayrollTabBar />
       <div className="p-6 space-y-4 max-w-[1000px]">
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <Link to="/payroll/session-pay" className="rounded-lg border p-4 bg-white border-gray-200 hover:shadow-sm transition-shadow">
             <div className="text-xs text-gray-500">Missing Assist Pay</div>
             <div className={`text-2xl font-bold ${missing > 0 ? 'text-red-600' : 'text-gray-300'}`}>{missing}</div>
@@ -79,7 +81,28 @@ export default function PayrollDashboardPage() {
             <div className="text-xs text-gray-500">Missing Gusto IDs</div>
             <div className={`text-2xl font-bold ${missingGusto.length > 0 ? 'text-red-600' : 'text-gray-300'}`}>{missingGusto.length}</div>
           </Link>
+          <Link to="/candidates" className={`rounded-lg border p-4 ${missingOnboardPay.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'} hover:shadow-sm transition-shadow`}>
+            <div className="text-xs text-gray-500">Missing Onboard Pay</div>
+            <div className={`text-2xl font-bold ${missingOnboardPay.length > 0 ? 'text-red-600' : 'text-gray-300'}`}>{missingOnboardPay.length}</div>
+          </Link>
         </div>
+
+        {/* Missing onboarding pay warning */}
+        {missingOnboardPay.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="text-sm font-semibold text-red-700 mb-2">Missing Onboarding Pay Forms</div>
+            <div className="space-y-1">
+              {missingOnboardPay.map(c => (
+                <div key={c.candidate_id} className="flex items-center gap-3 text-xs">
+                  <Link to={`/candidates/${c.candidate_id}`} className="font-medium text-[#1e3a5f] hover:underline">{c.full_name}</Link>
+                  <span className="text-gray-500">{c.status === 'hired' ? 'Hired' : `Training (${c.phase})`}</span>
+                  {c.trainer_name && <span className="text-gray-400">Trainer: {c.trainer_name}</span>}
+                  <span className="text-red-600 font-medium ml-auto">No pay form submitted</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Missing Gusto warning */}
         {missingGusto.length > 0 && (

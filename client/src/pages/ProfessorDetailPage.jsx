@@ -7,6 +7,7 @@ import api from '../api/client';
 import { useGeneralData, useLocationList } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { Section } from '../components/ui/Section';
+import { AuditHistory } from '../components/AuditHistory';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
@@ -395,17 +396,39 @@ const OBS_DAYS_MAP = ['monday','tuesday','wednesday','thursday','friday','saturd
 const OBS_DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function obsGetDays(p) { return OBS_DAYS_MAP.map((d, i) => p[d] ? OBS_DAY_LABELS[i] : null).filter(Boolean).join(', '); }
 
-function ObservationSection({ professorId, observations, professorAreaId, areas, qc }) {
+function ObservationSection({ professorId, observations, basePay, qc }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [addStep, setAddStep] = useState('type'); // type | details
+  const [obsType, setObsType] = useState(''); // observation | evaluation
+  const [evalSubType, setEvalSubType] = useState(''); // fm | peer_to_peer
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [searchAreaId, setSearchAreaId] = useState(professorAreaId || '');
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [obsDate, setObsDate] = useState('');
-  const [obsType, setObsType] = useState('observation');
   const [obsPay, setObsPay] = useState('');
+  const [evaluatorId, setEvaluatorId] = useState('');
   const [obsNotes, setObsNotes] = useState('');
+  const [sessionDates, setSessionDates] = useState([]);
+  const [showAllDates, setShowAllDates] = useState(false);
   const searchTimeout = useRef(null);
+
+  // FM list (users with Field Manager role)
+  const { data: fmData } = useQuery({
+    queryKey: ['fm-users'],
+    queryFn: () => api.get('/users?role=Field Manager&limit=100').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+    enabled: showAdd,
+  });
+  const fmUsers = fmData?.data || [];
+
+  // Professor list (for peer-to-peer)
+  const { data: profListData } = useQuery({
+    queryKey: ['professor-list'],
+    queryFn: () => api.get('/professors/list').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+    enabled: showAdd,
+  });
+  const professorList = profListData?.data || [];
 
   const today = new Date().toISOString().split('T')[0];
   const upcoming = observations.filter(o => o.observation_date && o.observation_date.split('T')[0] >= today && o.status !== 'cancelled');
@@ -413,12 +436,16 @@ function ObservationSection({ professorId, observations, professorAreaId, areas,
 
   const invalidate = () => qc.invalidateQueries(['professors', professorId]);
 
+  const resetForm = () => {
+    setShowAdd(false); setAddStep('type'); setObsType(''); setEvalSubType('');
+    setSelectedProgram(null); setSearchQuery(''); setSearchResults([]);
+    setObsDate(''); setObsPay(''); setEvaluatorId(''); setObsNotes('');
+    setSessionDates([]); setShowAllDates(false);
+  };
+
   const addMutation = useMutation({
     mutationFn: (data) => api.post(`/professors/${professorId}/observations`, data),
-    onSuccess: () => {
-      invalidate(); setShowAdd(false); setSelectedProgram(null);
-      setObsDate(''); setObsType('observation'); setObsPay(''); setObsNotes('');
-    },
+    onSuccess: resetForm,
   });
 
   const updateMutation = useMutation({
@@ -431,15 +458,26 @@ function ObservationSection({ professorId, observations, professorAreaId, areas,
     onSuccess: invalidate,
   });
 
+  const fetchSessions = async (programId) => {
+    try {
+      const res = await api.get(`/programs/${programId}/sessions`);
+      const today = new Date().toISOString().split('T')[0];
+      const future = (res.data?.data || [])
+        .filter(s => s.session_date && s.session_date.split('T')[0] >= today)
+        .sort((a, b) => a.session_date.localeCompare(b.session_date));
+      setSessionDates(future);
+      setShowAllDates(false);
+      setObsDate('');
+    } catch { setSessionDates([]); }
+  };
+
   const handleSearch = (val) => {
     setSearchQuery(val);
     if (val.length < 2) { setSearchResults([]); return; }
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(async () => {
       try {
-        const res = await api.get('/professors/observations/search-programs', {
-          params: { search: val, area_id: searchAreaId || undefined }
-        });
+        const res = await api.get('/professors/observations/search-programs', { params: { search: val } });
         setSearchResults(res.data?.data || []);
       } catch { setSearchResults([]); }
     }, 200);
@@ -447,11 +485,16 @@ function ObservationSection({ professorId, observations, professorAreaId, areas,
 
   const handleAdd = () => {
     if (!selectedProgram || !obsDate) return;
+    const isEval = obsType === 'evaluation';
+    const isPeerToPeer = evalSubType === 'peer_to_peer';
+    const isFM = evalSubType === 'fm';
     addMutation.mutate({
       program_id: selectedProgram.id,
       observation_date: obsDate,
-      observation_type: obsType,
-      pay_amount: obsPay || null,
+      observation_type: isEval ? 'evaluation' : 'observation',
+      pay_amount: isEval ? (isFM ? 0 : (obsPay || null)) : (obsPay || null),
+      is_paid: isEval ? (isPeerToPeer ? 1 : 0) : 1,
+      evaluator_id: evaluatorId || null,
       notes: obsNotes || null,
     });
   };
@@ -459,33 +502,45 @@ function ObservationSection({ professorId, observations, professorAreaId, areas,
   const renderRow = (o, isPast) => {
     const dateStr = (o.observation_date || '').split('T')[0];
     const isEval = o.observation_type === 'evaluation';
+    const isObserverRole = o.role_in_obs === 'evaluator'; // this prof is doing the observing
+    const isPeerToPeer = isEval && o.evaluator_professor_id;
+    const typeLabel = isEval
+      ? (isPeerToPeer ? 'Peer to Peer' : 'Evaluation')
+      : 'Class Observe';
     return (
       <div key={o.id} className={`flex items-start gap-3 px-3 py-2 rounded text-sm ${
         isPast ? 'bg-gray-50 text-gray-400' :
+        o.has_session_conflict ? 'bg-red-50/50' :
+        isObserverRole ? 'bg-blue-50/30' :
         isEval ? 'bg-violet-50/50' : 'bg-white'
       }`}>
         <div className="w-20 shrink-0">
           <div className={`font-medium ${isPast ? '' : 'text-gray-700'}`}>{formatDate(dateStr)}</div>
+          {o.start_time && <div className="text-[10px] text-gray-400">{formatTime(o.start_time)}</div>}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`font-medium ${isPast ? 'text-gray-400' : 'text-gray-800'}`}>{o.program_nickname}</span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
               isEval ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'
-            }`}>{isEval ? 'Evaluation' : 'Observation'}</span>
+            }`}>{typeLabel}</span>
+            {isObserverRole && <span className="text-[10px] px-1 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">You're observing</span>}
             {o.is_paid ? (
-              <span className="text-[10px] text-green-600">{o.pay_amount ? `$${o.pay_amount}` : 'Paid'}</span>
+              <span className="text-[10px] text-green-600">{o.pay_amount ? `$${o.pay_amount}` : 'Paid'}{isObserverRole ? ' (observer pay)' : ''}</span>
             ) : (
               <span className="text-[10px] text-gray-400">Unpaid</span>
+            )}
+            {!isPast && o.has_session_conflict && (
+              <span className="text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-bold">Session conflict</span>
             )}
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
             {o.location_nickname}{o.address ? ` — ${o.address}` : ''}
           </div>
           <div className="text-xs text-gray-500">
-            {o.start_time ? formatTime(o.start_time) : '—'} &bull;
             Lead: <span className="font-medium">{o.lead_professor_name || '—'}</span>
             {o.lead_professor_phone && <span className="ml-1 text-gray-400">{o.lead_professor_phone}</span>}
+            {o.evaluator_name && !isObserverRole && <span> &bull; Observer: <span className="font-medium">{o.evaluator_name}</span></span>}
           </div>
           {o.notes && <div className="text-xs text-gray-400 mt-0.5">{o.notes}</div>}
         </div>
@@ -505,49 +560,149 @@ function ObservationSection({ professorId, observations, professorAreaId, areas,
     <Section title={`Observations (${upcoming.length} upcoming)`} defaultOpen={upcoming.length > 0 || observations.length > 0}>
       {/* Add form */}
       {!showAdd ? (
-        <button type="button" onClick={() => setShowAdd(true)} className="text-xs text-[#1e3a5f] hover:underline mb-3">+ Schedule observation</button>
+        <button type="button" onClick={() => setShowAdd(true)} className="text-xs text-[#1e3a5f] hover:underline mb-3">+ Schedule observation / evaluation</button>
       ) : (
-        <div className="bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
-          <div className="flex gap-2 items-center">
-            <select value={searchAreaId} onChange={e => { setSearchAreaId(e.target.value); setSearchResults([]); }}
-              className="rounded border border-gray-300 px-2 py-1 text-xs w-40">
-              <option value="">All areas</option>
-              {areas.map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
-            </select>
-            <div className="flex-1 relative">
-              <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
-                placeholder="Search programs…" className="w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-              {searchResults.length > 0 && (
-                <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                  {searchResults.map(p => (
-                    <li key={p.id} onMouseDown={e => { e.preventDefault(); setSelectedProgram(p); setSearchQuery(p.program_nickname); setSearchResults([]); }}
-                      className="px-3 py-2 text-xs cursor-pointer hover:bg-[#1e3a5f]/10">
-                      <div className="font-medium">{p.program_nickname}</div>
-                      <div className="text-gray-400">{p.location_nickname} &bull; {p.lead_professor_name || 'No lead'} &bull; {p.geographic_area_name || ''}</div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <button type="button" onClick={() => { setShowAdd(false); setSelectedProgram(null); setSearchQuery(''); }}
-              className="text-xs text-gray-400">Cancel</button>
+        <div className="bg-gray-50 rounded-lg p-3 mb-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-600">Schedule</span>
+            <button type="button" onClick={resetForm} className="text-xs text-gray-400">Cancel</button>
           </div>
-          {selectedProgram && (
-            <div className="bg-white rounded border border-gray-200 p-2 text-xs">
-              <div className="font-medium text-gray-800">{selectedProgram.program_nickname}</div>
-              <div className="text-gray-500">{selectedProgram.location_nickname} — {selectedProgram.address || ''}</div>
-              <div className="text-gray-500">Lead: {selectedProgram.lead_professor_name || '—'} {selectedProgram.lead_professor_phone || ''}</div>
-              <div className="flex gap-2 mt-2 items-center flex-wrap">
-                <Input type="date" value={obsDate} onChange={e => setObsDate(e.target.value)} className="w-36" />
-                <select value={obsType} onChange={e => setObsType(e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1 text-xs">
-                  <option value="observation">Observation</option>
-                  <option value="evaluation">Evaluation</option>
-                </select>
-                <Input type="number" placeholder="Pay $" value={obsPay} onChange={e => setObsPay(e.target.value)} className="w-20" />
+
+          {/* Step 1: Type */}
+          {addStep === 'type' && (
+            <div className="space-y-2">
+              <div className="text-xs text-gray-500">What are you scheduling for this professor?</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setObsType('observation'); setObsPay(basePay || ''); setAddStep('details'); }}
+                  className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium text-left hover:border-[#1e3a5f]/40 transition-colors bg-white border-gray-200">
+                  <div className="text-blue-700 font-semibold">Observation</div>
+                  <div className="text-gray-400 mt-0.5">This professor observes a class (paid)</div>
+                </button>
+                <button type="button" onClick={() => { setObsType('evaluation'); setAddStep('eval_who'); }}
+                  className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium text-left hover:border-[#1e3a5f]/40 transition-colors bg-white border-gray-200">
+                  <div className="text-violet-700 font-semibold">Evaluation</div>
+                  <div className="text-gray-400 mt-0.5">Someone evaluates this professor</div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 1b: Who's evaluating? */}
+          {addStep === 'eval_who' && (
+            <div className="space-y-2">
+              <div className="text-xs text-gray-500">Who is evaluating this professor?</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setEvalSubType('fm'); setObsPay('0'); setAddStep('details'); }}
+                  className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium text-left hover:border-[#1e3a5f]/40 transition-colors bg-white border-gray-200">
+                  <div className="text-emerald-700 font-semibold">Field Manager</div>
+                  <div className="text-gray-400 mt-0.5">FM evaluation — unpaid</div>
+                </button>
+                <button type="button" onClick={() => { setEvalSubType('peer_to_peer'); setAddStep('details'); }}
+                  className="flex-1 px-3 py-2 rounded-lg border text-xs font-medium text-left hover:border-[#1e3a5f]/40 transition-colors bg-white border-gray-200">
+                  <div className="text-violet-700 font-semibold">Peer to Peer</div>
+                  <div className="text-gray-400 mt-0.5">Another professor — observer is paid</div>
+                </button>
+              </div>
+              <button type="button" onClick={() => setAddStep('type')} className="text-[10px] text-gray-400 hover:text-gray-600">← Back</button>
+            </div>
+          )}
+
+          {/* Step 2: Details */}
+          {addStep === 'details' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className={`px-1.5 py-0.5 rounded font-medium ${obsType === 'observation' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'}`}>
+                  {obsType === 'observation' ? 'Observation' : evalSubType === 'fm' ? 'FM Evaluation' : 'Peer to Peer'}
+                </span>
+                <button type="button" onClick={() => setAddStep('type')} className="text-[10px] text-gray-400 hover:text-gray-600">← Change</button>
+              </div>
+
+              {/* Evaluator selection (evaluation only) */}
+              {obsType === 'evaluation' && (
+                <div>
+                  <label className="text-[10px] text-gray-500 block mb-0.5">
+                    {evalSubType === 'fm' ? 'Field Manager' : 'Observing Professor (paid)'}
+                  </label>
+                  {evalSubType === 'fm' ? (
+                    <select value={evaluatorId} onChange={e => setEvaluatorId(e.target.value)}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs w-full">
+                      <option value="">Select field manager…</option>
+                      {fmUsers.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
+                    </select>
+                  ) : (
+                    <select value={evaluatorId} onChange={e => { setEvaluatorId(e.target.value); const p = professorList.find(x => String(x.id) === e.target.value); if (p) setObsPay(p.base_pay || ''); }}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs w-full">
+                      <option value="">Select professor…</option>
+                      {professorList.filter(p => String(p.id) !== String(professorId)).map(p => (
+                        <option key={p.id} value={p.id}>{p.display_name || `${p.professor_nickname} ${p.last_name || ''}`}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Program search */}
+              <div>
+                <label className="text-[10px] text-gray-500 block mb-0.5">
+                  {obsType === 'observation' ? 'Class to observe' : 'Class being evaluated at'}
+                </label>
+                <div className="relative">
+                  <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
+                    placeholder="Search programs…" className="w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                  {searchResults.length > 0 && (
+                    <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {searchResults.map(p => (
+                        <li key={p.id} onMouseDown={e => { e.preventDefault(); setSelectedProgram(p); setSearchQuery(p.program_nickname); setSearchResults([]); fetchSessions(p.id); }}
+                          className="px-3 py-2 text-xs cursor-pointer hover:bg-[#1e3a5f]/10">
+                          <div className="font-medium">{p.program_nickname}</div>
+                          <div className="text-gray-400">{p.location_nickname} &bull; {p.lead_professor_name || 'No lead'}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {selectedProgram && (
+                <div className="bg-white rounded border border-gray-200 p-2 text-xs">
+                  <div className="font-medium text-gray-800">{selectedProgram.program_nickname}</div>
+                  <div className="text-gray-500">{selectedProgram.location_nickname}{selectedProgram.address ? ` — ${selectedProgram.address}` : ''}</div>
+                  <div className="text-gray-500">Lead: {selectedProgram.lead_professor_name || '—'} {selectedProgram.lead_professor_phone || ''}</div>
+                </div>
+              )}
+
+              <div className="flex gap-2 items-center flex-wrap">
+                {sessionDates.length > 0 ? (
+                  <div className="flex items-center gap-1">
+                    <select value={obsDate} onChange={e => setObsDate(e.target.value)}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs w-52">
+                      <option value="">Select session date…</option>
+                      {(showAllDates ? sessionDates : sessionDates.slice(0, 3)).map(s => {
+                        const d = s.session_date.split('T')[0];
+                        const dow = new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+                        return <option key={s.id} value={d}>{dow} {formatDate(d)}{s.session_time ? ` — ${formatTime(s.session_time)}` : ''}</option>;
+                      })}
+                    </select>
+                    {!showAllDates && sessionDates.length > 3 && (
+                      <button type="button" onClick={() => setShowAllDates(true)}
+                        className="text-[10px] text-[#1e3a5f] hover:underline">+{sessionDates.length - 3} more</button>
+                    )}
+                  </div>
+                ) : selectedProgram ? (
+                  <span className="text-[10px] text-gray-400">No upcoming sessions</span>
+                ) : (
+                  <span className="text-[10px] text-gray-400">Select a class first</span>
+                )}
+                {(obsType === 'observation' || evalSubType === 'peer_to_peer') && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-500">{obsType === 'observation' ? 'Pay (this prof):' : 'Pay (observer):'}</span>
+                    <Input type="number" placeholder="$" value={obsPay} onChange={e => setObsPay(e.target.value)} className="w-20" />
+                  </div>
+                )}
+                {evalSubType === 'fm' && <span className="text-[10px] text-gray-400">FM evaluations are unpaid</span>}
                 <Input placeholder="Notes…" value={obsNotes} onChange={e => setObsNotes(e.target.value)} className="w-40" />
-                <Button size="sm" type="button" onClick={handleAdd} disabled={!obsDate || addMutation.isPending}>
-                  {addMutation.isPending ? '…' : 'Add'}
+                <Button size="sm" type="button" onClick={handleAdd} disabled={!obsDate || !selectedProgram || addMutation.isPending}>
+                  {addMutation.isPending ? '…' : 'Schedule'}
                 </Button>
               </div>
               {addMutation.isError && <p className="text-xs text-red-600 mt-1">{addMutation.error?.response?.data?.error || 'Failed'}</p>}
@@ -1184,10 +1339,13 @@ export default function ProfessorDetailPage() {
           {!isNew && <SubstituteDatesSection professorId={id} daysOff={prof.daysOff || []} substituteReasons={ref.substituteReasons || []} qc={qc} />}
 
           {/* Observation Schedule */}
-          {!isNew && <ObservationSection professorId={id} observations={prof.observations || []} professorAreaId={prof.geographic_area_id} areas={ref.areas || []} qc={qc} />}
+          {!isNew && <ObservationSection professorId={id} observations={prof.observations || []} basePay={prof.base_pay} qc={qc} />}
 
           {/* Evaluation History */}
           {!isNew && <EvaluationSection professorId={id} hireDate={prof.hire_date} lastEvalDate={prof.last_evaluation_date} lastEvalResult={prof.last_evaluation_result} />}
+
+          {/* Audit History */}
+          {!isNew && <AuditHistory table="professor" recordId={id} />}
 
           {/* Section 8: Materials / Bins */}
           <Section title="Materials / Bins">

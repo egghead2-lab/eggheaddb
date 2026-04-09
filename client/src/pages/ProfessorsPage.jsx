@@ -170,7 +170,7 @@ export default function ProfessorsPage() {
                       </td>
                       {v('nickname') && <td className="px-4 py-2.5">
                         <Link to={`/professors/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">
-                          {p.professor_nickname}
+                          {p.professor_nickname} {p.last_name || ''}
                         </Link>
                       </td>}
                       {v('status') && <td className="px-4 py-2.5"><Badge status={p.professor_status_name} /></td>}

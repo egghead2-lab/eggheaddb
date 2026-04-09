@@ -23,6 +23,7 @@ export default function CandidateDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showHire, setShowHire] = useState(false);
+  const [showDeactivate, setShowDeactivate] = useState(false);
   const [hireNickname, setHireNickname] = useState('');
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', due_date: '', assigned_to_user_id: '' });
@@ -154,6 +155,11 @@ export default function CandidateDetailPage() {
     onSuccess: () => { qc.invalidateQueries(['candidates']); navigate('/candidates'); },
   });
 
+  const phaseMutation = useMutation({
+    mutationFn: (phase) => api.post(`/onboarding/candidates/${id}/move-to-${phase}`),
+    onSuccess: () => qc.invalidateQueries(['candidate', id]),
+  });
+
   const hireMutation = useMutation({
     mutationFn: () => {
       const schedule = candidate.schedule || [];
@@ -197,19 +203,37 @@ export default function CandidateDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              {!isNew && candidate.phase && candidate.status !== 'hired' && (
+                <span className={`text-[10px] font-medium px-2 py-1 rounded-lg ${
+                  candidate.phase === 'training' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'
+                }`}>{candidate.phase === 'training' ? 'Training' : 'Onboarding'}</span>
+              )}
+              {!isNew && candidate.phase === 'onboarding' && candidate.status !== 'hired' && (
+                <button type="button" onClick={() => { if (confirm('Move to Training phase? This marks onboarding as complete.')) phaseMutation.mutate('training'); }}
+                  className="text-[10px] text-violet-600 border border-violet-200 px-2 py-1 rounded-lg hover:bg-violet-50">
+                  Move to Training
+                </button>
+              )}
+              {!isNew && candidate.phase === 'training' && candidate.status !== 'hired' && (
+                <button type="button" onClick={() => phaseMutation.mutate('onboarding')}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 underline">Back to Onboarding</button>
+              )}
               {!isNew && <Link to={`/candidates/${id}/profile`} className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">Profile & Settings</Link>}
               {!isNew && candidate.status !== 'hired' && (
                 <>
-                  <button type="button"
-                    onClick={() => { if (confirm(`Remove ${candidate.full_name}?`)) deleteMutation.mutate(); }}
+                  <button type="button" onClick={() => setShowDeactivate(v => !v)}
                     className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
-                    Uninvite
+                    Deactivate
                   </button>
                   <Button type="button" size="sm" onClick={() => setShowHire(true)}>Hire</Button>
                 </>
               )}
             </div>
           </div>
+
+          {/* Deactivation panel */}
+          {showDeactivate && <DeactivationPanel candidate={candidate} candidateId={id}
+            onClose={() => setShowDeactivate(false)} onDeactivated={() => { qc.invalidateQueries(['candidates']); navigate('/candidates'); }} />}
 
           {/* Team card — inline */}
           {!isNew && (candidate.onboarder_name || candidate.trainer_name || candidate.scheduling_coordinator_name || candidate.field_manager_name) && (
@@ -450,6 +474,12 @@ export default function CandidateDetailPage() {
                 </div>
               )}
 
+              {!candidate.onboarding_pay_submitted && (
+                <div className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  Onboarding pay form has not been submitted. The trainer must complete this form for payroll.
+                </div>
+              )}
+
               <div className="flex gap-3 mt-4 justify-end">
                 <button onClick={() => setShowHire(false)} className="text-sm text-gray-500">Cancel</button>
                 <Button onClick={() => hireMutation.mutate()} disabled={hireMutation.isPending || !hireNickname}>
@@ -654,6 +684,150 @@ function CandidateScheduleSection({ candidateId, schedule, scheduleReady, schedu
         </div>
       )}
     </Section>
+  );
+}
+
+// ── Deactivation Panel ─────────────────────────────────────────────
+
+function DeactivationPanel({ candidate, candidateId, onClose, onDeactivated }) {
+  const [step, setStep] = useState('confirm'); // confirm | pay_form | done
+  const [payForm, setPayForm] = useState({
+    training_date: new Date().toISOString().split('T')[0],
+    trainual_completed: false, trainual_pay: 35,
+    virtual_training_completed: false, virtual_training_pay: 40,
+    bg_check_completed: false, bg_check_cost: 55,
+    training_outcome: 'Will Not Complete Training',
+  });
+
+  const isTraining = candidate.phase === 'training';
+
+  const deactivateMutation = useMutation({
+    mutationFn: () => api.delete(`/onboarding/candidates/${candidateId}`),
+    onSuccess: onDeactivated,
+  });
+
+  const payAndDeactivateMutation = useMutation({
+    mutationFn: async () => {
+      // Submit pay form first
+      await api.post('/payroll/onboarding-pay', {
+        ...payForm,
+        professor_id: candidate.professor_id || null,
+        professor_name_raw: candidate.full_name,
+        trainer: candidate.trainer_name || '',
+        candidate_id: candidateId,
+        terminate_upon_payment: 1,
+      });
+      // Then deactivate
+      await api.delete(`/onboarding/candidates/${candidateId}`);
+    },
+    onSuccess: onDeactivated,
+  });
+
+  const total = (payForm.trainual_completed ? Number(payForm.trainual_pay) || 0 : 0)
+    + (payForm.virtual_training_completed ? Number(payForm.virtual_training_pay) || 0 : 0);
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-3">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-semibold text-red-800">Deactivate {candidate.full_name}</div>
+        <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">&times; Cancel</button>
+      </div>
+
+      {step === 'confirm' && !isTraining && (
+        <div className="space-y-3">
+          <p className="text-xs text-red-700">
+            This candidate is in the <strong>Onboarding</strong> phase. No training pay is typically owed.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => deactivateMutation.mutate()}
+              disabled={deactivateMutation.isPending}
+              className="px-3 py-1.5 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
+              {deactivateMutation.isPending ? 'Deactivating…' : 'Deactivate — No Pay Owed'}
+            </button>
+            <button type="button" onClick={() => setStep('pay_form')}
+              className="px-3 py-1.5 text-xs text-red-600 border border-red-300 rounded-lg hover:bg-red-100">
+              Pay Is Owed — Fill Form
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'confirm' && isTraining && (
+        <div className="space-y-3">
+          <p className="text-xs text-red-700">
+            This candidate is in the <strong>Training</strong> phase. Onboarding pay form is required before deactivation.
+          </p>
+          <button type="button" onClick={() => setStep('pay_form')}
+            className="px-3 py-1.5 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700">
+            Fill Out Pay Form to Deactivate
+          </button>
+        </div>
+      )}
+
+      {step === 'pay_form' && (
+        <div className="space-y-3">
+          <div className="text-xs font-medium text-gray-700">Onboarding Pay Form</div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={payForm.trainual_completed}
+                onChange={e => setPayForm(f => ({ ...f, trainual_completed: e.target.checked }))}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+              <span>Trainual Completed</span>
+              {payForm.trainual_completed && (
+                <input type="number" value={payForm.trainual_pay} onChange={e => setPayForm(f => ({ ...f, trainual_pay: e.target.value }))}
+                  className="w-16 rounded border border-gray-300 px-1.5 py-0.5 text-xs" />
+              )}
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={payForm.virtual_training_completed}
+                onChange={e => setPayForm(f => ({ ...f, virtual_training_completed: e.target.checked }))}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+              <span>Virtual Training</span>
+              {payForm.virtual_training_completed && (
+                <input type="number" value={payForm.virtual_training_pay} onChange={e => setPayForm(f => ({ ...f, virtual_training_pay: e.target.value }))}
+                  className="w-16 rounded border border-gray-300 px-1.5 py-0.5 text-xs" />
+              )}
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={payForm.bg_check_completed}
+                onChange={e => setPayForm(f => ({ ...f, bg_check_completed: e.target.checked }))}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+              <span>BG Check</span>
+              {payForm.bg_check_completed && (
+                <input type="number" value={payForm.bg_check_cost} onChange={e => setPayForm(f => ({ ...f, bg_check_cost: e.target.value }))}
+                  className="w-16 rounded border border-gray-300 px-1.5 py-0.5 text-xs" />
+              )}
+            </label>
+            <div>
+              <span className="text-gray-500">Outcome</span>
+              <select value={payForm.training_outcome} onChange={e => setPayForm(f => ({ ...f, training_outcome: e.target.value }))}
+                className="ml-1 rounded border border-gray-300 px-1.5 py-0.5 text-xs">
+                <option>Will Not Complete Training</option>
+                <option>Lost Candidate</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2 border-t border-red-200">
+            <div className="text-xs text-gray-600">
+              Total pay: <strong className={total > 0 ? 'text-green-700' : 'text-gray-400'}>${total.toFixed(2)}</strong>
+              {total === 0 && <span className="text-gray-400 ml-1">(no pay owed)</span>}
+            </div>
+            <div className="ml-auto flex gap-2">
+              <button type="button" onClick={() => setStep('confirm')} className="text-xs text-gray-500">Back</button>
+              <button type="button" onClick={() => payAndDeactivateMutation.mutate()}
+                disabled={payAndDeactivateMutation.isPending}
+                className="px-3 py-1.5 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
+                {payAndDeactivateMutation.isPending ? 'Processing…' : `Submit Pay & Deactivate`}
+              </button>
+            </div>
+          </div>
+          {payAndDeactivateMutation.isError && <p className="text-xs text-red-600">{payAndDeactivateMutation.error?.response?.data?.error || 'Failed'}</p>}
+        </div>
+      )}
+
+      {deactivateMutation.isError && <p className="text-xs text-red-600 mt-2">{deactivateMutation.error?.response?.data?.error || 'Failed'}</p>}
+    </div>
   );
 }
 

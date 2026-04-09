@@ -8,7 +8,7 @@ import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import api from '../api/client';
 
-const NAV_GROUP_OPTIONS = ['Dashboard', 'Operations', 'People', 'Sales', 'Scheduling', 'Curriculum', 'Admin', 'Tools'];
+const DEFAULT_GROUPS = ['Dashboard', 'Operations', 'People', 'Sales', 'Scheduling', 'Curriculum', 'Onboarding', 'Field Managing', 'FM Tools', 'Warehouse Tools', 'Admin', 'Tools'];
 
 export default function ToolManagerPage() {
   const [showAdd, setShowAdd] = useState(false);
@@ -16,6 +16,11 @@ export default function ToolManagerPage() {
   const [newLabel, setNewLabel] = useState('');
   const [newGroup, setNewGroup] = useState('');
   const [newUniversal, setNewUniversal] = useState(false);
+  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [customGroups, setCustomGroups] = useState([]);
+  const [renamingGroup, setRenamingGroup] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -25,6 +30,17 @@ export default function ToolManagerPage() {
 
   const tools = data?.data || [];
   const roles = data?.roles || [];
+
+  // Build dynamic group list from existing tools + defaults
+  const existingGroups = [...new Set(tools.map(t => t.nav_group).filter(Boolean))];
+  const navGroupOptions = [...new Set([...DEFAULT_GROUPS, ...existingGroups, ...customGroups])].sort((a, b) => {
+    const order = ['Dashboard', 'Operations', 'People', 'Sales', 'Scheduling', 'Curriculum'];
+    const ai = order.indexOf(a), bi = order.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => api.put(`/tools/${id}`, data),
@@ -39,6 +55,11 @@ export default function ToolManagerPage() {
   const createMutation = useMutation({
     mutationFn: (d) => api.post('/tools', d),
     onSuccess: () => { qc.invalidateQueries(['tools-admin']); setShowAdd(false); setNewPath(''); setNewLabel(''); setNewGroup(''); setNewUniversal(false); },
+  });
+
+  const renameGroupMutation = useMutation({
+    mutationFn: ({ oldName, newName }) => api.post('/tools/rename-group', { old_name: oldName, new_name: newName }),
+    onSuccess: () => { qc.invalidateQueries(['tools-admin']); qc.invalidateQueries(['my-permissions']); setRenamingGroup(null); setRenameValue(''); },
   });
 
   const toggleRole = (tool, roleId) => {
@@ -73,7 +94,7 @@ export default function ToolManagerPage() {
             <select value={newGroup} onChange={e => setNewGroup(e.target.value)}
               className="rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
               <option value="">Group…</option>
-              {NAV_GROUP_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+              {navGroupOptions.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
             <label className="flex items-center gap-1 text-xs text-gray-600">
               <input type="checkbox" checked={newUniversal} onChange={e => setNewUniversal(e.target.checked)} />
@@ -91,9 +112,69 @@ export default function ToolManagerPage() {
       } />
 
       <div className="p-6">
-        <p className="text-xs text-gray-500 mb-4">
-          Admin and CEO roles always have access to all tools. Toggle "All" for universal access, or check individual roles.
-        </p>
+        <div className="flex items-center gap-3 mb-4">
+          <p className="text-xs text-gray-500 flex-1">
+            Admin and CEO roles always have access to all tools. Toggle "All" for universal access, or check individual roles.
+          </p>
+          <button type="button" onClick={() => setShowGroupManager(v => !v)}
+            className="text-xs text-gray-400 hover:text-[#1e3a5f] underline whitespace-nowrap">
+            {showGroupManager ? 'Hide Groups' : 'Manage Groups'}
+          </button>
+        </div>
+
+        {showGroupManager && (
+          <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-6">
+            <div className="text-xs font-semibold text-gray-600 mb-2">Sidebar Groups</div>
+            <div className="space-y-1.5 mb-3">
+              {navGroupOptions.filter(g => existingGroups.includes(g) || customGroups.includes(g)).map(g => (
+                <div key={g} className="flex items-center gap-2">
+                  {renamingGroup === g ? (
+                    <>
+                      <input type="text" value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim() && renameValue !== g) renameGroupMutation.mutate({ oldName: g, newName: renameValue.trim() }); }}
+                        className="rounded border border-gray-300 px-2 py-1 text-xs flex-1 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" autoFocus />
+                      <button type="button" onClick={() => { if (renameValue.trim() && renameValue !== g) renameGroupMutation.mutate({ oldName: g, newName: renameValue.trim() }); }}
+                        disabled={!renameValue.trim() || renameValue === g || renameGroupMutation.isPending}
+                        className="text-xs text-[#1e3a5f] hover:underline disabled:opacity-40">Save</button>
+                      <button type="button" onClick={() => setRenamingGroup(null)} className="text-xs text-gray-400">Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-gray-700 flex-1">{g}</span>
+                      <span className="text-[10px] text-gray-400">{grouped[g]?.length || 0} tools</span>
+                      <button type="button" onClick={() => { setRenamingGroup(g); setRenameValue(g); }}
+                        className="text-[10px] text-gray-400 hover:text-[#1e3a5f]">rename</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="pt-2 border-t border-gray-200 space-y-2">
+              <div className="flex gap-2 items-center">
+                <input type="text" value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
+                  placeholder="New group name…"
+                  className="rounded border border-gray-300 px-2 py-1 text-xs flex-1 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
+              {newGroupName.trim() && (
+                <div className="bg-white rounded border border-gray-200 p-2">
+                  <div className="text-[10px] text-gray-500 mb-1">Move a tool into "{newGroupName.trim()}" to create the group:</div>
+                  <select onChange={e => {
+                    if (e.target.value) {
+                      updateMutation.mutate({ id: parseInt(e.target.value), data: { nav_group: newGroupName.trim() } });
+                      setNewGroupName('');
+                      e.target.value = '';
+                    }
+                  }} className="w-full rounded border border-gray-300 px-2 py-1 text-xs">
+                    <option value="">Select a tool to move…</option>
+                    {tools.map(t => <option key={t.id} value={t.id}>{t.label} ({t.nav_group || 'None'})</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            {renameGroupMutation.isSuccess && <p className="text-xs text-green-600 mt-1">Renamed!</p>}
+            {renameGroupMutation.isError && <p className="text-xs text-red-600 mt-1">{renameGroupMutation.error?.response?.data?.error || 'Failed'}</p>}
+          </div>
+        )}
 
         {Object.entries(grouped).map(([groupName, groupTools]) => (
           <div key={groupName} className="mb-6">
@@ -104,6 +185,7 @@ export default function ToolManagerPage() {
                   <tr>
                     <th className="text-left px-4 py-2 font-medium text-gray-600 w-36">Path</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-600 w-40">Label</th>
+                    <th className="text-left px-2 py-2 font-medium text-gray-600 w-24">Group</th>
                     <th className="text-center px-2 py-2 font-medium text-gray-600 w-12">All</th>
                     {roles.map(r => (
                       <th key={r.id} className="text-center px-1 py-2 font-medium text-gray-600 text-xs" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', maxWidth: '28px' }}>
@@ -120,6 +202,12 @@ export default function ToolManagerPage() {
                         <input defaultValue={tool.label}
                           onBlur={e => { if (e.target.value !== tool.label) updateMutation.mutate({ id: tool.id, data: { label: e.target.value } }); }}
                           className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                      </td>
+                      <td className="px-2 py-1">
+                        <select defaultValue={tool.nav_group || ''} onChange={e => updateMutation.mutate({ id: tool.id, data: { nav_group: e.target.value } })}
+                          className="rounded border border-gray-200 px-1 py-1 text-[10px] bg-white focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] w-full">
+                          {navGroupOptions.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
                       </td>
                       <td className="px-2 py-2 text-center">
                         <input type="checkbox" checked={!!tool.universal} onChange={() => toggleUniversal(tool)}

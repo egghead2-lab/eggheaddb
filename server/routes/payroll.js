@@ -211,10 +211,16 @@ router.post('/onboarding-pay', authenticate, async (req, res, next) => {
   try {
     const d = req.body;
     const [result] = await pool.query(
-      `INSERT INTO onboarding_pay_entries (professor_id, professor_name_raw, training_date, trainer, submitted_by, trainual_completed, modules_completed, trainual_pay, virtual_training_completed, virtual_training_pay, bg_check_completed, bg_check_cost, training_outcome, terminate_upon_payment, is_rehire)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [d.professor_id||null, d.professor_name_raw||null, d.training_date, d.trainer||null, d.submitted_by||req.user?.name||'', d.trainual_completed?1:0, d.modules_completed||null, d.trainual_pay||35, d.virtual_training_completed?1:0, d.virtual_training_pay||40, d.bg_check_completed?1:0, d.bg_check_cost||55, d.training_outcome, d.terminate_upon_payment?1:0, d.is_rehire?1:0]
+      `INSERT INTO onboarding_pay_entries (professor_id, professor_name_raw, training_date, trainer, submitted_by, trainual_completed, modules_completed, trainual_pay, virtual_training_completed, virtual_training_pay, bg_check_completed, bg_check_cost, training_outcome, terminate_upon_payment, is_rehire, candidate_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [d.professor_id||null, d.professor_name_raw||null, d.training_date, d.trainer||null, d.submitted_by||req.user?.name||'', d.trainual_completed?1:0, d.modules_completed||null, d.trainual_pay||35, d.virtual_training_completed?1:0, d.virtual_training_pay||40, d.bg_check_completed?1:0, d.bg_check_cost||55, d.training_outcome, d.terminate_upon_payment?1:0, d.is_rehire?1:0, d.candidate_id||null]
     );
+
+    // Mark candidate pay as submitted
+    if (d.candidate_id) {
+      await pool.query('UPDATE candidate SET onboarding_pay_submitted = 1 WHERE id = ?', [d.candidate_id]);
+    }
+
     res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
 });

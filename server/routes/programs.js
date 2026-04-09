@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { logAudit } = require('../lib/audit');
 
 // GET /api/programs (exclude party program types)
 router.get('/', authenticate, async (req, res, next) => {
@@ -272,11 +273,15 @@ router.put('/:id', authenticate, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'No fields to update' });
     }
 
+    const [[oldRow]] = await pool.query('SELECT * FROM program WHERE id = ?', [id]);
+
     await pool.query(
       `UPDATE program SET ${updateFields.map(f => `${f} = ?`).join(', ')}, ts_updated = NOW()
        WHERE id = ?`,
       [...values, id]
     );
+
+    if (oldRow) logAudit('program', id, req.user, oldRow, data);
 
     res.json({ success: true });
   } catch (err) {
@@ -508,11 +513,24 @@ router.put('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
 router.delete('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
   try {
     const { id, sessionId } = req.params;
+    const reason = req.query.reason || null;
+    const notes = req.query.notes || null;
+
+    // Get session date before deleting
+    const [[session]] = await pool.query('SELECT session_date FROM session WHERE id = ?', [sessionId]);
 
     await pool.query(
       `UPDATE session SET active = 0, ts_updated = NOW() WHERE id = ? AND program_id = ?`,
       [sessionId, id]
     );
+
+    // Log cancellation if reason provided
+    if (reason) {
+      await pool.query(
+        'INSERT INTO session_cancellation_log (session_id, program_id, session_date, reason, notes, cancelled_by_user_id) VALUES (?,?,?,?,?,?)',
+        [sessionId, id, session?.session_date || null, reason, notes, req.user?.userId || null]
+      );
+    }
 
     // Auto-update first/last session dates
     await pool.query(
