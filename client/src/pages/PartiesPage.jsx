@@ -192,11 +192,9 @@ export default function PartiesPage() {
                           ? <Link to={`/professors/${p.assistant_professor_id}`} className="text-[#1e3a5f] hover:underline">{p.assistant_professor_nickname}</Link>
                           : <span className="text-gray-400">—</span>}
                       </td>}
-                      {v('location') && <td className="px-4 py-2.5 text-gray-600">
-                        <div>{p.party_location_text || p.location_nickname || '—'}</div>
-                        {!p.party_location_text && (p.city_name || p.zip_code) && (
-                          <div className="text-xs text-gray-400">{[p.city_name, p.zip_code].filter(Boolean).join(' ')}</div>
-                        )}
+                      {v('location') && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">
+                        <div>{p.city_name || p.location_nickname || '—'}</div>
+                        {p.geographic_area_name && <div className="text-[10px] text-gray-400">{p.geographic_area_name}</div>}
                       </td>}
                       {v('contact') && <td className="px-4 py-2.5 whitespace-nowrap">
                         {p.contact_id

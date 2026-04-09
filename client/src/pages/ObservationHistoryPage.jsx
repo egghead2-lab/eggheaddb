@@ -10,26 +10,10 @@ import { SearchSelect } from '../components/ui/SearchSelect';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate } from '../lib/utils';
 
-const RATING_LABELS = { 1: 'Emerging', 2: 'Developing', 3: 'Performing', 4: 'Excelling', 5: 'Distinguished' };
-const RATING_COLORS = {
-  1: 'bg-red-100 text-red-700 border-red-300',
-  2: 'bg-orange-100 text-orange-700 border-orange-300',
-  3: 'bg-amber-100 text-amber-700 border-amber-300',
-  4: 'bg-green-100 text-green-700 border-green-300',
-  5: 'bg-blue-100 text-blue-700 border-blue-300',
-};
+import { RatingBadge } from '../components/ui/DevelopmentalRating';
+
 const TYPE_LABELS = { formal: 'Formal', peer_to_peer: 'Peer to Peer', support_session: 'Support', follow_up: 'Follow-up', routine: 'Routine', initial: 'Initial' };
 const TYPE_COLORS = { formal: 'bg-blue-100 text-blue-700', peer_to_peer: 'bg-violet-100 text-violet-700', support_session: 'bg-gray-100 text-gray-600', follow_up: 'bg-amber-100 text-amber-700' };
-
-function RatingBadge({ rating }) {
-  if (!rating) return <span className="text-gray-300 text-xs">—</span>;
-  const r = Math.round(rating);
-  return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold ${RATING_COLORS[r] || 'bg-gray-100 text-gray-600'}`}>
-      {r} — {RATING_LABELS[r] || '?'}
-    </span>
-  );
-}
 
 export default function ObservationHistoryPage() {
   const { data: profListData } = useProfessorList();

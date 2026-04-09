@@ -13,29 +13,7 @@ import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate } from '../lib/utils';
 
-const RATING_LABELS = { 1: 'Emerging', 2: 'Developing', 3: 'Performing', 4: 'Excelling', 5: 'Distinguished' };
-const RATING_COLORS = {
-  1: 'bg-red-100 text-red-700 border-red-300',
-  2: 'bg-orange-100 text-orange-700 border-orange-300',
-  3: 'bg-amber-100 text-amber-700 border-amber-300',
-  4: 'bg-green-100 text-green-700 border-green-300',
-  5: 'bg-blue-100 text-blue-700 border-blue-300',
-};
-function RatingBadge({ rating }) {
-  if (!rating) return <span className="text-gray-300 text-xs">—</span>;
-  const r = Math.round(rating);
-  return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold ${RATING_COLORS[r] || 'bg-gray-100 text-gray-600'}`}>
-      {r} {RATING_LABELS[r] || ''}
-    </span>
-  );
-}
-
-const RESULT_COLORS = {
-  pass: 'bg-green-100 text-green-700',
-  needs_improvement: 'bg-amber-100 text-amber-700',
-  fail: 'bg-red-100 text-red-700',
-};
+import { RatingBadge } from '../components/ui/DevelopmentalRating';
 
 export default function EvaluationDashboardPage() {
   const { user } = useAuth();

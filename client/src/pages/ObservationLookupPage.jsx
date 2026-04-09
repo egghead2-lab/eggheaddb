@@ -11,6 +11,7 @@ import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate } from '../lib/utils';
+import { RatingBadge, RatingPicker as SharedRatingPicker, RatingLegend, RATING_SCALE } from '../components/ui/DevelopmentalRating';
 
 export default function ObservationLookupPage() {
   const { user } = useAuth();
@@ -225,29 +226,8 @@ export default function ObservationLookupPage() {
   );
 }
 
-const RATING_SCALE = [
-  { value: 1, label: 'Emerging', color: 'bg-red-100 text-red-700 border-red-300', desc: 'VERY HIGH PRIORITY — needs high support' },
-  { value: 2, label: 'Developing', color: 'bg-orange-100 text-orange-700 border-orange-300', desc: 'VERY HIGH PRIORITY — needs high support' },
-  { value: 3, label: 'Performing', color: 'bg-amber-100 text-amber-700 border-amber-300', desc: 'HIGH PRIORITY — needs sufficient support' },
-  { value: 4, label: 'Excelling', color: 'bg-green-100 text-green-700 border-green-300', desc: 'LOW PRIORITY — needs some support' },
-  { value: 5, label: 'Distinguished', color: 'bg-blue-100 text-blue-700 border-blue-300', desc: 'LOW PRIORITY — model instructor' },
-];
 const CATEGORIES = ['Professional Conduct', 'Organization', 'Authority', 'Education', 'Rapport', 'Flexibility'];
-
-function RatingPicker({ value, onChange, label }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs text-gray-600 w-32 shrink-0">{label}</span>
-      {RATING_SCALE.map(r => (
-        <button key={r.value} type="button" onClick={() => onChange(r.value)}
-          title={`${r.label} — ${r.desc}`}
-          className={`w-7 h-7 rounded text-xs font-bold border transition-all ${
-            value === r.value ? `${r.color} ring-2 ring-offset-1 ring-current` : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
-          }`}>{r.value}</button>
-      ))}
-    </div>
-  );
-}
+const RatingPicker = SharedRatingPicker;
 
 function ObservationForm({ item, onSuccess, onBack }) {
   const [form, setForm] = useState({
@@ -273,11 +253,11 @@ function ObservationForm({ item, onSuccess, onBack }) {
   // Compute average rating
   const ratingValues = Object.values(form.ratings).filter(v => v > 0);
   const avgRating = ratingValues.length > 0 ? (ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length).toFixed(1) : null;
-  const avgLabel = avgRating ? RATING_SCALE.find(r => r.value === Math.round(Number(avgRating))) : null;
+  const avgRounded = avgRating ? Math.round(Number(avgRating)) : null;
 
-  // Map result from average
-  const resultFromAvg = avgRating
-    ? (Number(avgRating) >= 4 ? 'pass' : Number(avgRating) >= 2.5 ? 'needs_improvement' : 'fail')
+  // Result stored as the old pass/needs_improvement/fail for backward compat, but numeric is primary
+  const resultFromAvg = avgRounded
+    ? (avgRounded >= 4 ? 'pass' : avgRounded >= 2.5 ? 'needs_improvement' : 'fail')
     : null;
 
   const submitMutation = useMutation({
@@ -348,11 +328,7 @@ function ObservationForm({ item, onSuccess, onBack }) {
       {isFormalOrPeer && (
         <div>
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Developmental Ratings</div>
-          <div className="text-[10px] text-gray-400 mb-3 flex gap-3">
-            {RATING_SCALE.map(r => (
-              <span key={r.value} className={`px-1.5 py-0.5 rounded border ${r.color}`}>{r.value} = {r.label}</span>
-            ))}
-          </div>
+          <div className="mb-3"><RatingLegend /></div>
           <div className="space-y-2 bg-gray-50 rounded-lg p-3">
             {CATEGORIES.map(cat => (
               <RatingPicker key={cat} label={cat} value={form.ratings[cat]} onChange={v => setRating(cat, v)} />
@@ -361,7 +337,7 @@ function ObservationForm({ item, onSuccess, onBack }) {
           {avgRating && (
             <div className="mt-2 flex items-center gap-2">
               <span className="text-xs text-gray-500">Average:</span>
-              <span className={`text-sm font-bold px-2 py-0.5 rounded border ${avgLabel?.color || ''}`}>{avgRating} — {avgLabel?.label}</span>
+              <RatingBadge rating={avgRounded} />
             </div>
           )}
         </div>

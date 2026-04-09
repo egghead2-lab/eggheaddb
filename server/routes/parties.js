@@ -86,7 +86,7 @@ router.get('/', authenticate, async (req, res, next) => {
               prog.charge_confirmed,
               cs.class_status_name,
               loc.nickname AS location_nickname,
-              c.city_name, c.zip_code,
+              c.city_name, c.zip_code, ga.geographic_area_name,
               pf.party_format_name,
               cl.class_name AS party_theme,
               lp.id AS lead_professor_id,
@@ -100,6 +100,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
        LEFT JOIN city c ON c.id = loc.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id AND lp.active = 1
@@ -128,6 +129,51 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/parties/unconfirmed — MUST be before /:id
+router.get('/unconfirmed', authenticate, async (req, res, next) => {
+  try {
+    const { days = 14 } = req.query;
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date,
+              prog.start_time, prog.class_length_minutes,
+              prog.party_location_text, prog.party_confirmation_sent,
+              prog.party_confirmation_sent_at,
+              cs.class_status_name,
+              pf.party_format_name,
+              cl.class_name AS party_theme,
+              loc.nickname AS location_nickname, loc.address,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              lp.phone_number AS lead_phone,
+              CONCAT(par.first_name, ' ', par.last_name) AS contact_name,
+              par.email AS contact_email, par.phone AS contact_phone
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN parent par ON par.id = prog.contact_id
+       WHERE prog.active = 1
+         AND pt.program_type_name = 'Party'
+         AND cs.class_status_name NOT LIKE 'Cancelled%'
+         AND prog.first_session_date >= CURDATE()
+         AND prog.first_session_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
+       ORDER BY prog.first_session_date ASC`,
+      [parseInt(days)]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/parties/email-templates — MUST be before /:id
+router.get('/email-templates', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM party_email_template WHERE active = 1 ORDER BY is_default DESC, name');
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
 });
 
 // GET /api/parties/:id
@@ -244,6 +290,87 @@ router.put('/:id', authenticate, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// PARTY CONFIRMS + EMAIL
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /api/parties/:id/mark-confirmed — mark confirmation sent (without email)
+router.post('/:id/mark-confirmed', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      'UPDATE program SET party_confirmation_sent = 1, party_confirmation_sent_at = NOW(), party_confirmation_sent_by = ? WHERE id = ?',
+      [req.user.userId, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/parties/:id/send-confirmation — send email + mark confirmed
+router.post('/:id/send-confirmation', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { template_id, recipient_email, subject, body } = req.body;
+    if (!recipient_email || !body) return res.status(400).json({ success: false, error: 'Email and body required' });
+
+    // Send via Gmail
+    try {
+      const { sendEmail } = require('../lib/gmail');
+      await sendEmail(req.user.userId, recipient_email, subject, body);
+    } catch (emailErr) {
+      return res.status(500).json({ success: false, error: 'Failed to send email: ' + emailErr.message });
+    }
+
+    // Log it
+    await pool.query(
+      'INSERT INTO party_email_log (program_id, template_id, recipient_email, subject, sent_by_user_id) VALUES (?,?,?,?,?)',
+      [id, template_id || null, recipient_email, subject, req.user.userId]
+    );
+
+    // Mark confirmed
+    await pool.query(
+      'UPDATE program SET party_confirmation_sent = 1, party_confirmation_sent_at = NOW(), party_confirmation_sent_by = ? WHERE id = ?',
+      [req.user.userId, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PARTY EMAIL TEMPLATES (POST/PUT/DELETE — GET is above /:id)
+
+router.post('/email-templates', authenticate, async (req, res, next) => {
+  try {
+    const { name, subject, body } = req.body;
+    if (!name || !subject || !body) return res.status(400).json({ success: false, error: 'Name, subject, and body required' });
+    const [result] = await pool.query(
+      'INSERT INTO party_email_template (name, subject, body) VALUES (?,?,?)',
+      [name, subject, body]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+router.put('/email-templates/:id', authenticate, async (req, res, next) => {
+  try {
+    const { name, subject, body, is_default } = req.body;
+    const sets = []; const vals = [];
+    if (name !== undefined) { sets.push('name = ?'); vals.push(name); }
+    if (subject !== undefined) { sets.push('subject = ?'); vals.push(subject); }
+    if (body !== undefined) { sets.push('body = ?'); vals.push(body); }
+    if (is_default !== undefined) { sets.push('is_default = ?'); vals.push(is_default ? 1 : 0); }
+    if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+    await pool.query(`UPDATE party_email_template SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.delete('/email-templates/:id', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE party_email_template SET active = 0 WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

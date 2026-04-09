@@ -52,6 +52,8 @@ import EvaluationDashboardPage from './pages/EvaluationDashboardPage';
 import WeeklyOverviewPage from './pages/WeeklyOverviewPage';
 import ObservationLookupPage from './pages/ObservationLookupPage';
 import ObservationHistoryPage from './pages/ObservationHistoryPage';
+import PartyConfirmsPage from './pages/PartyConfirmsPage';
+import PartyEmailTemplatesPage from './pages/PartyEmailTemplatesPage';
 import ShipmentCyclesPage from './pages/ShipmentCyclesPage';
 import StandardOrderBuilderPage from './pages/StandardOrderBuilderPage';
 import MarkShippedPage from './pages/MarkShippedPage';
@@ -130,6 +132,8 @@ export default function App() {
       <Route path="/evaluations" element={<ProtectedRoute><EvaluationDashboardPage /></ProtectedRoute>} />
       <Route path="/observation-lookup" element={<ProtectedRoute><ObservationLookupPage /></ProtectedRoute>} />
       <Route path="/observation-history" element={<ProtectedRoute><ObservationHistoryPage /></ProtectedRoute>} />
+      <Route path="/party-confirms" element={<ProtectedRoute><PartyConfirmsPage /></ProtectedRoute>} />
+      <Route path="/party-email-templates" element={<ProtectedRoute><PartyEmailTemplatesPage /></ProtectedRoute>} />
       <Route path="/materials/cycles" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
       <Route path="/materials/standard-order" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
       <Route path="/materials/mark-shipped" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />

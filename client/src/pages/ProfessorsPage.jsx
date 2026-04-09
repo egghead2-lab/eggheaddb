@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate } from '../lib/utils';
+import { RatingBadge } from '../components/ui/DevelopmentalRating';
 import { formatCurrency } from '../lib/utils';
 import { TRAINING_FIELDS } from '../lib/constants';
 import { exportToCsv } from '../lib/exportCsv';
@@ -188,12 +189,8 @@ export default function ProfessorsPage() {
                       {v('last_eval') && <td className="px-3 py-2.5 text-center">
                         {p.last_evaluation_date ? (
                           <div>
-                            <div className="text-xs text-gray-600">{formatDate(p.last_evaluation_date)}</div>
-                            {p.last_evaluation_result && <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
-                              p.last_evaluation_result === 'pass' ? 'bg-green-100 text-green-700' :
-                              p.last_evaluation_result === 'needs_improvement' ? 'bg-amber-100 text-amber-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{p.last_evaluation_result.replace(/_/g, ' ')}</span>}
+                            <div className="text-xs text-gray-600 mb-0.5">{formatDate(p.last_evaluation_date)}</div>
+                            <RatingBadge rating={p.rating} size="xs" />
                           </div>
                         ) : <span className="text-[10px] text-red-500 font-medium">Never</span>}
                       </td>}

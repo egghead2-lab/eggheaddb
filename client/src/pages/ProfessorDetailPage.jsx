@@ -18,6 +18,7 @@ import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { useAuth } from '../hooks/useAuth';
 import { TRAINING_FIELDS } from '../lib/constants';
+import { RatingBadge } from '../components/ui/DevelopmentalRating';
 import { formatDate, formatTime, toFormData } from '../lib/utils';
 
 function LivescanForm({ form, setForm, contractors, locations, onSave, onCancel, isPending }) {
@@ -168,11 +169,13 @@ function AvailabilitySection({ professorId, availability, availabilityNotes, qc 
 
 // ── Evaluation History ──────────────────────────────────────────────
 
-const EVAL_RESULT_COLORS = {
-  pass: 'bg-green-100 text-green-700',
-  needs_improvement: 'bg-amber-100 text-amber-700',
-  fail: 'bg-red-100 text-red-700',
-};
+// Rating conversion: old pass/needs_improvement/fail → 1-5 scale
+function resultToRating(result) {
+  if (result === 'pass') return 4;
+  if (result === 'needs_improvement') return 3;
+  if (result === 'fail') return 1;
+  return null;
+}
 
 const EVAL_TYPE_OPTIONS = [
   { value: 'formal', label: 'Formal' },
@@ -283,7 +286,7 @@ function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult
           <span className="font-medium">Never evaluated</span>
         ) : (
           <span>Last eval: <strong>{formatDate(lastEvalDate)}</strong>
-            {lastEvalResult && <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded font-medium ${EVAL_RESULT_COLORS[lastEvalResult] || ''}`}>{lastEvalResult.replace(/_/g, ' ')}</span>}
+            {lastEvalResult && <span className="ml-1.5"><RatingBadge rating={resultToRating(lastEvalResult)} /></span>}
           </span>
         )}
         {tier && <span className="text-xs opacity-70">Tier: {tier.tier_name} (every {freq}d)</span>}
@@ -374,7 +377,7 @@ function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult
                 e.evaluation_type === 'peer_to_peer' ? 'bg-violet-100 text-violet-700' :
                 'bg-gray-100 text-gray-600'
               }`}>{EVAL_TYPE_OPTIONS.find(t => t.value === e.evaluation_type)?.label || e.evaluation_type?.replace(/_/g, ' ')}</span>
-              {e.result && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${EVAL_RESULT_COLORS[e.result] || ''}`}>{e.result.replace(/_/g, ' ')}</span>}
+              {e.result && <RatingBadge rating={resultToRating(e.result)} size="xs" />}
               <span className="text-xs text-gray-500 flex-1 truncate">{e.evaluator_name || e.logged_by_name || ''}{e.notes ? ` — ${e.notes}` : ''}</span>
               <button type="button" onClick={() => { if (confirm('Delete this evaluation?')) deleteMutation.mutate(e.id); }}
                 className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
@@ -1239,12 +1242,6 @@ export default function ProfessorDetailPage() {
               <div className="col-span-2">
                 <Input label="Schedule Link" {...register('schedule_link')} />
               </div>
-              <Select label="Onboard Status" {...register('onboard_status_id')}>
-                <option value="">None</option>
-                {(ref.onboardStatuses || []).map(s => (
-                  <option key={s.id} value={s.id}>{s.onboard_status_name}</option>
-                ))}
-              </Select>
               <Input label="Rating" type="number" step="0.1" min="0" max="5" {...register('rating')} />
             </div>
           </Section>

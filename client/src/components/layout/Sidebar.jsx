@@ -84,7 +84,7 @@ export function Sidebar() {
     });
 
     // Order groups: Dashboard first, then known order, then rest
-    const order = ['Dashboard', 'Operations', 'People', 'Sales', 'Scheduling', 'Onboarding', 'Field Managing', 'FM Tools', 'Curriculum', 'Warehouse Tools', 'Admin', 'Tools'];
+    const order = ['Dashboard', 'Operations', 'People', 'Parties', 'Sales', 'Scheduling', 'Onboarding', 'Field Managing', 'FM Tools', 'Curriculum', 'Warehouse Tools', 'Admin', 'Tools'];
     const sorted = [];
     for (const name of order) {
       if (groups[name]) { sorted.push(groups[name]); delete groups[name]; }
