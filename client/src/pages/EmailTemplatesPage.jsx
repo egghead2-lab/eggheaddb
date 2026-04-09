@@ -196,6 +196,39 @@ export default function EmailTemplatesPage() {
                   placeholder="Write your email template..." minHeight="250px" editorRef={editorRef} />
               </div>
 
+              {/* Attachments in edit mode (existing templates only) */}
+              {!isNew && selectedId && (
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-semibold text-gray-600 uppercase">Attachments</h4>
+                    <div>
+                      <button type="button" onClick={() => fileInputRef.current?.click()}
+                        className="text-xs text-[#1e3a5f] hover:underline font-medium">+ Add File</button>
+                      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+                    </div>
+                  </div>
+                  {(selected?.attachments || []).length === 0 ? (
+                    <p className="text-xs text-gray-400">No attachments yet.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {selected.attachments.map(a => (
+                        <div key={a.storageName} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded">
+                          <span className="text-sm text-gray-700 flex-1">{a.filename}</span>
+                          <span className="text-xs text-gray-400">{formatSize(a.size)}</span>
+                          <button type="button" onClick={() => { if (confirm(`Remove ${a.filename}?`)) removeAttachmentMutation.mutate(a.storageName); }}
+                            className="text-xs text-gray-300 hover:text-red-500">&times;</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {uploadMutation.isPending && <p className="text-xs text-gray-400 mt-1">Uploading...</p>}
+                  {uploadMutation.isError && <p className="text-xs text-red-600 mt-1">{uploadMutation.error?.response?.data?.error || 'Upload failed'}</p>}
+                </div>
+              )}
+              {isNew && (
+                <p className="text-xs text-gray-400">Save the template first, then you can add attachments.</p>
+              )}
+
               <div className="flex justify-end gap-3 pt-2">
                 {!isNew && (
                   <button onClick={() => { if (confirm('Delete this template?')) deleteMutation.mutate(selectedId); }}
