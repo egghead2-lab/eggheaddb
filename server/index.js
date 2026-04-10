@@ -27,6 +27,7 @@ const subManagementRoutes = require('./routes/sub-management');
 const evaluationsRoutes = require('./routes/evaluations');
 const hiringRequestsRoutes = require('./routes/hiring-requests');
 const materialsRoutes = require('./routes/materials');
+const plannerRoutes = require('./routes/planner');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -98,6 +99,7 @@ app.use('/api/sub-management', subManagementRoutes);
 app.use('/api/evaluations', evaluationsRoutes);
 app.use('/api/hiring-requests', hiringRequestsRoutes);
 app.use('/api/materials', materialsRoutes);
+app.use('/api/planner', plannerRoutes);
 
 // Error handler
 app.use(errorHandler);

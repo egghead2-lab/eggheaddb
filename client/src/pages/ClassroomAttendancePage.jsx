@@ -11,9 +11,19 @@ import { formatTime } from '../lib/utils';
 const DAYS_MAP = ['monday','tuesday','wednesday','thursday','friday'];
 const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri'];
 
+function getTimingStatus(p) {
+  const today = new Date().toISOString().split('T')[0];
+  const first = (p.first_session_date || '').split('T')[0];
+  const last = (p.last_session_date || '').split('T')[0];
+  if (first && first > today) return 'future';
+  if (last && last < today) return 'past';
+  return 'current';
+}
+
 export default function ClassroomAttendancePage() {
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState('location'); // 'location' | 'day'
+  const [timing, setTiming] = useState('current');
+  const [viewMode, setViewMode] = useState('location');
 
   const { data, isLoading } = useQuery({
     queryKey: ['all-attendance'],
@@ -21,16 +31,25 @@ export default function ClassroomAttendancePage() {
   });
   const programs = data?.data || [];
 
+  // Search matches location or contractor
+  const hasSearch = search.trim().length >= 1;
+  const q = search.toLowerCase();
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return programs;
-    const q = search.toLowerCase();
-    return programs.filter(p =>
-      (p.program_nickname || '').toLowerCase().includes(q) ||
-      (p.location_nickname || '').toLowerCase().includes(q) ||
-      (p.lead_professor_name || '').toLowerCase().includes(q) ||
-      (p.assistant_professor_name || '').toLowerCase().includes(q)
-    );
-  }, [programs, search]);
+    if (!hasSearch) return [];
+    return programs.filter(p => {
+      // Must match search
+      const matchesSearch =
+        (p.location_nickname || '').toLowerCase().includes(q) ||
+        (p.contractor_name || '').toLowerCase().includes(q) ||
+        (p.program_nickname || '').toLowerCase().includes(q) ||
+        (p.lead_professor_name || '').toLowerCase().includes(q);
+      if (!matchesSearch) return false;
+
+      // Must match timing filter
+      return getTimingStatus(p) === timing;
+    });
+  }, [programs, q, hasSearch, timing]);
 
   // Group by location
   const byLocation = useMemo(() => {
@@ -59,11 +78,21 @@ export default function ClassroomAttendancePage() {
 
   return (
     <AppShell>
-      <PageHeader title="Classroom Attendance" subtitle={`${programs.length} active program${programs.length !== 1 ? 's' : ''}`} />
+      <PageHeader title="Classroom Attendance" subtitle="Search by location or contractor to view programs" />
       <div className="p-6">
         <div className="flex items-center gap-3 mb-5">
-          <Input placeholder="Search programs, locations, professors..." value={search}
-            onChange={e => setSearch(e.target.value)} className="max-w-sm" />
+          <Input placeholder="Search by location, contractor, program, professor..." value={search}
+            onChange={e => setSearch(e.target.value)} className="max-w-md" />
+
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            {[['current', 'Current'], ['future', 'Future'], ['past', 'Past']].map(([key, label]) => (
+              <button key={key} onClick={() => setTiming(key)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  timing === key ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>{label}</button>
+            ))}
+          </div>
+
           <div className="flex bg-gray-100 rounded-lg p-0.5">
             {[['location', 'By Location'], ['day', 'By Day']].map(([key, label]) => (
               <button key={key} onClick={() => setViewMode(key)}
@@ -72,12 +101,20 @@ export default function ClassroomAttendancePage() {
                 }`}>{label}</button>
             ))}
           </div>
+
+          {hasSearch && (
+            <span className="text-sm text-gray-400">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+          )}
         </div>
 
         {isLoading ? (
           <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>
-        ) : programs.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">No active programs found</div>
+        ) : !hasSearch ? (
+          <div className="text-center py-16 text-gray-400">
+            <p className="font-medium text-gray-500">Search by location or contractor to see programs</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm">No {timing} programs match your search</div>
         ) : (
           <div className="space-y-6">
             {grouped.map(([groupLabel, progs]) => (
@@ -90,12 +127,12 @@ export default function ClassroomAttendancePage() {
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                        <th className="w-28"></th>
                         {viewMode === 'day' && <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>}
                         <th className="text-left px-3 py-2 font-medium text-gray-600">Days</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-600">Lead Professor</th>
                         <th className="text-center px-3 py-2 font-medium text-gray-600">Students</th>
-                        <th className="w-24"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -108,6 +145,12 @@ export default function ClassroomAttendancePage() {
                                 {p.program_nickname}
                               </Link>
                               <div className="text-xs text-gray-400">{p.class_status_name}</div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <Link to={`/programs/${p.id}/classroom`}
+                                className="text-xs font-medium text-[#1e3a5f] hover:underline whitespace-nowrap">
+                                See Attendance
+                              </Link>
                             </td>
                             {viewMode === 'day' && <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>}
                             <td className="px-3 py-2 text-gray-600">{days}</td>
@@ -122,12 +165,6 @@ export default function ClassroomAttendancePage() {
                               <span className={`text-xs font-medium px-2 py-0.5 rounded ${
                                 p.roster_count > 0 ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
                               }`}>{p.roster_count}</span>
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <Link to={`/programs/${p.id}/classroom`}
-                                className="text-xs font-medium text-[#1e3a5f] hover:underline">
-                                Open Classroom
-                              </Link>
                             </td>
                           </tr>
                         );

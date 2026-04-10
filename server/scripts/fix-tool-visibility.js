@@ -49,7 +49,37 @@ async function run() {
       }
     }
 
-    // 4. Verify "My Classes" tools only have Professor role assigned
+    // 4. Add "Class Planner" tool under "Client Management" if it doesn't exist
+    const [[existingPlanner]] = await conn.query(`SELECT id FROM tool WHERE path = '/class-planner'`);
+    let plannerToolId;
+    if (!existingPlanner) {
+      const [ins2] = await conn.query(
+        `INSERT INTO tool (path, label, nav_group, sort_order, universal, active)
+         VALUES ('/class-planner', 'Class Planner', 'Client Management', 1, 0, 1)`
+      );
+      plannerToolId = ins2.insertId;
+      console.log(`Created Class Planner tool (id=${plannerToolId})`);
+    } else {
+      plannerToolId = existingPlanner.id;
+      console.log(`Class Planner tool already exists (id=${plannerToolId})`);
+    }
+
+    // Assign Class Planner to relevant roles
+    const plannerRoles = ['Scheduling Coordinator', 'Field Manager', 'Client Manager'];
+    for (const roleName of plannerRoles) {
+      const [[role]] = await conn.query(`SELECT id FROM role WHERE role_name = ? AND active = 1`, [roleName]);
+      if (role) {
+        const [[existingAssign]] = await conn.query(
+          `SELECT id FROM tool_role WHERE tool_id = ? AND role_id = ?`, [plannerToolId, role.id]
+        );
+        if (!existingAssign) {
+          await conn.query(`INSERT INTO tool_role (tool_id, role_id) VALUES (?, ?)`, [plannerToolId, role.id]);
+          console.log(`  Class Planner assigned to ${roleName}`);
+        }
+      }
+    }
+
+    // 5. Verify "My Classes" tools only have Professor role assigned
     const [myClassesTools] = await conn.query(
       `SELECT id, path, label FROM tool WHERE nav_group = 'My Classes' AND active = 1`
     );

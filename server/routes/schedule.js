@@ -128,17 +128,18 @@ router.get('/all-attendance', authenticate, async (req, res, next) => {
               prog.first_session_date, prog.last_session_date,
               cs.class_status_name,
               loc.nickname AS location_nickname,
+              con.contractor_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
               CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_name,
               (SELECT COUNT(*) FROM program_roster pr WHERE pr.program_id = prog.id AND pr.active = 1 AND pr.date_dropped IS NULL) AS roster_count
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN contractor con ON con.id = loc.contractor_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
        LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id
        WHERE prog.active = 1
          AND cs.class_status_name NOT LIKE 'Cancelled%'
-         AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
        ORDER BY loc.nickname, prog.program_nickname`
     );
 
