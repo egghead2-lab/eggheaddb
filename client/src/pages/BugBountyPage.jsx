@@ -41,6 +41,11 @@ export default function BugBountyPage() {
     onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/bug-reports/${id}`),
+    onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); },
+  });
+
   return (
     <AppShell>
       <PageHeader title="Bug Bounty" action={
@@ -110,19 +115,31 @@ export default function BugBountyPage() {
                     <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${STATUS_COLORS[b.status]}`}>
                       {STATUS_LABELS[b.status]}
                     </span>
-                    {isAdmin && b.status === 'new' && (
+                    {isAdmin && (
                       <div className="flex gap-1">
-                        <button onClick={() => updateMutation.mutate({ id: b.id, status: 'approved_minor' })}
-                          className="text-[10px] text-green-600 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-50">Minor</button>
-                        <button onClick={() => updateMutation.mutate({ id: b.id, status: 'approved_major' })}
-                          className="text-[10px] text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded hover:bg-violet-50">Major</button>
-                        <button onClick={() => updateMutation.mutate({ id: b.id, status: 'rejected' })}
-                          className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Reject</button>
+                        {b.status !== 'approved_minor' && (
+                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'approved_minor' })}
+                            className="text-[10px] text-green-600 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-50">Minor</button>
+                        )}
+                        {b.status !== 'approved_major' && (
+                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'approved_major' })}
+                            className="text-[10px] text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded hover:bg-violet-50">Major</button>
+                        )}
+                        {b.status !== 'rejected' && (
+                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'rejected' })}
+                            className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Reject</button>
+                        )}
+                        {(b.status === 'approved_minor' || b.status === 'approved_major') && b.status !== 'fixed' && (
+                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'fixed' })}
+                            className="text-[10px] text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded hover:bg-emerald-50">Fixed</button>
+                        )}
+                        {b.status !== 'new' && (
+                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'new' })}
+                            className="text-[10px] text-blue-500 border border-blue-200 px-1.5 py-0.5 rounded hover:bg-blue-50">Reset</button>
+                        )}
+                        <button onClick={() => { if (confirm('Delete this bug report?')) deleteMutation.mutate(b.id); }}
+                          className="text-[10px] text-red-400 hover:text-red-600">×</button>
                       </div>
-                    )}
-                    {isAdmin && (b.status === 'approved_minor' || b.status === 'approved_major') && (
-                      <button onClick={() => updateMutation.mutate({ id: b.id, status: 'fixed' })}
-                        className="text-[10px] text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded hover:bg-emerald-50">Mark Fixed</button>
                     )}
                   </div>
                 </div>

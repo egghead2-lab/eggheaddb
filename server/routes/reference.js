@@ -726,6 +726,13 @@ router.put('/bug-reports/:id', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.delete('/bug-reports/:id', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('DELETE FROM bug_report WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // Leaderboard
 router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
   try {
