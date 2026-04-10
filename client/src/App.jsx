@@ -74,6 +74,7 @@ import ProfessorPayPage from './pages/ProfessorPayPage';
 import ProfessorAttendancePage from './pages/ProfessorAttendancePage';
 import ClassroomAttendancePage from './pages/ClassroomAttendancePage';
 import ClassPlannerPage from './pages/ClassPlannerPage';
+import BugBountyPage from './pages/BugBountyPage';
 
 export default function App() {
   return (
@@ -95,6 +96,7 @@ export default function App() {
       <Route path="/my-attendance" element={<ProtectedRoute><ProfessorAttendancePage /></ProtectedRoute>} />
       <Route path="/classroom-attendance" element={<ProtectedRoute><ClassroomAttendancePage /></ProtectedRoute>} />
       <Route path="/class-planner" element={<ProtectedRoute><ClassPlannerPage /></ProtectedRoute>} />
+      <Route path="/bug-bounty" element={<ProtectedRoute><BugBountyPage /></ProtectedRoute>} />
       <Route path="/parties" element={<ProtectedRoute><PartiesPage /></ProtectedRoute>} />
       <Route path="/parties/new" element={<ProtectedRoute><PartyDetailPage /></ProtectedRoute>} />
       <Route path="/parties/:id" element={<ProtectedRoute><PartyDetailPage /></ProtectedRoute>} />

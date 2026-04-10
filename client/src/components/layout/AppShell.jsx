@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { GlobalSearch } from './GlobalSearch';
+import { BugReportButton } from '../BugReportButton';
 
 export function AppShell({ children }) {
   const [compact, setCompact] = useState(() => localStorage.getItem('sidebar-compact') === 'true');
@@ -21,6 +22,7 @@ export function AppShell({ children }) {
         <GlobalSearch />
         {children}
       </main>
+      <BugReportButton />
     </div>
   );
 }

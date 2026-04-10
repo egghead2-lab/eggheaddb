@@ -687,5 +687,65 @@ router.get('/weekly-overview', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// BUG REPORTS
+// ═══════════════════════════════════════════════════════════════════
+
+router.post('/bug-reports', authenticate, async (req, res, next) => {
+  try {
+    const { description, page_url, page_name } = req.body;
+    if (!description?.trim()) return res.status(400).json({ success: false, error: 'Description required' });
+    const [result] = await pool.query(
+      'INSERT INTO bug_report (description, page_url, page_name, submitted_by_user_id, submitted_by_name) VALUES (?,?,?,?,?)',
+      [description.trim(), page_url || null, page_name || null, req.user.userId, req.user.name]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+router.get('/bug-reports', authenticate, async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    let where = '1=1';
+    const params = [];
+    if (status) { where += ' AND status = ?'; params.push(status); }
+    const [rows] = await pool.query(`SELECT * FROM bug_report WHERE ${where} ORDER BY ts_inserted DESC LIMIT 500`, params);
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+router.put('/bug-reports/:id', authenticate, async (req, res, next) => {
+  try {
+    const { status, admin_notes } = req.body;
+    const sets = []; const vals = [];
+    if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
+    if (admin_notes !== undefined) { sets.push('admin_notes = ?'); vals.push(admin_notes); }
+    if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+    await pool.query(`UPDATE bug_report SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Leaderboard
+router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT submitted_by_name AS name, submitted_by_user_id AS user_id,
+              SUM(CASE WHEN status = 'approved_minor' THEN 1 ELSE 0 END) AS minor_count,
+              SUM(CASE WHEN status = 'approved_major' THEN 1 ELSE 0 END) AS major_count,
+              SUM(CASE WHEN status = 'approved_minor' THEN 2 WHEN status = 'approved_major' THEN 4 ELSE 0 END) AS earnings,
+              COUNT(*) AS total_submitted
+       FROM bug_report
+       WHERE MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())
+       GROUP BY submitted_by_user_id, submitted_by_name
+       ORDER BY earnings DESC`
+    );
+    // Cap at $100 per person
+    rows.forEach(r => { r.earnings = Math.min(r.earnings, 100); });
+    const totalPayout = Math.min(rows.reduce((sum, r) => sum + r.earnings, 0), 1000);
+    res.json({ success: true, data: rows, totalPayout });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
 
