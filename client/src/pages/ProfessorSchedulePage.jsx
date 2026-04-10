@@ -73,7 +73,11 @@ function ProgramTable({ programs, profId, isLead, viewOnly, sessions, subDateSet
                       }`}>{isConfirmed ? 'Confirmed' : 'Unconfirmed'}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
+                  <td className="px-3 py-2 text-gray-600" onClick={e => e.stopPropagation()}>
+                    {viewOnly && p.location_id ? (
+                      <Link to={`/locations/${p.location_id}/info-sheet`} className="text-[#1e3a5f] hover:underline">{p.location_nickname}</Link>
+                    ) : p.location_nickname || '—'}
+                  </td>
                   <td className="px-3 py-2 text-gray-600">{p.class_name || '—'}</td>
                   <td className="px-3 py-2 text-gray-600">{getDayString(p)}</td>
                   <td className="px-3 py-2 text-gray-600">{p.start_time ? formatTime(p.start_time) : '—'}</td>
@@ -228,7 +232,11 @@ function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
                 <td className="px-3 py-2">
                   {viewOnly ? <span>{s.program_nickname}</span> : <Link to={`/programs/${s.program_id || ''}`} className="text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>}
                 </td>
-                <td className="px-3 py-2 text-gray-600">{s.location_nickname || '—'}</td>
+                <td className="px-3 py-2 text-gray-600">
+                  {viewOnly && s.location_id ? (
+                    <Link to={`/locations/${s.location_id}/info-sheet`} className="text-[#1e3a5f] hover:underline">{s.location_nickname}</Link>
+                  ) : s.location_nickname || '—'}
+                </td>
                 <td className="px-3 py-2 text-gray-500">{s.lesson_name || '—'}</td>
                 {showStatus && <td className="px-3 py-2 text-center">
                   <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${

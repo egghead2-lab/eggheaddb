@@ -306,7 +306,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
               prog.id AS program_id,
               prog.lead_professor_pay AS program_lead_pay, prog.assistant_professor_pay AS program_assist_pay,
               cs.class_status_name,
-              loc.nickname AS location_nickname,
+              prog.location_id, loc.nickname AS location_nickname,
               cl.class_name,
               l.lesson_name, l.trainual_link
        FROM session s
