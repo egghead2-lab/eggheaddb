@@ -343,6 +343,7 @@ export default function ClassRoomPage() {
                         <td className="px-3 py-2 font-medium text-gray-900">
                           {r.last_name}, {r.first_name}
                           {r.date_dropped && <span className="text-xs text-red-400 ml-2">Dropped {formatDate(r.date_dropped)}</span>}
+                          {r.pending_approval ? <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded ml-2">Pending Approval</span> : null}
                         </td>
                         <td className="px-3 py-2 text-gray-500">{r.grade_name || '—'}</td>
                         <td className="px-3 py-2 text-gray-500 text-xs">{r.birthday ? formatDate(r.birthday) : '—'}</td>

@@ -140,6 +140,74 @@ router.get('/student-search', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/programs/pending-roster — pending roster additions for client managers
+// MUST be before /:id wildcard
+router.get('/pending-roster', authenticate, async (req, res, next) => {
+  try {
+    const CM_ROLES = ['Admin', 'CEO', 'Client Manager'];
+    if (!CM_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    // Client managers see pending items for locations/areas they own
+    let locationFilter = '';
+    const params = [];
+    if (req.user.role === 'Client Manager') {
+      locationFilter = `AND (loc.client_manager_user_id = ? OR ga.client_manager_user_id = ?)`;
+      params.push(req.user.userId, req.user.userId);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT pr.id AS roster_id, pr.program_id, pr.student_id, pr.date_applied, pr.notes AS roster_notes,
+              pr.added_by_user_id,
+              st.first_name AS student_first, st.last_name AS student_last,
+              prog.program_nickname,
+              loc.nickname AS location_nickname,
+              con.contractor_name,
+              ga.geographic_area_name,
+              u.name AS added_by_name
+       FROM program_roster pr
+       JOIN program prog ON prog.id = pr.program_id AND prog.active = 1
+       JOIN student st ON st.id = pr.student_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN contractor con ON con.id = loc.contractor_id
+       LEFT JOIN city ci ON ci.id = loc.city_id
+       LEFT JOIN geographic_area ga ON ga.id = ci.geographic_area_id
+       LEFT JOIN user u ON u.id = pr.added_by_user_id
+       WHERE pr.pending_approval = 1 AND pr.active = 1 AND pr.date_dropped IS NULL
+       ${locationFilter}
+       ORDER BY pr.date_applied DESC, prog.program_nickname`,
+      params
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/programs/pending-roster/approve — approve roster entries
+router.post('/pending-roster/approve', authenticate, async (req, res, next) => {
+  try {
+    const CM_ROLES = ['Admin', 'CEO', 'Client Manager'];
+    if (!CM_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const { roster_ids } = req.body;
+    if (!Array.isArray(roster_ids) || roster_ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'roster_ids array required' });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE program_roster
+       SET pending_approval = 0, approved_by_user_id = ?, approved_at = NOW(), ts_updated = NOW()
+       WHERE id IN (?) AND pending_approval = 1 AND active = 1`,
+      [req.user.userId, roster_ids]
+    );
+
+    res.json({ success: true, approved: result.affectedRows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/programs/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
@@ -676,10 +744,13 @@ router.post('/:id/roster/add', authenticate, async (req, res, next) => {
     );
     if (existing) return res.status(400).json({ success: false, error: 'Student is already on this roster' });
 
+    // Professors' additions require client manager approval
+    const isProfessor = req.user.role === 'Professor';
+
     const [result] = await pool.query(
-      `INSERT INTO program_roster (program_id, student_id, age, notes, date_applied, active, ts_inserted, ts_updated)
-       VALUES (?, ?, ?, ?, CURDATE(), 1, NOW(), NOW())`,
-      [id, student_id, age || null, notes || null]
+      `INSERT INTO program_roster (program_id, student_id, age, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, CURDATE(), ?, ?, 1, NOW(), NOW())`,
+      [id, student_id, age || null, notes || null, isProfessor ? 1 : 0, req.user.userId]
     );
 
     // Count active roster (not dropped)
@@ -873,7 +944,7 @@ router.get('/:id/classroom', authenticate, async (req, res, next) => {
 
     // Roster
     const [roster] = await pool.query(
-      `SELECT pr.id AS roster_id, pr.student_id, pr.notes, pr.date_dropped,
+      `SELECT pr.id AS roster_id, pr.student_id, pr.notes, pr.date_dropped, pr.pending_approval,
               st.first_name, st.last_name, st.birthday,
               g.grade_name
        FROM program_roster pr

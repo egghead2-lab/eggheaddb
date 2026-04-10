@@ -83,7 +83,10 @@ export default function ProgramDetailPage() {
             </div>
             {!isNew && (
               <div className="flex items-center gap-3">
-                <Link to={`/programs/${id}/classroom`} className="text-xs font-medium text-[#1e3a5f] hover:underline">Classroom</Link>
+                <Link to={`/programs/${id}/classroom`}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] transition-colors shadow-sm">
+                  Classroom & Attendance
+                </Link>
                 <button type="button" onClick={async () => {
                   const res = await copyProgram(id);
                   if (res?.id) navigate(`/programs/${res.id}`);

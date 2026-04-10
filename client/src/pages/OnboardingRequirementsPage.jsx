@@ -5,6 +5,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 
 const TYPES = ['task', 'document', 'training', 'compliance'];
 const ROLES = ['scheduler', 'field_manager', 'recruiter', 'onboarder', 'trainer'];
@@ -185,8 +186,7 @@ export default function OnboardingRequirementsPage() {
                       {!r.requires_document && !r.needs_approval && '—'}
                     </td>
                     <td className="px-4 py-2.5 text-center" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => { if (confirm(`Delete "${r.title}"?`)) deleteMutation.mutate(r.id); }}
-                        className="text-gray-300 hover:text-red-500 text-xs">Delete</button>
+                      <ConfirmButton onConfirm={() => deleteMutation.mutate(r.id)}>Delete</ConfirmButton>
                     </td>
                   </tr>
                 ))}

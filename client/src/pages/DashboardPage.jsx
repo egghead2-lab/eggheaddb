@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import { AppShell } from '../components/layout/AppShell';
 import { getMyDashboard, runReport } from '../api/reports';
+import { Button } from '../components/ui/Button';
+import { formatDate } from '../lib/utils';
 import api from '../api/client';
 
 export default function DashboardPage() {
@@ -37,9 +39,119 @@ export default function DashboardPage() {
           <KpiCard label="Overdue Evals" value={kpi.overdueEvals} link="/evaluations" color={kpi.overdueEvals > 0 ? 'red' : ''} />
         </div>
 
+        {/* Pending Roster Approvals — Client Managers, Admins, CEO */}
+        {['Admin', 'CEO', 'Client Manager'].includes(role) && <PendingRosterApprovals />}
+
         <DailyTasksAndKpis />
       </div>
     </AppShell>
+  );
+}
+
+function PendingRosterApprovals() {
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState(new Set());
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['pending-roster'],
+    queryFn: () => api.get('/programs/pending-roster').then(r => r.data),
+    staleTime: 30 * 1000,
+  });
+  const items = data?.data || [];
+
+  const approveMutation = useMutation({
+    mutationFn: (roster_ids) => api.post('/programs/pending-roster/approve', { roster_ids }),
+    onSuccess: () => {
+      qc.invalidateQueries(['pending-roster']);
+      setSelected(new Set());
+    },
+  });
+
+  if (isLoading || items.length === 0) return null;
+
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selected.size === items.length) setSelected(new Set());
+    else setSelected(new Set(items.map(i => i.roster_id)));
+  };
+
+  // Group by program
+  const byProgram = {};
+  items.forEach(i => {
+    if (!byProgram[i.program_id]) byProgram[i.program_id] = { ...i, students: [] };
+    byProgram[i.program_id].students.push(i);
+  });
+
+  return (
+    <div className="mb-6">
+      <div className="bg-amber-50 rounded-lg border border-amber-200">
+        <div className="px-5 py-3 border-b border-amber-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-amber-800">Pending Roster Approvals</h2>
+            <p className="text-xs text-amber-600 mt-0.5">{items.length} student{items.length !== 1 ? 's' : ''} added by professors awaiting your approval</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={selectAll}
+              className="text-xs text-amber-700 hover:text-amber-900 underline">
+              {selected.size === items.length ? 'Deselect All' : 'Select All'}
+            </button>
+            {selected.size > 0 && (
+              <Button size="sm" onClick={() => approveMutation.mutate([...selected])}
+                disabled={approveMutation.isPending}>
+                {approveMutation.isPending ? 'Approving...' : `Accept ${selected.size} Change${selected.size !== 1 ? 's' : ''}`}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-amber-100/50">
+              <tr>
+                <th className="w-8 px-3 py-2"></th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-amber-700">Student</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-amber-700">Program</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-amber-700">Location</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-amber-700">Added By</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-amber-700">Date</th>
+                <th className="w-24 px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-amber-100">
+              {items.map(i => (
+                <tr key={i.roster_id} className={selected.has(i.roster_id) ? 'bg-amber-100/30' : 'bg-white'}>
+                  <td className="px-3 py-2 text-center">
+                    <input type="checkbox" checked={selected.has(i.roster_id)}
+                      onChange={() => toggleSelect(i.roster_id)}
+                      className="rounded border-amber-300 text-[#1e3a5f]" />
+                  </td>
+                  <td className="px-3 py-2 font-medium text-gray-900">{i.student_last}, {i.student_first}</td>
+                  <td className="px-3 py-2">
+                    <Link to={`/programs/${i.program_id}`} className="text-[#1e3a5f] hover:underline">{i.program_nickname}</Link>
+                  </td>
+                  <td className="px-3 py-2 text-gray-600">{i.location_nickname || '—'}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">{i.added_by_name || '—'}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">{i.date_applied ? formatDate(i.date_applied) : '—'}</td>
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => approveMutation.mutate([i.roster_id])}
+                      disabled={approveMutation.isPending}
+                      className="text-xs font-medium text-green-700 hover:text-green-900">
+                      Accept
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 }
 
