@@ -8,6 +8,14 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
   try {
     const { professorId } = req.params;
 
+    // Professors can only view their own schedule
+    if (req.user.role === 'Professor') {
+      const [[ownProf]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+      if (!ownProf || String(ownProf.id) !== String(professorId)) {
+        return res.status(403).json({ success: false, error: 'Not authorized' });
+      }
+    }
+
     // Professor info
     const [[prof]] = await pool.query(
       `SELECT p.*, ps.professor_status_name,
@@ -162,7 +170,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
 router.get('/my-today', authenticate, async (req, res, next) => {
   try {
     // Get professor ID from user
-    const [[prof]] = await pool.query('SELECT id, professor_nickname, last_name FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    const [[prof]] = await pool.query('SELECT id, first_name, last_name, professor_nickname FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
     if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
 
     const [sessions] = await pool.query(
@@ -252,9 +260,45 @@ router.get('/my-attendance', authenticate, async (req, res, next) => {
        WHERE prog.active = 1
          AND cs.class_status_name NOT LIKE 'Cancelled%'
          AND (prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
-         AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
+         AND (
+           prog.last_session_date >= CURDATE()
+           OR prog.last_session_date IS NULL
+           OR prog.first_session_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+         )
        ORDER BY prog.program_nickname`,
       [prof.id, prof.id]
+    );
+
+    res.json({ success: true, data: programs });
+  } catch (err) { next(err); }
+});
+
+// GET /api/schedule/all-attendance — all active programs for ops team attendance view
+router.get('/all-attendance', authenticate, async (req, res, next) => {
+  try {
+    const allowedRoles = ['Admin', 'CEO', 'Scheduling Coordinator', 'Field Manager', 'Client Manager'];
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const [programs] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday,
+              prog.first_session_date, prog.last_session_date,
+              cs.class_status_name,
+              loc.nickname AS location_nickname,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_name,
+              (SELECT COUNT(*) FROM program_roster pr WHERE pr.program_id = prog.id AND pr.active = 1 AND pr.date_dropped IS NULL) AS roster_count
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id
+       WHERE prog.active = 1
+         AND cs.class_status_name NOT LIKE 'Cancelled%'
+         AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
+       ORDER BY loc.nickname, prog.program_nickname`
     );
 
     res.json({ success: true, data: programs });

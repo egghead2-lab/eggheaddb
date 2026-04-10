@@ -40,9 +40,9 @@ router.get('/my-permissions', authenticate, async (req, res, next) => {
     const restrictedRoles = ['Professor', 'Candidate'];
 
     if (adminRoles.includes(role)) {
-      // Admin/CEO see everything
+      // Admin/CEO see everything except professor-only "My Classes" section
       [tools] = await pool.query(
-        `SELECT path, label, nav_group, sort_order FROM tool WHERE active = 1 ORDER BY nav_group, sort_order, label`
+        `SELECT path, label, nav_group, sort_order FROM tool WHERE active = 1 AND nav_group != 'My Classes' ORDER BY nav_group, sort_order, label`
       );
     } else {
       // Get the user's role_id
@@ -62,7 +62,7 @@ router.get('/my-permissions', authenticate, async (req, res, next) => {
         [tools] = await pool.query(
           `SELECT t.path, t.label, t.nav_group, t.sort_order FROM tool t
            LEFT JOIN tool_role tr ON tr.tool_id = t.id AND tr.role_id = ?
-           WHERE t.active = 1 AND (t.universal = 1 OR tr.id IS NOT NULL)
+           WHERE t.active = 1 AND (t.universal = 1 OR tr.id IS NOT NULL) AND t.nav_group != 'My Classes'
            ORDER BY t.nav_group, t.sort_order, t.label`,
           [userRole.id]
         );

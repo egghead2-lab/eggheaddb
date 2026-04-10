@@ -844,6 +844,17 @@ router.get('/:id/classroom', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
 
+    // Professors can only access classrooms for programs they are assigned to
+    if (req.user.role === 'Professor') {
+      const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+      if (!prof) return res.status(403).json({ success: false, error: 'No professor profile found' });
+      const [[assigned]] = await pool.query(
+        `SELECT id FROM program WHERE id = ? AND active = 1 AND (lead_professor_id = ? OR assistant_professor_id = ?)`,
+        [id, prof.id, prof.id]
+      );
+      if (!assigned) return res.status(403).json({ success: false, error: 'You are not assigned to this program' });
+    }
+
     // Program info
     const [[program]] = await pool.query(
       `SELECT prog.*, cs.class_status_name, cl.class_name,

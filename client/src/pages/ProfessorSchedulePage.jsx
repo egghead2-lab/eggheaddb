@@ -327,7 +327,16 @@ export default function ProfessorSchedulePage() {
             </Section>
           </div>
 
-          {/* Upcoming Sessions — top of schedule */}
+          {/* Current Classes — top of schedule */}
+          <Section title={`Current Classes (${currentPrograms.length})`} defaultOpen={true}>
+            {currentPrograms.length === 0 ? (
+              <p className="text-sm text-gray-400">No active classes assigned</p>
+            ) : (
+              <ProgramTable programs={currentPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} />
+            )}
+          </Section>
+
+          {/* Upcoming Sessions */}
           <Section title={`Upcoming Sessions (${upcomingSessions.length})${totalUpcomingPay > 0 ? ' — ' + formatCurrency(totalUpcomingPay) + ' total' : ''}`} defaultOpen={true}>
             {upcomingSessions.length === 0 ? (
               <p className="text-sm text-gray-400">No upcoming sessions</p>
@@ -434,15 +443,6 @@ export default function ProfessorSchedulePage() {
               </Section>
             );
           })()}
-
-          {/* Current Classes */}
-          <Section title={`Current Classes (${currentPrograms.length})`} defaultOpen={true}>
-            {currentPrograms.length === 0 ? (
-              <p className="text-sm text-gray-400">No active classes assigned</p>
-            ) : (
-              <ProgramTable programs={currentPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} />
-            )}
-          </Section>
 
           {/* Past Sessions */}
           {pastSessions.length > 0 && (

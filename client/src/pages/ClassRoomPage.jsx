@@ -133,8 +133,8 @@ export default function ClassRoomPage() {
     <AppShell>
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <Link to={isAdmin ? `/programs/${programId}` : '/schedule'} className="text-sm text-gray-500 hover:text-[#1e3a5f]">
-          ← {isAdmin ? 'Program Detail' : 'My Schedule'}
+        <Link to={isAdmin ? `/classroom-attendance` : '/my-attendance'} className="text-sm text-gray-500 hover:text-[#1e3a5f]">
+          ← {isAdmin ? 'Classroom Attendance' : 'My Classes'}
         </Link>
         <div className="flex items-center justify-between mt-1">
           <div>

@@ -29,7 +29,7 @@ export default function ProfessorTodayPage() {
     <AppShell>
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900">Hi, {prof.professor_nickname}</h1>
+          <h1 className="text-xl font-bold text-gray-900">Hi, {prof.professor_nickname || prof.first_name || 'Professor'}</h1>
           <p className="text-sm text-gray-500">{formatDate(today)}</p>
         </div>
 
