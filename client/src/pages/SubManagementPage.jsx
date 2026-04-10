@@ -10,7 +10,7 @@ import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { Section } from '../components/ui/Section';
-import { formatDate, formatTime } from '../lib/utils';
+import { formatDate, formatTime, formatPhone } from '../lib/utils';
 
 function SubNeedCard({ need, onFindSub }) {
   return (
@@ -72,7 +72,7 @@ function ProfessorRow({ prof, need, onAssign, isPending }) {
         <div className="text-[10px] text-gray-400">{prof.professor_status_name}</div>
       </td>
       <td className="px-3 py-2 text-xs text-gray-600">{prof.geographic_area_name || '—'}</td>
-      <td className="px-3 py-2 text-xs text-gray-500">{prof.phone_number || '—'}</td>
+      <td className="px-3 py-2 text-xs text-gray-500">{formatPhone(prof.phone_number)}</td>
       <td className="px-3 py-2 text-xs text-gray-500">{prof.email || '—'}</td>
       <td className="px-3 py-2">
         {prof.generally_available ? (

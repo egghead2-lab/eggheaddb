@@ -8,17 +8,29 @@ import { Spinner } from '../components/ui/Spinner';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { useAuth } from '../hooks/useAuth';
 import { useProfessorList } from '../hooks/useReferenceData';
-import { formatDate, formatTime, formatCurrency } from '../lib/utils';
+import { formatDate, formatTime, formatCurrency, formatPhone } from '../lib/utils';
 import api from '../api/client';
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
+const TYPE_COLOR = {
+  science: 'border-l-purple-500',
+  engineering: 'border-l-green-600',
+  robotics: 'border-l-blue-500',
+  'financial literacy': 'border-l-yellow-500',
+  party: 'border-l-pink-400',
+  camp: 'border-l-orange-400',
+};
+
 function getDayString(prog) {
   return DAYS.map((d, i) => prog[d] ? DAY_LABELS[i] : null).filter(Boolean).join(', ');
 }
 
-function ProgramTable({ programs, profId, isLead, viewOnly }) {
+function ProgramTable({ programs, profId, isLead, viewOnly, sessions, subDateSet }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const today = new Date().toISOString().split('T')[0];
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <table className="w-full text-sm">
@@ -36,35 +48,121 @@ function ProgramTable({ programs, profId, isLead, viewOnly }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {programs.map((p, i) => (
-            <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-              <td className="px-3 py-2">
-                {viewOnly ? <span className="font-medium text-gray-900">{p.program_nickname}</span> : <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">{p.program_nickname}</Link>}
-                <div className="text-xs text-gray-400">{p.class_status_name}</div>
-              </td>
-              <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
-              <td className="px-3 py-2 text-gray-600">{p.class_name || '—'}</td>
-              <td className="px-3 py-2 text-gray-600">{getDayString(p)}</td>
-              <td className="px-3 py-2 text-gray-600">{p.start_time ? formatTime(p.start_time) : '—'}</td>
-              <td className="px-3 py-2 text-xs text-gray-500">
-                {p.first_session_date ? formatDate(p.first_session_date) : '—'}
-                {p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}
-              </td>
-              <td className="px-3 py-2 text-right font-medium text-green-700">
-                {formatCurrency(isLead(p) ? p.lead_professor_pay : p.assistant_professor_pay)}
-              </td>
-              <td className="px-3 py-2 text-center">
-                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                  isLead(p) ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
-                }`}>{isLead(p) ? 'Lead' : 'Assist'}</span>
-              </td>
-              <td className="px-3 py-2 text-center">
-                <Link to={`/programs/${p.id}/classroom`} className="text-xs text-[#1e3a5f] hover:underline font-medium">
-                  Classroom
-                </Link>
-              </td>
-            </tr>
-          ))}
+          {programs.map((p, i) => {
+            const expanded = expandedId === p.id;
+            const progSessions = sessions?.filter(s => String(s.program_id) === String(p.id)) || [];
+            const upcomingSess = progSessions.filter(s => (s.session_date || '').split('T')[0] >= today);
+            const typeColor = TYPE_COLOR[(p.program_type_name || '').toLowerCase()] || '';
+            const isConfirmed = (p.class_status_name || '').toLowerCase() === 'confirmed';
+            return (
+              <>
+                <tr key={p.id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${typeColor ? `border-l-4 ${typeColor}` : ''} ${viewOnly ? 'cursor-pointer hover:bg-blue-50/30' : ''}`}
+                  onClick={viewOnly ? () => setExpandedId(expanded ? null : p.id) : undefined}>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      {viewOnly ? (
+                        <span className="font-medium text-[#1e3a5f]">
+                          <span className="text-[10px] text-gray-400 mr-1">{expanded ? '▾' : '▸'}</span>
+                          {p.program_nickname}
+                        </span>
+                      ) : (
+                        <Link to={`/programs/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline" onClick={e => e.stopPropagation()}>{p.program_nickname}</Link>
+                      )}
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                        isConfirmed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      }`}>{isConfirmed ? 'Confirmed' : 'Unconfirmed'}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
+                  <td className="px-3 py-2 text-gray-600">{p.class_name || '—'}</td>
+                  <td className="px-3 py-2 text-gray-600">{getDayString(p)}</td>
+                  <td className="px-3 py-2 text-gray-600">{p.start_time ? formatTime(p.start_time) : '—'}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">
+                    {p.first_session_date ? formatDate(p.first_session_date) : '—'}
+                    {p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}
+                  </td>
+                  <td className="px-3 py-2 text-right font-medium text-green-700">
+                    {formatCurrency(isLead(p) ? p.lead_professor_pay : p.assistant_professor_pay)}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                      isLead(p) ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
+                    }`}>{isLead(p) ? 'Lead' : 'Assist'}</span>
+                  </td>
+                  <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                    <Link to={`/programs/${p.id}/classroom`} className="text-xs text-[#1e3a5f] hover:underline font-medium">
+                      Classroom
+                    </Link>
+                  </td>
+                </tr>
+                {expanded && (
+                  <tr key={`${p.id}-detail`}>
+                    <td colSpan={9} className="bg-blue-50/30 px-4 py-3">
+                      <div className="flex gap-4 mb-3">
+                        {p.location_nickname && (
+                          <Link to={`/locations/${p.location_id}/info-sheet`}
+                            className="text-xs text-[#1e3a5f] font-medium hover:underline">
+                            View School Info Sheet →
+                          </Link>
+                        )}
+                        {p.session_count && (
+                          <span className="text-xs text-gray-500">{p.session_count} sessions total · {upcomingSess.length} remaining</span>
+                        )}
+                      </div>
+                      {upcomingSess.length > 0 ? (
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-gray-500 border-b border-gray-200">
+                              <th className="text-left py-1 pr-3 font-medium">Date</th>
+                              <th className="text-left py-1 pr-3 font-medium">Time</th>
+                              <th className="text-left py-1 pr-3 font-medium">Lesson</th>
+                              <th className="text-left py-1 pr-3 font-medium">Sub Status</th>
+                              <th className="text-right py-1 font-medium">Pay</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {upcomingSess.map(s => {
+                              const dateStr = (s.session_date || '').split('T')[0];
+                              const hasSub = subDateSet?.has(dateStr);
+                              const actualLead = s.session_professor_id || s.lead_professor_id;
+                              const lead = String(actualLead) === String(profId);
+                              const sPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
+                              const pPay = parseFloat(lead ? s.program_lead_pay : s.program_assist_pay) || 0;
+                              const pay = sPay || pPay;
+                              const isEst = !sPay && pPay > 0;
+                              const isToday = dateStr === today;
+                              return (
+                                <tr key={s.id} className={`border-b border-gray-100 last:border-0 ${isToday ? 'bg-blue-100/40 font-medium' : ''} ${hasSub ? 'bg-amber-50' : ''}`}>
+                                  <td className="py-1.5 pr-3">
+                                    {formatDate(dateStr)}
+                                    {isToday && <span className="ml-1 text-[9px] font-medium text-blue-600 bg-blue-100 px-1 rounded">TODAY</span>}
+                                  </td>
+                                  <td className="py-1.5 pr-3 text-gray-600">{s.session_time ? formatTime(s.session_time) : '—'}</td>
+                                  <td className="py-1.5 pr-3 text-gray-600">
+                                    {s.trainual_link ? (
+                                      <a href={s.trainual_link} target="_blank" rel="noopener noreferrer" className="text-[#1e3a5f] hover:underline">{s.lesson_name || '—'}</a>
+                                    ) : (s.lesson_name || '—')}
+                                  </td>
+                                  <td className="py-1.5 pr-3">
+                                    {hasSub ? <span className="text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium">Sub requested</span> : <span className="text-gray-400">—</span>}
+                                  </td>
+                                  <td className={`py-1.5 text-right font-medium ${isEst ? 'text-blue-600' : 'text-green-700'}`}>
+                                    {pay > 0 ? <>{formatCurrency(pay)}{isEst && <span className="text-[8px] text-blue-400 ml-0.5">est</span>}</> : '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="text-xs text-gray-400">No upcoming sessions</p>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -108,7 +206,10 @@ function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
             const subStatus = getSubStatus(s);
             const actualLead = s.session_professor_id || s.lead_professor_id;
             const lead = String(actualLead) === String(profId);
-            const pay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
+            const sessionPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
+            const programPay = parseFloat(lead ? s.program_lead_pay : s.program_assist_pay) || 0;
+            const pay = sessionPay || programPay;
+            const isExpected = !sessionPay && programPay > 0;
             return (
               <tr key={s.id} className={`${
                 subStatus === 'requested' ? 'bg-amber-50' :
@@ -136,8 +237,12 @@ function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
                     'bg-gray-100 text-gray-600'
                   }`}>{s.class_status_name || '—'}</span>
                 </td>}
-                <td className="px-3 py-2 text-right font-medium text-green-700">
-                  {pay > 0 ? formatCurrency(pay) : <span className="text-gray-300">—</span>}
+                <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                  {pay > 0 ? (
+                    <span className={isExpected ? 'text-blue-600' : 'text-green-700'}>
+                      {formatCurrency(pay)}{isExpected ? <span className="text-[9px] text-blue-400 ml-0.5">est</span> : ''}
+                    </span>
+                  ) : <span className="text-gray-300">—</span>}
                   {s.not_billed ? <span className="text-xs text-red-400 ml-1">(unbilled)</span> : ''}
                 </td>
               </tr>
@@ -189,9 +294,18 @@ export default function ProfessorSchedulePage() {
   const observations = sched.observations || [];
 
   const today = new Date().toISOString().split('T')[0];
+  const [showAllClasses, setShowAllClasses] = useState(false);
 
-  // Split programs into current and past
-  const currentPrograms = programs.filter(p => !p.last_session_date || p.last_session_date.split('T')[0] >= today);
+  // 30 days from now
+  const plus30 = new Date(); plus30.setDate(plus30.getDate() + 30);
+  const plus30Str = plus30.toISOString().split('T')[0];
+
+  // Split programs: "current" = not finished yet, optionally filtered to starting within 30 days
+  const allCurrentPrograms = programs.filter(p => !p.last_session_date || p.last_session_date.split('T')[0] >= today);
+  const currentPrograms = showAllClasses
+    ? allCurrentPrograms
+    : allCurrentPrograms.filter(p => !p.first_session_date || p.first_session_date.split('T')[0] <= plus30Str);
+  const futureCount = allCurrentPrograms.length - currentPrograms.length;
   const pastPrograms = programs.filter(p => p.last_session_date && p.last_session_date.split('T')[0] < today);
 
   // For each session, determine this professor's sub status
@@ -211,8 +325,10 @@ export default function ProfessorSchedulePage() {
 
   // Pay totals
   const totalUpcomingPay = upcomingSessions.reduce((sum, s) => {
-    const lead = String(s.lead_professor_id) === String(profId);
-    return sum + (parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0);
+    const lead = String(s.session_professor_id || s.lead_professor_id) === String(profId);
+    const sPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
+    const pPay = parseFloat(lead ? s.program_lead_pay : s.program_assist_pay) || 0;
+    return sum + (sPay || pPay);
   }, 0);
   const totalPastPay = pastSessions.reduce((sum, s) => {
     const lead = String(s.lead_professor_id) === String(profId);
@@ -221,7 +337,7 @@ export default function ProfessorSchedulePage() {
 
   // Unique locations from current programs
   const locationMap = {};
-  currentPrograms.forEach(p => {
+  allCurrentPrograms.forEach(p => {
     if (p.location_nickname && !locationMap[p.location_nickname]) {
       locationMap[p.location_nickname] = { nickname: p.location_nickname, school_name: p.school_name, address: p.address, contact: p.location_contact };
     }
@@ -274,7 +390,7 @@ export default function ProfessorSchedulePage() {
             <Section title="General Information" defaultOpen={true}>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-gray-500">Full Name</span><span className="font-medium">{prof.first_name} {prof.last_name}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Phone</span><span>{prof.phone_number || '—'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Phone</span><span>{formatPhone(prof.phone_number)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Email</span><span>{prof.email || '—'}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Area</span><span>{prof.geographic_area_name || '—'}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Base Pay</span><span className="font-medium">{formatCurrency(prof.base_pay)}</span></div>
@@ -328,11 +444,24 @@ export default function ProfessorSchedulePage() {
           </div>
 
           {/* Current Classes — top of schedule */}
-          <Section title={`Current Classes (${currentPrograms.length})`} defaultOpen={true}>
+          <Section title={`Current Classes (${currentPrograms.length})`} defaultOpen={true}
+            action={
+              <div className="flex items-center gap-2">
+                {!showAllClasses && futureCount > 0 && (
+                  <span className="text-[10px] text-gray-400">{futureCount} more starting later</span>
+                )}
+                <button type="button" onClick={e => { e.stopPropagation(); setShowAllClasses(v => !v); }}
+                  className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors ${
+                    showAllClasses ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  {showAllClasses ? 'Show Next 30 Days' : 'Show All Assigned'}
+                </button>
+              </div>
+            }>
             {currentPrograms.length === 0 ? (
-              <p className="text-sm text-gray-400">No active classes assigned</p>
+              <p className="text-sm text-gray-400">No active classes assigned{!showAllClasses ? ' in the next 30 days' : ''}</p>
             ) : (
-              <ProgramTable programs={currentPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} />
+              <ProgramTable programs={currentPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} sessions={sessions} subDateSet={subDateSet} />
             )}
           </Section>
 
@@ -341,7 +470,7 @@ export default function ProfessorSchedulePage() {
             {upcomingSessions.length === 0 ? (
               <p className="text-sm text-gray-400">No upcoming sessions</p>
             ) : (
-              <SessionTable sessions={upcomingSessions} profId={profId} viewOnly={viewOnly} subDateSet={subDateSet} showStatus={true} />
+              <SessionTable sessions={upcomingSessions} profId={profId} viewOnly={viewOnly} subDateSet={subDateSet} />
             )}
           </Section>
 
@@ -444,8 +573,8 @@ export default function ProfessorSchedulePage() {
             );
           })()}
 
-          {/* Past Sessions */}
-          {pastSessions.length > 0 && (
+          {/* Past Sessions — admin only, professors see this in Pay History */}
+          {!viewOnly && pastSessions.length > 0 && (
             <Section title={`Past Sessions (${pastSessions.length})${totalPastPay > 0 ? ' — ' + formatCurrency(totalPastPay) + ' earned' : ''}`} defaultOpen={false}>
               <SessionTable sessions={pastSessions} profId={profId} viewOnly={viewOnly} subDateSet={subDateSet} />
             </Section>
@@ -454,7 +583,7 @@ export default function ProfessorSchedulePage() {
           {/* Past Programs */}
           {pastPrograms.length > 0 && (
             <Section title={`Past Programs (${pastPrograms.length})`} defaultOpen={false}>
-              <ProgramTable programs={pastPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} />
+              <ProgramTable programs={pastPrograms} profId={profId} isLead={isLead} viewOnly={viewOnly} sessions={sessions} subDateSet={subDateSet} />
             </Section>
           )}
 

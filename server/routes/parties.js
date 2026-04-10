@@ -155,10 +155,10 @@ router.get('/unconfirmed', authenticate, async (req, res, next) => {
        LEFT JOIN party_format pf ON pf.id = prog.party_format_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
-       LEFT JOIN parent par ON par.id = prog.contact_id
+       LEFT JOIN parent par ON par.id = prog.parent_id
        WHERE prog.active = 1
          AND pt.program_type_name = 'Party'
-         AND cs.class_status_name NOT LIKE 'Cancelled%'
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
          AND prog.first_session_date >= CURDATE()
          AND prog.first_session_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
        ORDER BY prog.first_session_date ASC`,
@@ -347,7 +347,10 @@ router.post('/:id/send-confirmation', authenticate, async (req, res, next) => {
     // Send via Gmail
     try {
       const { sendEmail } = require('../lib/gmail');
-      await sendEmail(req.user.userId, recipient_email, subject, body);
+      const [[user]] = await pool.query('SELECT google_refresh_token, email_signature FROM user WHERE id = ?', [req.user.userId]);
+      if (!user?.google_refresh_token) return res.status(400).json({ success: false, error: 'No Google account linked — sign in with Google first' });
+      const htmlBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6;">${body.replace(/\n/g, '<br>')}</div>`;
+      await sendEmail({ refreshToken: user.google_refresh_token, to: recipient_email, subject, htmlBody, signature: user.email_signature });
     } catch (emailErr) {
       return res.status(500).json({ success: false, error: 'Failed to send email: ' + emailErr.message });
     }

@@ -186,8 +186,16 @@ export default function PartyConfirmsPage() {
 
                     <div>
                       <label className="text-[10px] text-gray-500 block mb-0.5">To</label>
-                      <input type="email" value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)}
-                        className="w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                      <div className="flex items-center gap-1">
+                        <input type="email" value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)}
+                          className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                        {recipientEmail !== (activeParty.contact_email || '') && activeParty.contact_email && (
+                          <button type="button" onClick={() => setRecipientEmail(activeParty.contact_email)}
+                            className="text-[10px] text-gray-400 hover:text-[#1e3a5f] whitespace-nowrap" title={`Reset to ${activeParty.contact_email}`}>
+                            Reset ({activeParty.contact_email})
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label className="text-[10px] text-gray-500 block mb-0.5">Subject</label>

@@ -1037,7 +1037,7 @@ router.post('/candidates/:id/emails', upload.array('attachments', 10), async (re
 
     if (!subject || !body) return res.status(400).json({ success: false, error: 'Subject and body required' });
 
-    const [[user]] = await pool.query('SELECT google_refresh_token FROM user WHERE id = ?', [userId]);
+    const [[user]] = await pool.query('SELECT google_refresh_token, email_signature FROM user WHERE id = ?', [userId]);
     if (!user?.google_refresh_token) {
       return res.status(400).json({ success: false, error: 'Gmail not connected. Sign out and sign back in with Google.' });
     }
@@ -1059,6 +1059,7 @@ router.post('/candidates/:id/emails', upload.array('attachments', 10), async (re
       htmlBody: body,
       threadId: threadId || null,
       attachments,
+      signature: user.email_signature,
     });
 
     // Store in our DB

@@ -133,11 +133,14 @@ async function fetchThreadMessages(refreshToken, threadId) {
  * Send an email via Gmail with optional attachments.
  * @param {{ refreshToken, to, subject, htmlBody, threadId?, attachments?: Array<{name, mimeType, data: Buffer}> }}
  */
-async function sendEmail({ refreshToken, to, subject, htmlBody, threadId, attachments }) {
+async function sendEmail({ refreshToken, to, subject, htmlBody, threadId, attachments, signature }) {
   const client = getAuthedClient(refreshToken);
   const gmail = google.gmail({ version: 'v1', auth: client });
 
-  const plainText = htmlToPlainText(htmlBody);
+  const fullHtml = signature
+    ? `${htmlBody}<br><br>--<br>${signature}`
+    : htmlBody;
+  const plainText = htmlToPlainText(fullHtml);
   const altBoundary = `alt_${Date.now()}`;
   const mixedBoundary = `mixed_${Date.now() + 1}`;
 
@@ -157,7 +160,7 @@ async function sendEmail({ refreshToken, to, subject, htmlBody, threadId, attach
       `--${altBoundary}`,
       'Content-Type: text/html; charset=utf-8',
       '',
-      htmlBody,
+      fullHtml,
       `--${altBoundary}--`,
     ].join('\r\n');
     encoded = Buffer.from(message).toString('base64url');
@@ -178,7 +181,7 @@ async function sendEmail({ refreshToken, to, subject, htmlBody, threadId, attach
       `--${altBoundary}`,
       'Content-Type: text/html; charset=utf-8',
       '',
-      htmlBody,
+      fullHtml,
       `--${altBoundary}--`,
     ];
     for (const att of attachments) {

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getLocations, updateLocation } from '../api/locations';
 import api from '../api/client';
 import { useGeneralData } from '../hooks/useReferenceData';
+import { formatPhone } from '../lib/utils';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -192,12 +193,12 @@ export default function LocationsPage() {
                         )}
                       </td>}
                       {v('area') && <td className="px-3 py-2 text-gray-600 text-xs">{l.geographic_area_name || '—'}</td>}
-                      {v('phone') && <td className="px-3 py-2 text-gray-600 text-xs">{l.location_phone || '—'}</td>}
+                      {v('phone') && <td className="px-3 py-2 text-gray-600 text-xs">{formatPhone(l.location_phone)}</td>}
                       {v('contact_name') && <td className="px-3 py-2 text-gray-600 text-xs">{l.point_of_contact || '—'}</td>}
                       {v('contact_email') && <td className="px-3 py-2 text-gray-600 text-xs">
                         {l.poc_email ? <a href={`mailto:${l.poc_email}`} className="text-[#1e3a5f] hover:underline">{l.poc_email}</a> : '—'}
                       </td>}
-                      {v('contact_phone') && <td className="px-3 py-2 text-gray-600 text-xs">{l.poc_phone || '—'}</td>}
+                      {v('contact_phone') && <td className="px-3 py-2 text-gray-600 text-xs">{formatPhone(l.poc_phone)}</td>}
                       {v('info_sheet') && <td className="px-3 py-2 text-xs">
                         {l.school_calendar_link ? <a href={l.school_calendar_link} target="_blank" rel="noopener noreferrer" className="text-[#1e3a5f] hover:underline">View</a> : '—'}
                       </td>}

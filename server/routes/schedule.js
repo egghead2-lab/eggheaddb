@@ -51,35 +51,118 @@ router.post('/confirm-session/:sessionId', authenticate, async (req, res, next) 
   } catch (err) { next(err); }
 });
 
-// GET /api/schedule/my-pay — professor's pay history
+// GET /api/schedule/my-pay — professor's full pay history
 router.get('/my-pay', authenticate, async (req, res, next) => {
   try {
     const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
     if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
 
-    const { search } = req.query;
-    let where = 'WHERE psp.professor_id = ?';
-    const params = [prof.id];
-    if (search) {
-      where += ' AND prog.program_nickname LIKE ?';
-      params.push(`%${search}%`);
-    }
+    const { search, date_from, date_to } = req.query;
 
-    const [rows] = await pool.query(
-      `SELECT psp.id, psp.session_date, psp.pay_amount, psp.role, psp.is_substitute,
-              psp.regular_pay_component, psp.bonus_component,
-              prog.program_nickname, prog.start_time,
-              loc.nickname AS location_nickname
+    // Session pay
+    let sessionWhere = 'WHERE psp.professor_id = ?';
+    const sessionParams = [prof.id];
+    if (search) { sessionWhere += ' AND prog.program_nickname LIKE ?'; sessionParams.push(`%${search}%`); }
+    if (date_from) { sessionWhere += ' AND psp.session_date >= ?'; sessionParams.push(date_from); }
+    if (date_to) { sessionWhere += ' AND psp.session_date <= ?'; sessionParams.push(date_to); }
+
+    const [sessionRows] = await pool.query(
+      `SELECT psp.id, psp.session_date AS pay_date, psp.pay_amount, psp.role, psp.is_substitute,
+              prog.program_nickname, prog.id AS program_id,
+              loc.nickname AS location_nickname,
+              'session' AS pay_type
        FROM program_session_pay psp
        JOIN program prog ON prog.id = psp.program_id
        LEFT JOIN location loc ON loc.id = prog.location_id
-       ${where}
-       ORDER BY psp.session_date DESC
-       LIMIT 200`,
-      params
+       ${sessionWhere}
+       ORDER BY psp.session_date DESC`,
+      sessionParams
     );
 
-    res.json({ success: true, data: rows });
+    // Misc pay
+    let miscWhere = 'WHERE mp.professor_id = ?';
+    const miscParams = [prof.id];
+    if (search) { miscWhere += ' AND (mp.description LIKE ? OR mp.pay_type LIKE ? OR prog.program_nickname LIKE ?)'; const s = `%${search}%`; miscParams.push(s, s, s); }
+    if (date_from) { miscWhere += ' AND mp.pay_date >= ?'; miscParams.push(date_from); }
+    if (date_to) { miscWhere += ' AND mp.pay_date <= ?'; miscParams.push(date_to); }
+
+    const [miscRows] = await pool.query(
+      `SELECT mp.id, mp.pay_date, mp.pay_type AS misc_type, mp.subtype, mp.description,
+              mp.hourly_pay, mp.hours, mp.dollar_amount, mp.manual_total_override, mp.total_reimbursement,
+              COALESCE(mp.manual_total_override, mp.dollar_amount, ROUND(mp.hourly_pay * mp.hours, 2), 0) AS pay_amount,
+              mp.location,
+              prog.program_nickname, prog.id AS program_id,
+              'misc' AS pay_type
+       FROM misc_pay_entries mp
+       LEFT JOIN program prog ON prog.id = mp.program_id
+       ${miscWhere}
+       ORDER BY mp.pay_date DESC`,
+      miscParams
+    );
+
+    // Observation pay
+    let obsWhere = 'WHERE po.evaluator_professor_id = ? AND po.is_paid = 1';
+    const obsParams = [prof.id];
+    if (search) { obsWhere += ' AND prog.program_nickname LIKE ?'; obsParams.push(`%${search}%`); }
+    if (date_from) { obsWhere += ' AND po.observation_date >= ?'; obsParams.push(date_from); }
+    if (date_to) { obsWhere += ' AND po.observation_date <= ?'; obsParams.push(date_to); }
+
+    const [obsRows] = await pool.query(
+      `SELECT po.id, po.observation_date AS pay_date, po.pay_amount, po.observation_type,
+              prog.program_nickname, prog.id AS program_id,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS observed_professor,
+              'observation' AS pay_type
+       FROM professor_observation po
+       LEFT JOIN program prog ON prog.id = po.program_id
+       LEFT JOIN professor p ON p.id = po.professor_id
+       ${obsWhere}
+       ORDER BY po.observation_date DESC`,
+      obsParams
+    );
+
+    // Upcoming sessions (not yet in program_session_pay) — expected pay from program rates
+    let upWhere = `WHERE s.active = 1 AND s.session_date >= CURDATE()
+         AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM program_session_pay psp2 WHERE psp2.session_id = s.id AND psp2.professor_id = ?)`;
+    const upParams = [prof.id, prof.id, prof.id, prof.id, prof.id];
+    if (search) { upWhere += ' AND prog.program_nickname LIKE ?'; upParams.push(`%${search}%`); }
+    if (date_from) { upWhere += ' AND s.session_date >= ?'; upParams.push(date_from); }
+    if (date_to) { upWhere += ' AND s.session_date <= ?'; upParams.push(date_to); }
+
+    const [upcomingRows] = await pool.query(
+      `SELECT s.id, s.session_date AS pay_date,
+              prog.program_nickname, prog.id AS program_id,
+              prog.lead_professor_id, prog.assistant_professor_id,
+              s.professor_id AS session_professor_id, s.assistant_id AS session_assistant_id,
+              prog.lead_professor_pay, prog.assistant_professor_pay,
+              loc.nickname AS location_nickname,
+              l.lesson_name,
+              'upcoming' AS pay_type
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       ${upWhere}
+       ORDER BY s.session_date ASC`,
+      upParams
+    );
+
+    // Calculate expected pay for each upcoming session
+    const upcoming = upcomingRows.map(s => {
+      const actualLead = s.session_professor_id || s.lead_professor_id;
+      const isLead = String(actualLead) === String(prof.id);
+      const pay = parseFloat(isLead ? s.lead_professor_pay : s.assistant_professor_pay) || 0;
+      return {
+        id: s.id, pay_date: s.pay_date, pay_amount: pay,
+        role: isLead ? 'Lead' : 'Assistant',
+        program_nickname: s.program_nickname, program_id: s.program_id,
+        location_nickname: s.location_nickname, lesson_name: s.lesson_name,
+        pay_type: 'upcoming',
+      };
+    });
+
+    res.json({ success: true, data: { sessions: sessionRows, upcoming, misc: miscRows, observations: obsRows } });
   } catch (err) { next(err); }
 });
 
@@ -192,7 +275,8 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
               prog.lead_professor_id, prog.assistant_professor_id,
               prog.lead_professor_pay, prog.assistant_professor_pay,
-              prog.first_session_date, prog.last_session_date,
+              prog.first_session_date, prog.last_session_date, prog.session_count,
+              prog.location_id,
               cs.class_status_name,
               loc.nickname AS location_nickname, loc.school_name, loc.address,
               loc.point_of_contact AS location_contact,
@@ -220,10 +304,11 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
               s.assistant_id AS session_assistant_id,
               prog.program_nickname, prog.lead_professor_id, prog.assistant_professor_id,
               prog.id AS program_id,
+              prog.lead_professor_pay AS program_lead_pay, prog.assistant_professor_pay AS program_assist_pay,
               cs.class_status_name,
               loc.nickname AS location_nickname,
               cl.class_name,
-              l.lesson_name
+              l.lesson_name, l.trainual_link
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { Spinner } from '../components/ui/Spinner';
-import { formatDate, formatTime } from '../lib/utils';
+import { formatDate, formatTime, formatPhone } from '../lib/utils';
 
 export default function ProfessorTodayPage() {
   const qc = useQueryClient();
@@ -121,22 +121,11 @@ function SessionCard({ session: s, profId, onConfirm }) {
             <span className="font-medium">Parking:</span> {s.parking_information}
           </div>
         )}
-        {s.school_procedure_Info && (
-          <div className="text-xs text-blue-700 bg-blue-50 rounded px-2 py-1 mt-1">
-            <span className="font-medium">Check-in:</span> {s.school_procedure_Info}
-          </div>
-        )}
         {s.point_of_contact && (
           <div className="text-xs text-gray-600 mt-1">
             Contact: <span className="font-medium">{s.point_of_contact}</span>
-            {s.poc_phone && <a href={`tel:${s.poc_phone}`} className="ml-1 text-[#1e3a5f]">{s.poc_phone}</a>}
+            {s.poc_phone && <a href={`tel:${s.poc_phone}`} className="ml-1 text-[#1e3a5f]">{formatPhone(s.poc_phone)}</a>}
           </div>
-        )}
-        {s.location_id && (
-          <Link to={`/locations/${s.location_id}/info-sheet`}
-            className="inline-block mt-2 text-xs text-[#1e3a5f] font-medium hover:underline">
-            View Full School Info →
-          </Link>
         )}
       </div>
 
@@ -144,6 +133,22 @@ function SessionCard({ session: s, profId, onConfirm }) {
       <div className="px-4 py-2 border-t border-gray-100 flex items-center justify-between">
         <div className="text-xs text-gray-400">{s.specific_notes || ''}</div>
         {pay > 0 && <div className="text-sm font-medium text-green-700">${pay.toFixed(2)}</div>}
+      </div>
+
+      {/* Action buttons */}
+      <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-2">
+        {s.program_id && (
+          <Link to={`/programs/${s.program_id}/classroom`}
+            className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] active:scale-[0.98] transition-all">
+            View Roster
+          </Link>
+        )}
+        {s.location_id && (
+          <Link to={`/locations/${s.location_id}/info-sheet`}
+            className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg border-2 border-[#1e3a5f] text-[#1e3a5f] text-sm font-medium hover:bg-[#1e3a5f]/5 active:scale-[0.98] transition-all">
+            School Info Sheet
+          </Link>
+        )}
       </div>
     </div>
   );

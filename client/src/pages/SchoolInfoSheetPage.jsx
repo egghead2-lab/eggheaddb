@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { Spinner } from '../components/ui/Spinner';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatPhone } from '../lib/utils';
 
 function InfoRow({ label, value, fallback }) {
   const display = value || fallback || null;
@@ -78,7 +78,7 @@ export default function SchoolInfoSheetPage() {
               <div>
                 <div className="text-[10px] text-gray-400">Location Phone</div>
                 <div className="text-sm text-gray-800">
-                  {loc.location_phone ? <a href={`tel:${loc.location_phone}`} className="text-[#1e3a5f] hover:underline">{loc.location_phone}</a> : '—'}
+                  {loc.location_phone ? <a href={`tel:${loc.location_phone}`} className="text-[#1e3a5f] hover:underline">{formatPhone(loc.location_phone)}</a> : '—'}
                 </div>
               </div>
               {loc.classroom_location && (

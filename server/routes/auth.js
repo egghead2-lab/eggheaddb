@@ -166,4 +166,21 @@ router.get('/me', authenticate, (req, res) => {
   res.json({ success: true, data: req.user });
 });
 
+// GET /api/auth/me/signature
+router.get('/me/signature', authenticate, async (req, res, next) => {
+  try {
+    const [[row]] = await pool.query('SELECT email_signature FROM user WHERE id = ?', [req.user.userId]);
+    res.json({ success: true, data: row?.email_signature || '' });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/auth/me/signature
+router.put('/me/signature', authenticate, async (req, res, next) => {
+  try {
+    const { email_signature } = req.body;
+    await pool.query('UPDATE user SET email_signature = ?, ts_updated = NOW() WHERE id = ?', [email_signature || null, req.user.userId]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

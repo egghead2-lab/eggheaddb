@@ -67,7 +67,7 @@ router.get('/:id', async (req, res, next) => {
 
     const [[user]] = await pool.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.user_name, u.role_id,
-              r.role_name, u.ts_inserted, u.ts_updated
+              r.role_name, u.email_signature, u.ts_inserted, u.ts_updated
        FROM user u
        LEFT JOIN role r ON r.id = u.role_id
        WHERE u.id = ? AND u.active = 1`,
@@ -125,6 +125,7 @@ router.put('/:id', async (req, res, next) => {
     if (user_name !== undefined) { fields.push('user_name = ?'); values.push(user_name); }
     if (role_id !== undefined && role_id !== '') { fields.push('role_id = ?'); values.push(role_id); }
     if (active !== undefined && active !== '') { fields.push('active = ?'); values.push(active); }
+    if (req.body.email_signature !== undefined) { fields.push('email_signature = ?'); values.push(req.body.email_signature || null); }
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
       fields.push('password = ?');
