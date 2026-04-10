@@ -148,6 +148,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
               ga.geographic_area_name,
               os.onboard_status_name,
               pu.user_name AS login_username,
+              pu.password_plain AS login_password,
               pu.active AS login_active,
               pr.role_name AS login_role
        FROM professor p
@@ -628,9 +629,9 @@ router.post('/:id/generate-login', authenticate, async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
     const [userResult] = await pool.query(
-      `INSERT INTO user (first_name, last_name, email, user_name, password, role_id, active, ts_inserted, ts_updated)
-       VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-      [prof.first_name || prof.professor_nickname, prof.last_name || '', prof.email, username, hashedPassword, PROFESSOR_ROLE_ID]
+      `INSERT INTO user (first_name, last_name, email, user_name, password, password_plain, role_id, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [prof.first_name || prof.professor_nickname, prof.last_name || '', prof.email, username, hashedPassword, rawPassword, PROFESSOR_ROLE_ID]
     );
 
     await pool.query('UPDATE professor SET user_id = ? WHERE id = ?', [userResult.insertId, id]);
@@ -653,7 +654,7 @@ router.post('/:id/regenerate-password', authenticate, async (req, res, next) => 
     const rawPassword = crypto.randomBytes(4).toString('hex');
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
-    await pool.query('UPDATE user SET password = ?, ts_updated = NOW() WHERE id = ?', [hashedPassword, prof.user_id]);
+    await pool.query('UPDATE user SET password = ?, password_plain = ?, ts_updated = NOW() WHERE id = ?', [hashedPassword, rawPassword, prof.user_id]);
 
     res.json({ success: true, password: rawPassword });
   } catch (err) { next(err); }

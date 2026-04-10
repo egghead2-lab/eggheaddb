@@ -1107,8 +1107,14 @@ export default function ProfessorDetailPage() {
                       <div className="text-sm font-mono font-medium text-gray-800">{prof.login_username}</div>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500">Role</label>
-                      <div className="text-sm text-gray-600">{prof.login_role || 'Professor'}</div>
+                      <label className="text-xs text-gray-500">Password</label>
+                      <div className="flex items-center gap-1">
+                        <code className="text-sm font-mono bg-gray-100 px-1.5 py-0.5 rounded select-all">{prof.login_password || '••••••'}</code>
+                        {prof.login_password && (
+                          <button type="button" onClick={() => navigator.clipboard.writeText(prof.login_password)}
+                            className="text-[10px] text-gray-400 hover:text-[#1e3a5f]">Copy</button>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs text-gray-500">Status</label>

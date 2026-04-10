@@ -87,6 +87,7 @@ router.get('/candidates/:id', async (req, res, next) => {
               CONCAT(sc.first_name, ' ', sc.last_name) AS scheduling_coordinator_name, sc.email AS sc_email,
               CONCAT(fm.first_name, ' ', fm.last_name) AS field_manager_name, fm.email AS fm_email,
               cu.user_name AS login_username,
+              cu.password_plain AS login_password,
               cu.active AS login_active,
               r.role_name AS login_role
        FROM candidate c
@@ -368,9 +369,9 @@ router.post('/candidates/:id/generate-login', async (req, res, next) => {
 
     // Create user with Candidate role
     const [userResult] = await pool.query(
-      `INSERT INTO user (first_name, last_name, email, user_name, password, role_id, active, ts_inserted, ts_updated)
-       VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-      [first, last, candidate.email, username, hashedPassword, CANDIDATE_ROLE_ID]
+      `INSERT INTO user (first_name, last_name, email, user_name, password, password_plain, role_id, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [first, last, candidate.email, username, hashedPassword, rawPassword, CANDIDATE_ROLE_ID]
     );
 
     // Link user to candidate
@@ -394,7 +395,7 @@ router.post('/candidates/:id/regenerate-password', async (req, res, next) => {
     const rawPassword = crypto.randomBytes(4).toString('hex');
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
-    await pool.query('UPDATE user SET password = ?, ts_updated = NOW() WHERE id = ?', [hashedPassword, candidate.user_id]);
+    await pool.query('UPDATE user SET password = ?, password_plain = ?, ts_updated = NOW() WHERE id = ?', [hashedPassword, rawPassword, candidate.user_id]);
 
     res.json({ success: true, password: rawPassword });
   } catch (err) { next(err); }
