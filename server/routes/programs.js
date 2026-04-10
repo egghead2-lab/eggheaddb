@@ -427,6 +427,8 @@ router.put('/:id/sessions', authenticate, async (req, res, next) => {
     try {
       await conn.beginTransaction();
 
+      const payOrNull = (v) => (v !== null && v !== undefined && v !== '' && Number(v) !== 0) ? v : null;
+
       for (const session of sessions) {
         if (session.id) {
           await conn.query(
@@ -434,8 +436,8 @@ router.put('/:id/sessions', authenticate, async (req, res, next) => {
              assistant_pay=?, session_date=?, session_time=?, specific_notes=?, ts_updated=NOW()
              WHERE id=? AND program_id=?`,
             [
-              session.lesson_id || null, session.professor_id || null, session.professor_pay || null,
-              session.assistant_id || null, session.assistant_pay || null,
+              session.lesson_id || null, session.professor_id || null, payOrNull(session.professor_pay),
+              session.assistant_id || null, payOrNull(session.assistant_pay),
               session.session_date || null, session.session_time || null,
               session.specific_notes || null, session.id, id,
             ]
@@ -446,8 +448,8 @@ router.put('/:id/sessions', authenticate, async (req, res, next) => {
              assistant_pay, session_date, session_time, specific_notes, active, ts_inserted, ts_updated)
              VALUES (?,?,?,?,?,?,?,?,?,1,NOW(),NOW())`,
             [
-              id, session.lesson_id || null, session.professor_id || null, session.professor_pay || null,
-              session.assistant_id || null, session.assistant_pay || null,
+              id, session.lesson_id || null, session.professor_id || null, payOrNull(session.professor_pay),
+              session.assistant_id || null, payOrNull(session.assistant_pay),
               session.session_date || null, session.session_time || null, session.specific_notes || null,
             ]
           );
@@ -515,8 +517,10 @@ router.post('/:id/sessions/bulk', authenticate, async (req, res, next) => {
       await pool.query(
         `INSERT INTO session (program_id, session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, active, ts_inserted, ts_updated)
          VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-        [id, dateStr, program.start_time || null, program.lead_professor_id || null, program.lead_professor_pay || null,
-         program.assistant_professor_id || null, program.assistant_professor_pay || null]
+        [id, dateStr, program.start_time || null, program.lead_professor_id || null,
+         (program.lead_professor_pay && Number(program.lead_professor_pay) !== 0) ? program.lead_professor_pay : null,
+         program.assistant_professor_id || null,
+         (program.assistant_professor_pay && Number(program.assistant_professor_pay) !== 0) ? program.assistant_professor_pay : null]
       );
     }
 
@@ -579,9 +583,9 @@ router.put('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
     if (session_date !== undefined) { fields.push('session_date = ?'); values.push(session_date || null); }
     if (session_time !== undefined) { fields.push('session_time = ?'); values.push(session_time || null); }
     if (professor_id !== undefined) { fields.push('professor_id = ?'); values.push(professor_id || null); }
-    if (professor_pay !== undefined) { fields.push('professor_pay = ?'); values.push(professor_pay || null); }
+    if (professor_pay !== undefined) { fields.push('professor_pay = ?'); values.push((professor_pay !== '' && professor_pay != null && Number(professor_pay) !== 0) ? professor_pay : null); }
     if (assistant_id !== undefined) { fields.push('assistant_id = ?'); values.push(assistant_id || null); }
-    if (assistant_pay !== undefined) { fields.push('assistant_pay = ?'); values.push(assistant_pay || null); }
+    if (assistant_pay !== undefined) { fields.push('assistant_pay = ?'); values.push((assistant_pay !== '' && assistant_pay != null && Number(assistant_pay) !== 0) ? assistant_pay : null); }
     if (lesson_id !== undefined) { fields.push('lesson_id = ?'); values.push(lesson_id || null); }
     if (specific_notes !== undefined) { fields.push('specific_notes = ?'); values.push(specific_notes || null); }
     if (not_billed !== undefined) { fields.push('not_billed = ?'); values.push(not_billed ? 1 : 0); }
