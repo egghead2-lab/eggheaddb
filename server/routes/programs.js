@@ -512,15 +512,14 @@ router.post('/:id/sessions/bulk', authenticate, async (req, res, next) => {
 
     if (newDates.length === 0) return res.json({ success: true, created: 0, message: 'No new dates to add' });
 
-    // Insert sessions
+    // Insert sessions — professor/pay fields left NULL intentionally.
+    // Nightly payroll job resolves who taught via: session override → program lead/assistant → professor base pay.
+    // This prevents overwriting subs when lead professor changes.
     for (const dateStr of newDates) {
       await pool.query(
-        `INSERT INTO session (program_id, session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, active, ts_inserted, ts_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-        [id, dateStr, program.start_time || null, program.lead_professor_id || null,
-         (program.lead_professor_pay && Number(program.lead_professor_pay) !== 0) ? program.lead_professor_pay : null,
-         program.assistant_professor_id || null,
-         (program.assistant_professor_pay && Number(program.assistant_professor_pay) !== 0) ? program.assistant_professor_pay : null]
+        `INSERT INTO session (program_id, session_date, session_time, active, ts_inserted, ts_updated)
+         VALUES (?, ?, ?, 1, NOW(), NOW())`,
+        [id, dateStr, program.start_time || null]
       );
     }
 
