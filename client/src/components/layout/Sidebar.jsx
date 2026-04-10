@@ -228,15 +228,18 @@ export function Sidebar() {
                 <SidebarGroup group={group} compact={compact}
                   isOpen={openGroups.has(group.label)} onToggle={() => toggleGroup(group.label)} />
               </div>
-              {/* Pin buttons on hover (non-compact, non-reordering) */}
+              {/* Pin stars — always visible for pinned, show on hover for others */}
               {!compact && !reordering && openGroups.has(group.label) && group.label !== 'Dashboard' && (
-                <div className="hidden group-hover:flex flex-col gap-0.5 pr-1">
-                  {group.items.map(item => (
-                    <button key={item.to} onClick={() => togglePin(item.to)} title={pins.includes(item.to) ? 'Unpin' : 'Pin to top'}
-                      className={`text-[8px] leading-none ${pins.includes(item.to) ? 'text-amber-400' : 'text-white/20 hover:text-white/50'}`}>
-                      {pins.includes(item.to) ? '★' : '☆'}
-                    </button>
-                  ))}
+                <div className="flex flex-col gap-0.5 pr-1">
+                  {group.items.map(item => {
+                    const isPinned = pins.includes(item.to);
+                    return (
+                      <button key={item.to} onClick={() => togglePin(item.to)} title={isPinned ? 'Unpin' : 'Pin to top'}
+                        className={`text-sm leading-none transition-colors ${isPinned ? 'text-amber-400' : 'text-white/10 group-hover:text-white/30 hover:!text-amber-400'}`}>
+                        {isPinned ? '★' : '☆'}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

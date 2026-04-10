@@ -239,7 +239,7 @@ export default function AssignmentBoardPage() {
             if (x < ZONE) { el.scrollLeft -= 8; }
             else if (x > rect.width - ZONE) { el.scrollLeft += 8; }
           }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '160px repeat(5, 1fr)', minWidth: '900px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '160px repeat(5, minmax(150px, 1fr))' }}>
             {/* Header row */}
             <div className="bg-gray-100 border-b border-r border-gray-300 px-2 py-1.5 font-semibold text-xs text-gray-700 sticky top-0 z-10"></div>
             {WEEKDAYS.map(day => (

@@ -210,6 +210,9 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'client_manager_user_id',
       'site_coordinator_name', 'site_coordinator_email', 'site_coordinator_phone', 'site_coordinator_role',
       'invoice_contact_name', 'invoice_contact_email', 'invoice_contact_phone', 'invoice_at_district',
+      'classroom_location', 'attendance_required', 'attendance_directions',
+      'arrival_checkin_procedures', 'student_pickup_procedures', 'dismissal_procedures',
+      'emergency_procedures', 'egghead_tips',
       'active',
     ];
 
@@ -234,6 +237,31 @@ router.put('/:id', authenticate, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/locations/:id/info-sheet — public-facing info for professors
+router.get('/:id/info-sheet', authenticate, async (req, res, next) => {
+  try {
+    const [[loc]] = await pool.query(
+      `SELECT l.nickname, l.school_name, l.address, l.location_phone, l.retained,
+              l.classroom_location, l.parking_information,
+              l.attendance_required, l.attendance_directions,
+              l.arrival_checkin_procedures, l.student_pickup_procedures,
+              l.dismissal_procedures, l.emergency_procedures, l.egghead_tips,
+              l.point_of_contact, l.site_coordinator_name,
+              l.ts_updated,
+              lt.location_type_name,
+              pd.parking_difficulty_name,
+              con.contractor_name
+       FROM location l
+       LEFT JOIN location_type lt ON lt.id = l.location_type_id
+       LEFT JOIN parking_difficulty pd ON pd.id = l.parking_difficulty_id
+       LEFT JOIN contractor con ON con.id = l.contractor_id
+       WHERE l.id = ?`, [req.params.id]
+    );
+    if (!loc) return res.status(404).json({ success: false, error: 'Location not found' });
+    res.json({ success: true, data: loc });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

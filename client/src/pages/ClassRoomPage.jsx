@@ -276,37 +276,10 @@ export default function ClassRoomPage() {
         {/* ========== ROSTER TAB ========== */}
         {tab === 'roster' && (
           <div className="space-y-4">
-            {/* Add student */}
+            {/* Add student — simple form */}
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Add Student</h3>
-              <div className="flex gap-3">
-                <div className="flex-1 relative">
-                  <Input placeholder="Search students by name..." value={studentSearch}
-                    onChange={e => setStudentSearch(e.target.value)} />
-                  {searchStudents.length > 0 && studentSearch.length >= 2 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                      {searchStudents.filter(s => !rosterStudentIds.has(s.id)).map(s => (
-                        <button key={s.id}
-                          onClick={() => addStudentMutation.mutate(s.id)}
-                          disabled={addStudentMutation.isPending}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex justify-between items-center">
-                          <span className="font-medium">{s.last_name}, {s.first_name}</span>
-                          <span className="text-xs text-gray-400">{s.birthday ? formatDate(s.birthday) : ''}</span>
-                        </button>
-                      ))}
-                      {searchStudents.filter(s => !rosterStudentIds.has(s.id)).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-gray-400">All matching students already on roster</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              {addStudentMutation.isError && (
-                <p className="text-sm text-red-600 mt-2">{addStudentMutation.error?.response?.data?.error || 'Failed to add'}</p>
-              )}
-              {addStudentMutation.isSuccess && (
-                <p className="text-sm text-green-600 mt-2">Student added to roster!</p>
-              )}
+              <QuickAddStudentForm programId={programId} onSuccess={() => qc.invalidateQueries(['classroom', programId])} />
             </div>
 
             {/* Roster table */}
@@ -374,5 +347,55 @@ export default function ClassRoomPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function QuickAddStudentForm({ programId, onSuccess }) {
+  const [first, setFirst] = useState('');
+  const [last, setLast] = useState('');
+  const [age, setAge] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/programs/${programId}/roster/quick-add`, {
+      first_name: first.trim(), last_name: last.trim(), age: age || null, notes: notes || null,
+    }),
+    onSuccess: () => { setFirst(''); setLast(''); setAge(''); setNotes(''); onSuccess?.(); },
+  });
+
+  return (
+    <div>
+      <div className="flex gap-2 items-end flex-wrap">
+        <div className="flex-1 min-w-[120px]">
+          <label className="text-xs text-gray-500 block mb-0.5">First Name *</label>
+          <input type="text" value={first} onChange={e => setFirst(e.target.value)}
+            placeholder="First name"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]" />
+        </div>
+        <div className="flex-1 min-w-[120px]">
+          <label className="text-xs text-gray-500 block mb-0.5">Last Name</label>
+          <input type="text" value={last} onChange={e => setLast(e.target.value)}
+            placeholder="Last name"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]" />
+        </div>
+        <div className="w-16">
+          <label className="text-xs text-gray-500 block mb-0.5">Age</label>
+          <input type="number" value={age} onChange={e => setAge(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]" />
+        </div>
+        <div className="flex-1 min-w-[120px]">
+          <label className="text-xs text-gray-500 block mb-0.5">Notes</label>
+          <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Optional"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]" />
+        </div>
+        <button onClick={() => mutation.mutate()} disabled={!first.trim() || mutation.isPending}
+          className="px-4 py-2 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152a47] disabled:opacity-50 active:scale-95 transition-all">
+          {mutation.isPending ? '…' : 'Add'}
+        </button>
+      </div>
+      {mutation.isError && <p className="text-xs text-red-600 mt-1">{mutation.error?.response?.data?.error || 'Failed'}</p>}
+      {mutation.isSuccess && <p className="text-xs text-green-600 mt-1">Student added! Pending approval.</p>}
+    </div>
   );
 }

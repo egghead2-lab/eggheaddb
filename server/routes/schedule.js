@@ -20,6 +20,7 @@ router.get('/my-today', authenticate, async (req, res, next) => {
               prog.id AS program_id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
               prog.lead_professor_id,
               cs.class_status_name,
+              prog.location_id,
               loc.nickname AS location_nickname, loc.school_name, loc.address,
               loc.parking_information, loc.school_procedure_Info, loc.point_of_contact, loc.poc_phone,
               l.lesson_name, l.trainual_link

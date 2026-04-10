@@ -106,6 +106,11 @@ export default function LocationDetailPage() {
               </Select>
               <Toggle label="Retained Client" checked={!!watch('retained')} onChange={v => setValue('retained', v ? 1 : 0, { shouldDirty: true })} />
               {!isNew && <Toggle label="Active" checked={watch('active') !== 0 && watch('active') !== '0'} onChange={v => setValue('active', v ? 1 : 0, { shouldDirty: true })} />}
+              <div className="col-span-3">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Internal Notes</label>
+                <textarea {...register('internal_notes')} rows={2}
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
             </div>
           </Section>
 
@@ -163,6 +168,13 @@ export default function LocationDetailPage() {
               <div className="col-span-3">
                 <Input label="Demo Notes" {...register('demo_notes')} />
               </div>
+              <Input label="Number of Weeks" type="number" {...register('number_of_weeks')} />
+              <div className="col-span-2"><Input label="School Calendar Link" {...register('school_calendar_link')} /></div>
+              <Toggle label="Jewish Calendar" checked={!!watch('jewish')} onChange={v => setValue('jewish', v ? 1 : 0, { shouldDirty: true })} />
+              <Toggle label="Set Dates Ourselves" checked={!!watch('set_dates_ourselves')} onChange={v => setValue('set_dates_ourselves', v ? 1 : 0, { shouldDirty: true })} />
+              <Toggle label="Observes Allowed" checked={!!watch('observes_allowed')} onChange={v => setValue('observes_allowed', v ? 1 : 0, { shouldDirty: true })} />
+              <Toggle label="TBD" checked={!!watch('tbd')} onChange={v => setValue('tbd', v ? 1 : 0, { shouldDirty: true })} />
+              {watch('tbd') && <div className="col-span-2"><Input label="TBD Notes" {...register('tbd_notes')} /></div>}
             </div>
           </Section>
 
@@ -195,25 +207,61 @@ export default function LocationDetailPage() {
             </div>
           </Section>
 
-          {/* Logistics */}
-          <Section title="Logistics & Notes">
+
+          {/* School Info Sheet fields */}
+          <Section title="School Info Sheet" defaultOpen={false}>
             <div className="grid grid-cols-2 gap-4">
+              <Input label="Classroom Location" placeholder="Room #, building, etc." {...register('classroom_location')} />
               <Select label="Parking Difficulty" {...register('parking_difficulty_id')}>
                 <option value="">Select…</option>
                 {(ref.parkingDifficulties || []).map(p => <option key={p.id} value={p.id}>{p.parking_difficulty_name}</option>)}
               </Select>
-              <Input label="Number of Weeks" type="number" {...register('number_of_weeks')} />
-              <div className="col-span-2"><Input label="Parking Information" {...register('parking_information')} /></div>
-              <div className="col-span-2"><Input label="School Procedure Info" {...register('school_procedure_Info')} /></div>
-              <div className="col-span-2"><Input label="School Calendar Link" {...register('school_calendar_link')} /></div>
-              <Toggle label="Jewish Calendar" checked={!!watch('jewish')} onChange={v => setValue('jewish', v ? 1 : 0, { shouldDirty: true })} />
-              <Toggle label="Set Dates Ourselves" checked={!!watch('set_dates_ourselves')} onChange={v => setValue('set_dates_ourselves', v ? 1 : 0, { shouldDirty: true })} />
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Internal Notes</label>
-                <textarea {...register('internal_notes')} rows={3}
+                <label className="text-xs font-medium text-gray-700 block mb-1">Parking Information</label>
+                <textarea {...register('parking_information')} rows={2} placeholder="Parking instructions, lots, street parking, etc."
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
+              <div className="flex items-end pb-1">
+                <Toggle label="Attendance Required" checked={!!watch('attendance_required')} onChange={v => setValue('attendance_required', v ? 1 : 0, { shouldDirty: true })} />
+              </div>
+              {watch('attendance_required') && (
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Attendance Directions</label>
+                  <textarea {...register('attendance_directions')} rows={2} placeholder="How to take attendance at this location…"
+                    className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                </div>
+              )}
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Arrival & Check-in Procedures</label>
+                <textarea {...register('arrival_checkin_procedures')} rows={2} placeholder="How to arrive and check in…"
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Student Pick-up & Classroom Procedures</label>
+                <textarea {...register('student_pickup_procedures')} rows={2} placeholder="How students are brought to class…"
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Student Dismissal Procedures</label>
+                <textarea {...register('dismissal_procedures')} rows={2} placeholder="How students are dismissed after class…"
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Emergency Procedures</label>
+                <textarea {...register('emergency_procedures')} rows={2} placeholder="Leave blank for standard Egghead procedures…"
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Egghead Tips for Success</label>
+                <textarea {...register('egghead_tips')} rows={2} placeholder="Behavioral tips, school-specific instructions…"
                   className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
               </div>
             </div>
+            {!isNew && (
+              <div className="mt-3">
+                <Link to={`/locations/${id}/info-sheet`} className="text-xs text-[#1e3a5f] hover:underline">Preview Info Sheet →</Link>
+              </div>
+            )}
           </Section>
 
           {/* Class Types */}

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
@@ -130,6 +131,12 @@ function SessionCard({ session: s, profId, onConfirm }) {
             Contact: <span className="font-medium">{s.point_of_contact}</span>
             {s.poc_phone && <a href={`tel:${s.poc_phone}`} className="ml-1 text-[#1e3a5f]">{s.poc_phone}</a>}
           </div>
+        )}
+        {s.location_id && (
+          <Link to={`/locations/${s.location_id}/info-sheet`}
+            className="inline-block mt-2 text-xs text-[#1e3a5f] font-medium hover:underline">
+            View Full School Info →
+          </Link>
         )}
       </div>
 

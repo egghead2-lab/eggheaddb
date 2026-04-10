@@ -149,10 +149,10 @@ router.get('/pending-roster', authenticate, async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 
-    // Client managers see pending items for locations/areas they own
+    // Client managers see only their locations; admins see all (or toggle)
     let locationFilter = '';
     const params = [];
-    if (req.user.role === 'Client Manager') {
+    if (req.user.role === 'Client Manager' && req.query.show_all !== 'true') {
       locationFilter = `AND (loc.client_manager_user_id = ? OR ga.client_manager_user_id = ?)`;
       params.push(req.user.userId, req.user.userId);
     }
@@ -165,7 +165,7 @@ router.get('/pending-roster', authenticate, async (req, res, next) => {
               loc.nickname AS location_nickname,
               con.contractor_name,
               ga.geographic_area_name,
-              u.name AS added_by_name
+              CONCAT(u.first_name, ' ', u.last_name) AS added_by_name
        FROM program_roster pr
        JOIN program prog ON prog.id = pr.program_id AND prog.active = 1
        JOIN student st ON st.id = pr.student_id
@@ -205,6 +205,18 @@ router.post('/pending-roster/approve', authenticate, async (req, res, next) => {
     );
 
     res.json({ success: true, approved: result.affectedRows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/programs/pending-roster/reject — reject (soft delete) roster entries
+router.post('/pending-roster/reject', authenticate, async (req, res, next) => {
+  try {
+    const CM_ROLES = ['Admin', 'CEO', 'Client Manager'];
+    if (!CM_ROLES.includes(req.user.role)) return res.status(403).json({ success: false, error: 'Not authorized' });
+    const { roster_ids } = req.body;
+    if (!Array.isArray(roster_ids) || roster_ids.length === 0) return res.status(400).json({ success: false, error: 'roster_ids required' });
+    await pool.query('UPDATE program_roster SET active = 0, ts_updated = NOW() WHERE id IN (?) AND pending_approval = 1', [roster_ids]);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
@@ -717,6 +729,32 @@ router.put('/:id/roster', authenticate, async (req, res, next) => {
 });
 
 // POST /api/programs/:id/roster/add — add a student to roster (enforces max)
+// POST /api/programs/:id/roster/quick-add — professors add students by name (no search required)
+router.post('/:id/roster/quick-add', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { first_name, last_name, age, notes } = req.body;
+    if (!first_name?.trim()) return res.status(400).json({ success: false, error: 'First name required' });
+
+    // Create the student record
+    const [studentResult] = await pool.query(
+      'INSERT INTO student (first_name, last_name, active, ts_inserted, ts_updated) VALUES (?, ?, 1, NOW(), NOW())',
+      [first_name.trim(), (last_name || '').trim()]
+    );
+    const studentId = studentResult.insertId;
+
+    // Add to roster with pending approval for professors
+    const isProfessor = req.user.role === 'Professor';
+    await pool.query(
+      `INSERT INTO program_roster (program_id, student_id, age, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, CURDATE(), ?, ?, 1, NOW(), NOW())`,
+      [id, studentId, age || null, notes || null, isProfessor ? 1 : 0, req.user.userId]
+    );
+
+    res.json({ success: true, student_id: studentId });
+  } catch (err) { next(err); }
+});
+
 router.post('/:id/roster/add', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
