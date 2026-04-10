@@ -131,9 +131,8 @@ function ProgramTable({ programs, profId, isLead, viewOnly, sessions, subDateSet
                               const actualLead = s.session_professor_id || s.lead_professor_id;
                               const lead = String(actualLead) === String(profId);
                               const sPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
-                              const pPay = parseFloat(lead ? s.program_lead_pay : s.program_assist_pay) || 0;
-                              const pay = sPay || pPay;
-                              const isEst = !sPay && pPay > 0;
+                              const pay = sPay || parseFloat(s.estimated_pay) || 0;
+                              const isEst = !sPay && pay > 0;
                               const isToday = dateStr === today;
                               return (
                                 <tr key={s.id} className={`border-b border-gray-100 last:border-0 ${isToday ? 'bg-blue-100/40 font-medium' : ''} ${hasSub ? 'bg-amber-50' : ''}`}>
@@ -211,9 +210,8 @@ function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
             const actualLead = s.session_professor_id || s.lead_professor_id;
             const lead = String(actualLead) === String(profId);
             const sessionPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
-            const programPay = parseFloat(lead ? s.program_lead_pay : s.program_assist_pay) || 0;
-            const pay = sessionPay || programPay;
-            const isExpected = !sessionPay && programPay > 0;
+            const pay = sessionPay || parseFloat(s.estimated_pay) || 0;
+            const isExpected = !sessionPay && pay > 0;
             return (
               <tr key={s.id} className={`${
                 subStatus === 'requested' ? 'bg-amber-50' :
@@ -335,8 +333,7 @@ export default function ProfessorSchedulePage() {
   const totalUpcomingPay = upcomingSessions.reduce((sum, s) => {
     const lead = String(s.session_professor_id || s.lead_professor_id) === String(profId);
     const sPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
-    const pPay = parseFloat(lead ? s.program_lead_pay : s.program_assist_pay) || 0;
-    return sum + (sPay || pPay);
+    return sum + (sPay || parseFloat(s.estimated_pay) || 0);
   }, 0);
   const totalPastPay = pastSessions.reduce((sum, s) => {
     const lead = String(s.lead_professor_id) === String(profId);

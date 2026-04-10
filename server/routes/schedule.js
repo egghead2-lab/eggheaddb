@@ -54,7 +54,7 @@ router.post('/confirm-session/:sessionId', authenticate, async (req, res, next) 
 // GET /api/schedule/my-pay — professor's full pay history
 router.get('/my-pay', authenticate, async (req, res, next) => {
   try {
-    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    const [[prof]] = await pool.query('SELECT id, base_pay, assist_pay FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
     if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
 
     const { search, date_from, date_to } = req.query;
@@ -148,11 +148,14 @@ router.get('/my-pay', authenticate, async (req, res, next) => {
       upParams
     );
 
-    // Calculate expected pay for each upcoming session
+    // Calculate expected pay using payroll hierarchy:
+    // 1. Program-level pay  2. Professor base_pay/assist_pay
     const upcoming = upcomingRows.map(s => {
       const actualLead = s.session_professor_id || s.lead_professor_id;
       const isLead = String(actualLead) === String(prof.id);
-      const pay = parseFloat(isLead ? s.lead_professor_pay : s.assistant_professor_pay) || 0;
+      const pay = isLead
+        ? (parseFloat(s.lead_professor_pay) || parseFloat(prof.base_pay) || 0)
+        : (parseFloat(s.assistant_professor_pay) || parseFloat(prof.assist_pay) || 0);
       return {
         id: s.id, pay_date: s.pay_date, pay_amount: pay,
         role: isLead ? 'Lead' : 'Assistant',
@@ -297,7 +300,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
     );
 
     // Sessions for this professor
-    const [sessions] = await pool.query(
+    const [sessionsRaw] = await pool.query(
       `SELECT s.id, s.session_date, s.session_time, s.professor_pay, s.assistant_pay,
               s.not_billed, s.specific_notes,
               s.professor_id AS session_professor_id,
@@ -320,6 +323,20 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
        ORDER BY s.session_date ASC, s.session_time ASC`,
       [professorId, professorId, professorId, professorId]
     );
+
+    // Compute estimated_pay for each session using payroll hierarchy:
+    // 1. Session-level pay  2. Program-level pay  3. Professor base_pay/assist_pay
+    const sessions = sessionsRaw.map(s => {
+      const actualLead = s.session_professor_id || s.lead_professor_id;
+      const isLead = String(actualLead) === String(professorId);
+      let estimatedPay = null;
+      if (isLead) {
+        estimatedPay = parseFloat(s.professor_pay) || parseFloat(s.program_lead_pay) || parseFloat(prof.base_pay) || null;
+      } else {
+        estimatedPay = parseFloat(s.assistant_pay) || parseFloat(s.program_assist_pay) || parseFloat(prof.assist_pay) || null;
+      }
+      return { ...s, estimated_pay: estimatedPay };
+    });
 
     // Upcoming parties
     const [parties] = await pool.query(
