@@ -31,10 +31,11 @@ export function ProtectedRoute({ children }) {
     return <Navigate to="/candidate-portal" replace />;
   }
 
-  // Professors can access their schedule and classroom pages
+  // Professors can access their tools only
   if (role === 'Professor') {
-    if (location.pathname.startsWith('/schedule') || location.pathname.match(/^\/programs\/\d+\/classroom/)) return children;
-    return <Navigate to="/schedule" replace />;
+    const profAllowed = ['/schedule', '/my-today', '/my-attendance', '/my-pay'];
+    if (profAllowed.some(p => location.pathname.startsWith(p)) || location.pathname.match(/^\/programs\/\d+\/classroom/)) return children;
+    return <Navigate to="/my-today" replace />;
   }
 
   // Admin/CEO always pass

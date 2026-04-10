@@ -37,6 +37,8 @@ router.get('/my-permissions', authenticate, async (req, res, next) => {
     const adminRoles = ['Admin', 'CEO'];
 
     let tools;
+    const restrictedRoles = ['Professor', 'Candidate'];
+
     if (adminRoles.includes(role)) {
       // Admin/CEO see everything
       [tools] = await pool.query(
@@ -47,13 +49,24 @@ router.get('/my-permissions', authenticate, async (req, res, next) => {
       const [[userRole]] = await pool.query('SELECT id FROM role WHERE role_name = ? AND active = 1', [role]);
       if (!userRole) return res.json({ success: true, data: [] });
 
-      [tools] = await pool.query(
-        `SELECT t.path, t.label, t.nav_group, t.sort_order FROM tool t
-         LEFT JOIN tool_role tr ON tr.tool_id = t.id AND tr.role_id = ?
-         WHERE t.active = 1 AND (t.universal = 1 OR tr.id IS NOT NULL)
-         ORDER BY t.nav_group, t.sort_order, t.label`,
-        [userRole.id]
-      );
+      if (restrictedRoles.includes(role)) {
+        // Restricted roles ONLY see tools explicitly assigned to their role (no universal)
+        [tools] = await pool.query(
+          `SELECT t.path, t.label, t.nav_group, t.sort_order FROM tool t
+           JOIN tool_role tr ON tr.tool_id = t.id AND tr.role_id = ?
+           WHERE t.active = 1
+           ORDER BY t.nav_group, t.sort_order, t.label`,
+          [userRole.id]
+        );
+      } else {
+        [tools] = await pool.query(
+          `SELECT t.path, t.label, t.nav_group, t.sort_order FROM tool t
+           LEFT JOIN tool_role tr ON tr.tool_id = t.id AND tr.role_id = ?
+           WHERE t.active = 1 AND (t.universal = 1 OR tr.id IS NOT NULL)
+           ORDER BY t.nav_group, t.sort_order, t.label`,
+          [userRole.id]
+        );
+      }
     }
 
     // Group by nav_group

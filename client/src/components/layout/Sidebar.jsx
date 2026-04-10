@@ -13,7 +13,7 @@ const FALLBACK_GROUPS = [
 ];
 
 // Groups that should always start expanded
-const ALWAYS_OPEN = new Set(['Dashboard', 'Operations']);
+const ALWAYS_OPEN = new Set(['Dashboard', 'Operations', 'My Classes']);
 // Groups with <= this many tools auto-collapse
 const AUTO_COLLAPSE_THRESHOLD = 2;
 
@@ -115,7 +115,7 @@ export function Sidebar() {
     });
 
     // Use custom order if set, otherwise default
-    const defaultOrder = ['Dashboard', 'Operations', 'People', 'Parties', 'Sales', 'Scheduling', 'Hiring', 'Onboarding', 'Field Managing', 'FM Tools', 'Curriculum', 'Client Management', 'Human Resources', 'Warehouse Tools', 'Admin', 'Tools'];
+    const defaultOrder = ['My Classes', 'Dashboard', 'Operations', 'People', 'Parties', 'Sales', 'Scheduling', 'Hiring', 'Onboarding', 'Field Managing', 'FM Tools', 'Curriculum', 'Client Management', 'Human Resources', 'Warehouse Tools', 'Admin', 'Tools'];
     const order = groupOrder || defaultOrder;
     const sorted = [];
     for (const name of order) {

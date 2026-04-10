@@ -154,4 +154,111 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// PROFESSOR PORTAL — Today/Tomorrow + Confirmation
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/schedule/my-today — professor's sessions for today and tomorrow
+router.get('/my-today', authenticate, async (req, res, next) => {
+  try {
+    // Get professor ID from user
+    const [[prof]] = await pool.query('SELECT id, professor_nickname, last_name FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+
+    const [sessions] = await pool.query(
+      `SELECT s.id, s.session_date, s.session_time, s.professor_pay, s.assistant_pay,
+              s.professor_confirmed, s.professor_confirmed_at, s.specific_notes,
+              prog.id AS program_id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.lead_professor_id,
+              cs.class_status_name,
+              loc.nickname AS location_nickname, loc.school_name, loc.address,
+              loc.parking_information, loc.school_procedure_Info, loc.point_of_contact, loc.poc_phone,
+              l.lesson_name, l.trainual_link
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       WHERE s.active = 1
+         AND s.session_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+         AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
+       ORDER BY s.session_date ASC, s.session_time ASC`,
+      [prof.id, prof.id, prof.id, prof.id]
+    );
+
+    res.json({ success: true, data: { professor: prof, sessions } });
+  } catch (err) { next(err); }
+});
+
+// POST /api/schedule/confirm-session/:sessionId — professor confirms a session
+router.post('/confirm-session/:sessionId', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      'UPDATE session SET professor_confirmed = 1, professor_confirmed_at = NOW() WHERE id = ?',
+      [req.params.sessionId]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/schedule/my-pay — professor's pay history
+router.get('/my-pay', authenticate, async (req, res, next) => {
+  try {
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+
+    const { search } = req.query;
+    let where = 'WHERE psp.professor_id = ?';
+    const params = [prof.id];
+    if (search) {
+      where += ' AND prog.program_nickname LIKE ?';
+      params.push(`%${search}%`);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT psp.id, psp.session_date, psp.pay_amount, psp.role, psp.is_substitute,
+              psp.regular_pay_component, psp.bonus_component,
+              prog.program_nickname, prog.start_time,
+              loc.nickname AS location_nickname
+       FROM program_session_pay psp
+       JOIN program prog ON prog.id = psp.program_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       ${where}
+       ORDER BY psp.session_date DESC
+       LIMIT 200`,
+      params
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/schedule/my-attendance — professor's programs for attendance/classroom
+router.get('/my-attendance', authenticate, async (req, res, next) => {
+  try {
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+
+    const [programs] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday,
+              prog.first_session_date, prog.last_session_date,
+              prog.lead_professor_id,
+              cs.class_status_name,
+              loc.nickname AS location_nickname
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE prog.active = 1
+         AND cs.class_status_name NOT LIKE 'Cancelled%'
+         AND (prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
+         AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
+       ORDER BY prog.program_nickname`,
+      [prof.id, prof.id]
+    );
+
+    res.json({ success: true, data: programs });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
