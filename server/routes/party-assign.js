@@ -76,14 +76,14 @@ router.get('/:partyId/available-professors', authenticate, async (req, res, next
     const partyDate = party.first_session_date?.toISOString?.().split('T')[0]
       || (typeof party.first_session_date === 'string' ? party.first_session_date.split('T')[0] : null);
 
-    // Determine if show_party_trained is required
-    const showTrainedFormats = ['show', 'party', 'event'];
+    // Booth and Workshop allow non-show-trained professors; everything else requires show-trained
+    const noTrainFormats = ['booth', 'workshop'];
     const formatName = (party.party_format_name || '').toLowerCase();
-    const requireShowTrained = showTrainedFormats.some(f => formatName.includes(f));
+    const allowUntrained = noTrainFormats.some(f => formatName === f);
 
     // Get all active professors with relevant data
     let profWhere = `p.active = 1 AND ps.professor_status_name = 'Active'`;
-    if (requireShowTrained) profWhere += ' AND p.show_party_trained_id = 1';
+    if (!allowUntrained) profWhere += ' AND p.show_party_trained_id = 1';
 
     const [professors] = await pool.query(
       `SELECT p.id, CONCAT(p.professor_nickname, ' ', p.last_name) AS name,
