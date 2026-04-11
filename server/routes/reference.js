@@ -330,6 +330,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
       pool.query(`SELECT p.id, p.professor_nickname, p.last_name, CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name FROM professor p JOIN professor_status ps ON ps.id = p.professor_status_id WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Substitute') ORDER BY p.professor_nickname`),
       pool.query(`SELECT id, reason_name FROM substitute_reason WHERE active = 1 ORDER BY sort_order, reason_name`),
       pool.query(`SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS display_name FROM user WHERE active = 1 AND role_id IN (2, 8) ORDER BY first_name`),
+      pool.query(`SELECT ur.id, ur.user_id, ur.responsibility, ur.geographic_area_id, CONCAT(u.first_name, ' ', u.last_name) AS user_name, ga.geographic_area_name FROM user_responsibility ur JOIN user u ON u.id = ur.user_id AND u.active = 1 LEFT JOIN geographic_area ga ON ga.id = ur.geographic_area_id WHERE ur.active = 1 ORDER BY ur.responsibility, ga.geographic_area_name`),
     ];
 
     const results = await Promise.all(queries);
@@ -362,6 +363,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
         partyAssistProfessors: results[22][0],
         substituteReasons: results[23][0],
         staffUsers: results[24][0],
+        userResponsibilities: results[25][0],
       },
     });
   } catch (err) {
@@ -751,6 +753,74 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
     rows.forEach(r => { r.earnings = Math.min(r.earnings, 100); });
     const totalPayout = Math.min(rows.reduce((sum, r) => sum + r.earnings, 0), 1000);
     res.json({ success: true, data: rows, totalPayout });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// USER RESPONSIBILITIES (party_scheduler, etc.)
+// ============================================================
+
+// GET /api/responsibilities — list all (optionally filter by type)
+router.get('/responsibilities', authenticate, async (req, res, next) => {
+  try {
+    const { responsibility } = req.query;
+    let where = 'ur.active = 1';
+    const params = [];
+    if (responsibility) { where += ' AND ur.responsibility = ?'; params.push(responsibility); }
+    const [rows] = await pool.query(
+      `SELECT ur.id, ur.user_id, ur.responsibility, ur.geographic_area_id,
+              CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+              r.role_name,
+              ga.geographic_area_name
+       FROM user_responsibility ur
+       JOIN user u ON u.id = ur.user_id
+       LEFT JOIN role rl ON rl.id = u.role_id
+       LEFT JOIN role r ON r.id = u.role_id
+       LEFT JOIN geographic_area ga ON ga.id = ur.geographic_area_id
+       WHERE ${where}
+       ORDER BY ur.responsibility, ga.geographic_area_name, u.last_name`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/responsibilities/party-schedulers — convenience: party schedulers by area
+router.get('/responsibilities/party-schedulers', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ur.id, ur.user_id, ur.geographic_area_id,
+              CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+              ga.geographic_area_name
+       FROM user_responsibility ur
+       JOIN user u ON u.id = ur.user_id AND u.active = 1
+       LEFT JOIN geographic_area ga ON ga.id = ur.geographic_area_id
+       WHERE ur.active = 1 AND ur.responsibility = 'party_scheduler'
+       ORDER BY ga.geographic_area_name, u.last_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/responsibilities — assign a responsibility
+router.post('/responsibilities', authenticate, async (req, res, next) => {
+  try {
+    const { user_id, responsibility, geographic_area_id } = req.body;
+    if (!user_id || !responsibility) return res.status(400).json({ success: false, error: 'user_id and responsibility required' });
+    const [result] = await pool.query(
+      `INSERT INTO user_responsibility (user_id, responsibility, geographic_area_id) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE active = 1, ts_updated = NOW()`,
+      [user_id, responsibility, geographic_area_id || null]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/responsibilities/:id — remove a responsibility
+router.delete('/responsibilities/:id', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE user_responsibility SET active = 0, ts_updated = NOW() WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
