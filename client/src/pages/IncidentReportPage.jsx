@@ -58,7 +58,6 @@ function ReportForm({ isAdmin, onSubmitted }) {
   const [form, setForm] = useState({
     incident_date: today,
     incident_time: '',
-    site_name: '',
     severity: 'minor',
     professors_involved: '',
     students_involved: '',
@@ -78,7 +77,7 @@ function ReportForm({ isAdmin, onSubmitted }) {
     onSuccess: () => {
       qc.invalidateQueries(['incidents']);
       setForm({
-        incident_date: today, incident_time: '', site_name: '', severity: 'minor',
+        incident_date: today, incident_time: '', severity: 'minor',
         professors_involved: '', students_involved: '', description: '', program_id: '',
         category_physical: false, category_verbal: false, category_accident: false,
         category_behavior: false, category_illness: false, category_injury: false, category_bullying: false,
@@ -123,22 +122,14 @@ function ReportForm({ isAdmin, onSubmitted }) {
             </div>
           </div>
 
-          {/* Program / Site */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Program / Class</label>
-              <select value={form.program_id} onChange={e => set('program_id', e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
-                <option value="">Select program...</option>
-                {programs.map(p => <option key={p.id} value={p.id}>{p.program_nickname}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Site Name</label>
-              <input type="text" value={form.site_name} onChange={e => set('site_name', e.target.value)}
-                placeholder="School / location name"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-            </div>
+          {/* Program */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Program / Class</label>
+            <select value={form.program_id} onChange={e => set('program_id', e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
+              <option value="">Select program...</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.program_nickname}</option>)}
+            </select>
           </div>
 
           {/* People involved */}
@@ -285,7 +276,7 @@ function IncidentLog({ isAdmin }) {
                 </div>
                 <div className="text-xs text-gray-500 mb-1">
                   {ir.program_nickname && <span>Program: <strong>{ir.program_nickname}</strong> · </span>}
-                  {(ir.site_name || ir.location_nickname) && <span>Site: <strong>{ir.site_name || ir.location_nickname}</strong> · </span>}
+                  {ir.location_nickname && <span>Location: <strong>{ir.location_nickname}</strong> · </span>}
                   {ir.professors_involved && <span>Professors: {ir.professors_involved} · </span>}
                   {ir.students_involved && <span>Students: {ir.students_involved}</span>}
                 </div>
