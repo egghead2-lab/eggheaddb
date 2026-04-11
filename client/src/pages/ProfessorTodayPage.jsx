@@ -45,6 +45,10 @@ export default function ProfessorTodayPage() {
         <div className="mb-6">
           <h1 className="text-xl font-bold text-gray-900">Hi, {prof.professor_nickname || prof.first_name || 'Professor'}</h1>
           <p className="text-sm text-gray-500">{formatDate(today)}</p>
+          <Link to="/incident-report"
+            className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg border border-red-200 text-xs text-red-600 font-medium hover:bg-red-50 transition-colors">
+            Report an Incident
+          </Link>
         </div>
 
         {/* Pending party assignments */}

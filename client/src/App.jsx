@@ -58,6 +58,7 @@ import AreaPayRatesPage from './pages/AreaPayRatesPage';
 import PartyEmailTemplatesPage from './pages/PartyEmailTemplatesPage';
 import PartyCalendarPage from './pages/PartyCalendarPage';
 import PartyAssignPage from './pages/PartyAssignPage';
+import IncidentReportPage from './pages/IncidentReportPage';
 import ShipmentCyclesPage from './pages/ShipmentCyclesPage';
 import StandardOrderBuilderPage from './pages/StandardOrderBuilderPage';
 import MarkShippedPage from './pages/MarkShippedPage';
@@ -160,6 +161,7 @@ export default function App() {
       <Route path="/party-email-templates" element={<ProtectedRoute><PartyEmailTemplatesPage /></ProtectedRoute>} />
       <Route path="/party-calendar" element={<ProtectedRoute><PartyCalendarPage /></ProtectedRoute>} />
       <Route path="/parties/assign" element={<ProtectedRoute><PartyAssignPage /></ProtectedRoute>} />
+      <Route path="/incident-report" element={<ProtectedRoute><IncidentReportPage /></ProtectedRoute>} />
       <Route path="/materials/cycles" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
       <Route path="/materials/standard-order" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
       <Route path="/materials/mark-shipped" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />
