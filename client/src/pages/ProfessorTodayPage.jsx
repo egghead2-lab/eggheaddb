@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { Spinner } from '../components/ui/Spinner';
-import { formatDate, formatTime, formatPhone } from '../lib/utils';
+import { formatDate, formatTime, formatPhone, formatCurrency } from '../lib/utils';
 
 export default function ProfessorTodayPage() {
   const qc = useQueryClient();
@@ -24,6 +25,18 @@ export default function ProfessorTodayPage() {
     onSuccess: () => qc.invalidateQueries(['my-today']),
   });
 
+  // Pending party assignments
+  const { data: partyData } = useQuery({
+    queryKey: ['my-pending-parties'],
+    queryFn: () => api.get('/schedule/my-pending-parties').then(r => r.data),
+  });
+  const pendingParties = partyData?.data || [];
+
+  const partyRespondMutation = useMutation({
+    mutationFn: ({ askId, response, decline_reason }) => api.post(`/schedule/party-respond/${askId}`, { response, decline_reason }),
+    onSuccess: () => { qc.invalidateQueries(['my-pending-parties']); qc.invalidateQueries(['my-today']); },
+  });
+
   if (isLoading) return <AppShell><div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div></AppShell>;
 
   return (
@@ -34,7 +47,22 @@ export default function ProfessorTodayPage() {
           <p className="text-sm text-gray-500">{formatDate(today)}</p>
         </div>
 
-        {sessions.length === 0 ? (
+        {/* Pending party assignments */}
+        {pendingParties.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="text-sm font-bold text-pink-700">Pending Party Assignments</h2>
+              <span className="text-[10px] bg-pink-100 text-pink-700 px-1.5 py-0.5 rounded font-medium">{pendingParties.length}</span>
+            </div>
+            <div className="space-y-3">
+              {pendingParties.map(p => (
+                <PendingPartyCard key={p.ask_id} party={p} onRespond={partyRespondMutation} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {sessions.length === 0 && pendingParties.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <div className="text-lg mb-1">No classes today or tomorrow</div>
             <div className="text-sm">Enjoy your time off!</div>
@@ -150,6 +178,68 @@ function SessionCard({ session: s, profId, onConfirm }) {
           </Link>
         )}
       </div>
+    </div>
+  );
+}
+
+function PendingPartyCard({ party: p, onRespond }) {
+  const [declining, setDeclining] = useState(false);
+  const [reason, setReason] = useState('');
+
+  return (
+    <div className="bg-white rounded-xl border-2 border-pink-200 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 bg-pink-50">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-gray-900">{p.program_nickname}</div>
+            <div className="text-sm text-gray-500 mt-0.5">
+              {formatDate(p.first_session_date)} {p.start_time ? `at ${formatTime(p.start_time)}` : ''}
+              {p.class_length_minutes ? ` (${p.class_length_minutes} min)` : ''}
+            </div>
+          </div>
+          <span className="text-xs px-2 py-1 rounded-full bg-pink-100 text-pink-700 font-medium">{p.party_format_name || 'Party'}</span>
+        </div>
+      </div>
+
+      <div className="px-4 py-2 border-t border-pink-100">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <div><span className="text-gray-500">Location:</span> {p.location_nickname || p.party_location_text || '—'}</div>
+          <div><span className="text-gray-500">Theme:</span> {p.party_theme || '—'}</div>
+          {p.address && <div className="col-span-2"><span className="text-gray-500">Address:</span> {p.address}</div>}
+          <div><span className="text-gray-500">Kids:</span> {p.total_kids_attended || '—'}</div>
+          <div><span className="text-gray-500">Pay:</span> {p.lead_professor_pay ? formatCurrency(p.lead_professor_pay) : '—'}</div>
+        </div>
+        {p.ask_notes && <div className="text-xs text-gray-400 mt-1 italic">{p.ask_notes}</div>}
+      </div>
+
+      {!declining ? (
+        <div className="px-4 py-3 border-t border-pink-100 grid grid-cols-2 gap-2">
+          <button onClick={() => onRespond.mutate({ askId: p.ask_id, response: 'accepted' })}
+            disabled={onRespond.isPending}
+            className="py-2.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 active:scale-[0.98] transition-all">
+            Confirm
+          </button>
+          <button onClick={() => setDeclining(true)}
+            className="py-2.5 rounded-lg border-2 border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 active:scale-[0.98] transition-all">
+            Decline
+          </button>
+        </div>
+      ) : (
+        <div className="px-4 py-3 border-t border-pink-100 space-y-2">
+          <input type="text" value={reason} onChange={e => setReason(e.target.value)} autoFocus
+            placeholder="Reason for declining (optional)..."
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-300" />
+          <div className="flex gap-2">
+            <button onClick={() => onRespond.mutate({ askId: p.ask_id, response: 'declined', decline_reason: reason })}
+              disabled={onRespond.isPending}
+              className="flex-1 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700">
+              Confirm Decline
+            </button>
+            <button onClick={() => { setDeclining(false); setReason(''); }}
+              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

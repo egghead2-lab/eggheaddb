@@ -51,6 +51,72 @@ router.post('/confirm-session/:sessionId', authenticate, async (req, res, next) 
   } catch (err) { next(err); }
 });
 
+// GET /api/schedule/my-pending-parties — parties assigned to professor pending confirmation
+router.get('/my-pending-parties', authenticate, async (req, res, next) => {
+  try {
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+
+    const [rows] = await pool.query(
+      `SELECT paa.id AS ask_id, paa.ask_type, paa.asked_at, paa.notes AS ask_notes,
+              prog.id AS program_id, prog.program_nickname, prog.first_session_date, prog.start_time,
+              prog.class_length_minutes, prog.party_location_text, prog.lead_professor_pay,
+              prog.birthday_kid_name, prog.birthday_kid_age, prog.total_kids_attended,
+              pf.party_format_name,
+              cl.class_name AS party_theme,
+              loc.nickname AS location_nickname, loc.address
+       FROM party_assignment_ask paa
+       JOIN program prog ON prog.id = paa.program_id AND prog.active = 1
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE paa.professor_id = ? AND paa.active = 1 AND paa.response = 'pending'
+         AND paa.ask_type = 'assign'
+         AND prog.first_session_date >= CURDATE()
+       ORDER BY prog.first_session_date ASC`,
+      [prof.id]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/schedule/party-respond/:askId — professor confirms or declines a party assignment
+router.post('/party-respond/:askId', authenticate, async (req, res, next) => {
+  try {
+    const { askId } = req.params;
+    const { response, decline_reason } = req.body;
+    if (!['accepted', 'declined'].includes(response)) {
+      return res.status(400).json({ success: false, error: 'Response must be accepted or declined' });
+    }
+
+    const [[ask]] = await pool.query(
+      'SELECT * FROM party_assignment_ask WHERE id = ? AND active = 1',
+      [askId]
+    );
+    if (!ask) return res.status(404).json({ success: false, error: 'Assignment not found' });
+
+    // Verify this professor owns this ask
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof || prof.id !== ask.professor_id) {
+      return res.status(403).json({ success: false, error: 'Not your assignment' });
+    }
+
+    await pool.query(
+      `UPDATE party_assignment_ask SET response = ?, response_at = NOW(), decline_reason = ?, ts_updated = NOW()
+       WHERE id = ?`,
+      [response, response === 'declined' ? (decline_reason || null) : null, askId]
+    );
+
+    if (response === 'accepted') {
+      // Finalize: set lead_professor_id on the program
+      await pool.query('UPDATE program SET lead_professor_id = ?, ts_updated = NOW() WHERE id = ?', [ask.professor_id, ask.program_id]);
+    }
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/schedule/my-pay — professor's full pay history
 router.get('/my-pay', authenticate, async (req, res, next) => {
   try {
