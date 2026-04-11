@@ -205,36 +205,40 @@ function ReportForm({ isAdmin, onSubmitted }) {
   );
 }
 
+const STATUS_BADGE = {
+  pending: { label: 'Pending', className: 'bg-red-100 text-red-700' },
+  acknowledged: { label: 'Acknowledged', className: 'bg-amber-100 text-amber-700' },
+  in_progress: { label: 'In Progress', className: 'bg-blue-100 text-blue-700' },
+  resolved: { label: 'Resolved', className: 'bg-green-100 text-green-700' },
+};
+
 function IncidentLog({ isAdmin }) {
   const qc = useQueryClient();
-  const [filter, setFilter] = useState('unreviewed');
-  const [reviewingId, setReviewingId] = useState(null);
-  const [reviewNotes, setReviewNotes] = useState('');
-  const [resolution, setResolution] = useState('');
+  const [filter, setFilter] = useState('open');
+  const [expandedId, setExpandedId] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['incidents', filter],
-    queryFn: () => api.get('/incidents', { params: { reviewed: filter === 'unreviewed' ? 'false' : filter === 'reviewed' ? 'true' : undefined } }).then(r => r.data),
+    queryFn: () => api.get('/incidents', { params: { reviewed: filter === 'open' ? 'false' : filter === 'resolved' ? 'true' : undefined } }).then(r => r.data),
   });
   const incidents = data?.data || [];
 
   const reviewMutation = useMutation({
-    mutationFn: ({ id, review_notes, resolution }) => api.patch(`/incidents/${id}/review`, { review_notes, resolution }),
-    onSuccess: () => {
-      qc.invalidateQueries(['incidents']);
-      setReviewingId(null);
-      setReviewNotes('');
-      setResolution('');
-    },
+    mutationFn: ({ id, ...body }) => api.patch(`/incidents/${id}/review`, body),
+    onSuccess: () => qc.invalidateQueries(['incidents']),
   });
 
   return (
-    <div className="p-6">
+    <div className="p-6 max-w-4xl">
       <div className="flex items-center gap-2 mb-4">
-        {['unreviewed', 'reviewed', 'all'].map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium ${filter === f ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {f === 'unreviewed' ? `Needs Review (${incidents.length})` : f.charAt(0).toUpperCase() + f.slice(1)}
+        {[
+          { key: 'open', label: 'Open' },
+          { key: 'resolved', label: 'Resolved' },
+          { key: 'all', label: 'All' },
+        ].map(f => (
+          <button key={f.key} onClick={() => setFilter(f.key)}
+            className={`text-xs px-3 py-1.5 rounded-lg font-medium ${filter === f.key ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {f.label}
           </button>
         ))}
       </div>
@@ -245,83 +249,219 @@ function IncidentLog({ isAdmin }) {
         <div className="text-center py-16 text-gray-400 text-sm">No incident reports</div>
       ) : (
         <div className="space-y-3">
-          {incidents.map(ir => (
-            <div key={ir.id} className={`bg-white rounded-lg border overflow-hidden ${
-              ir.severity === 'major' ? 'border-red-300' : 'border-gray-200'
-            } ${!ir.reviewed ? 'ring-1 ring-amber-200' : ''}`}>
-              <div className={`px-4 py-3 flex items-center justify-between ${ir.severity === 'major' ? 'bg-red-50' : 'bg-gray-50'}`}>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${
+          {incidents.map(ir => {
+            const expanded = expandedId === ir.id;
+            const status = STATUS_BADGE[ir.review_status] || STATUS_BADGE.pending;
+            return (
+              <div key={ir.id} className={`bg-white rounded-xl border overflow-hidden ${
+                ir.severity === 'major' ? 'border-red-300' : 'border-gray-200'
+              } ${ir.review_status === 'pending' ? 'ring-1 ring-red-200' : ''}`}>
+                {/* Header */}
+                <div className={`px-5 py-3 flex items-center gap-3 cursor-pointer ${ir.severity === 'major' ? 'bg-red-50' : 'bg-gray-50'}`}
+                  onClick={() => setExpandedId(expanded ? null : ir.id)}>
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
                     ir.severity === 'major' ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-700'
                   }`}>{ir.severity}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${status.className}`}>{status.label}</span>
                   <span className="font-medium text-sm text-gray-900">{formatDate(ir.incident_date)}</span>
-                  {ir.incident_time && <span className="text-xs text-gray-500">{ir.incident_time}</span>}
-                  <span className="text-xs text-gray-400">—</span>
-                  <span className="text-sm text-gray-700">{ir.professor_name}</span>
+                  {ir.incident_time && <span className="text-xs text-gray-400">{ir.incident_time}</span>}
+                  <span className="text-sm text-gray-600 flex-1 truncate">
+                    {ir.professor_name} {ir.program_nickname ? `— ${ir.program_nickname}` : ''}
+                  </span>
+                  <span className="text-[10px] text-gray-400">{expanded ? '▾' : '▸'}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  {ir.reviewed ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">Reviewed</span>
-                  ) : (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">Pending Review</span>
-                  )}
-                </div>
-              </div>
 
-              <div className="px-4 py-3">
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {CATEGORIES.filter(c => ir[c.key]).map(c => (
-                    <span key={c.key} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">{c.label}</span>
-                  ))}
-                </div>
-                <div className="text-xs text-gray-500 mb-1">
-                  {ir.program_nickname && <span>Program: <strong>{ir.program_nickname}</strong> · </span>}
-                  {ir.location_nickname && <span>Location: <strong>{ir.location_nickname}</strong> · </span>}
-                  {ir.professors_involved && <span>Professors: {ir.professors_involved} · </span>}
-                  {ir.students_involved && <span>Students: {ir.students_involved}</span>}
-                </div>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{ir.description}</p>
-
-                {ir.reviewed && (
-                  <div className="mt-3 pt-2 border-t border-gray-100">
-                    <div className="text-[10px] text-green-600 font-medium">Reviewed by {ir.reviewed_by_name} on {formatDate(ir.reviewed_at)}</div>
-                    {ir.review_notes && <p className="text-xs text-gray-600 mt-0.5">{ir.review_notes}</p>}
-                    {ir.resolution && <p className="text-xs text-gray-800 mt-0.5"><strong>Resolution:</strong> {ir.resolution}</p>}
-                  </div>
-                )}
-
-                {/* Review action — admin only */}
-                {isAdmin && !ir.reviewed && (
-                  <div className="mt-3 pt-2 border-t border-gray-100">
-                    {reviewingId === ir.id ? (
-                      <div className="space-y-2">
-                        <input type="text" value={reviewNotes} onChange={e => setReviewNotes(e.target.value)}
-                          placeholder="Review notes (optional)"
-                          className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-                        <input type="text" value={resolution} onChange={e => setResolution(e.target.value)}
-                          placeholder="Resolution taken"
-                          className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-                        <div className="flex gap-2">
-                          <Button onClick={() => reviewMutation.mutate({ id: ir.id, review_notes: reviewNotes, resolution })}
-                            disabled={reviewMutation.isPending}>
-                            {reviewMutation.isPending ? 'Saving...' : 'Mark Reviewed'}
-                          </Button>
-                          <button onClick={() => setReviewingId(null)} className="text-xs text-gray-500">Cancel</button>
+                {expanded && (
+                  <div className="border-t border-gray-100">
+                    {/* Details grid */}
+                    <div className="px-5 py-4 grid grid-cols-2 gap-x-8 gap-y-3">
+                      <div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Reported By</div>
+                        <div className="text-sm text-gray-800">{ir.professor_name}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Date / Time</div>
+                        <div className="text-sm text-gray-800">{formatDate(ir.incident_date)} {ir.incident_time || ''}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Program</div>
+                        <div className="text-sm text-gray-800">{ir.program_nickname || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Location</div>
+                        <div className="text-sm text-gray-800">{ir.location_nickname || '—'}</div>
+                      </div>
+                      {ir.professors_involved && (
+                        <div>
+                          <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Professors Involved</div>
+                          <div className="text-sm text-gray-800">{ir.professors_involved}</div>
+                        </div>
+                      )}
+                      {ir.students_involved && (
+                        <div>
+                          <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Students Involved</div>
+                          <div className="text-sm text-gray-800">{ir.students_involved}</div>
+                        </div>
+                      )}
+                      <div className="col-span-2">
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Categories</div>
+                        <div className="flex flex-wrap gap-1">
+                          {CATEGORIES.filter(c => ir[c.key]).map(c => (
+                            <span key={c.key} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{c.label}</span>
+                          ))}
+                          {CATEGORIES.every(c => !ir[c.key]) && <span className="text-xs text-gray-400">None selected</span>}
                         </div>
                       </div>
-                    ) : (
-                      <button onClick={() => setReviewingId(ir.id)}
-                        className="text-xs text-[#1e3a5f] font-medium hover:underline">
-                        Review & Acknowledge
-                      </button>
+                      <div className="col-span-2">
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Description</div>
+                        <div className="text-sm text-gray-800 whitespace-pre-wrap bg-gray-50 rounded-lg p-3">{ir.description}</div>
+                      </div>
+                    </div>
+
+                    {/* Resolution section */}
+                    {(ir.review_status !== 'pending' || ir.review_notes || ir.resolution) && (
+                      <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50">
+                        {ir.reviewed_by_name && (
+                          <div className="text-[10px] text-gray-400 mb-1">
+                            Handled by {ir.reviewed_by_name}
+                            {ir.reviewed_at ? ` · Resolved ${formatDate(ir.reviewed_at)}` : ''}
+                          </div>
+                        )}
+                        {ir.review_notes && (
+                          <div className="mb-1">
+                            <span className="text-[10px] text-gray-400 uppercase">Notes: </span>
+                            <span className="text-sm text-gray-700">{ir.review_notes}</span>
+                          </div>
+                        )}
+                        {ir.resolution && (
+                          <div>
+                            <span className="text-[10px] text-gray-400 uppercase">Resolution: </span>
+                            <span className="text-sm text-gray-800 font-medium">{ir.resolution}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Activity thread */}
+                    {expanded && <IncidentNotes incidentId={ir.id} isAdmin={isAdmin} />}
+
+                    {/* Admin actions */}
+                    {isAdmin && (
+                      <IncidentActions ir={ir} mutation={reviewMutation} />
                     )}
                   </div>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IncidentNotes({ incidentId, isAdmin }) {
+  const qc = useQueryClient();
+  const [newNote, setNewNote] = useState('');
+
+  const { data } = useQuery({
+    queryKey: ['incident-notes', incidentId],
+    queryFn: () => api.get(`/incidents/${incidentId}/notes`).then(r => r.data),
+  });
+  const notes = data?.data || [];
+
+  const addMutation = useMutation({
+    mutationFn: (note) => api.post(`/incidents/${incidentId}/notes`, { note }),
+    onSuccess: () => { qc.invalidateQueries(['incident-notes', incidentId]); setNewNote(''); },
+  });
+
+  return (
+    <div className="px-5 py-3 border-t border-gray-100">
+      <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Activity</div>
+      {notes.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {notes.map(n => (
+            <div key={n.id} className="flex gap-2 text-xs">
+              <div className="w-6 h-6 rounded-full bg-[#1e3a5f]/10 flex items-center justify-center text-[10px] font-bold text-[#1e3a5f] shrink-0">
+                {(n.author_name || '?').charAt(0)}
+              </div>
+              <div className="flex-1">
+                <div className="text-gray-500">
+                  <span className="font-medium text-gray-800">{n.author_name}</span>
+                  {n.tagged_name && <span className="ml-1 text-blue-600">@{n.tagged_name}</span>}
+                  <span className="ml-2 text-[10px] text-gray-400">{formatDate(n.ts_inserted)}</span>
+                </div>
+                <p className="text-gray-700 mt-0.5">{n.note}</p>
               </div>
             </div>
           ))}
         </div>
       )}
+      {isAdmin && (
+        <div className="flex gap-2">
+          <input type="text" value={newNote} onChange={e => setNewNote(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && newNote.trim() && addMutation.mutate(newNote.trim())}
+            placeholder="Add a note..."
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+          <button onClick={() => newNote.trim() && addMutation.mutate(newNote.trim())}
+            disabled={!newNote.trim() || addMutation.isPending}
+            className="px-3 py-1.5 rounded-lg bg-[#1e3a5f] text-white text-xs font-medium hover:bg-[#152a47] disabled:opacity-50">
+            Add
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IncidentActions({ ir, mutation }) {
+  const [notes, setNotes] = useState(ir.review_notes || '');
+  const [resolution, setResolution] = useState(ir.resolution || '');
+  const status = ir.review_status || 'pending';
+  const isResolved = status === 'resolved';
+
+  return (
+    <div className="px-5 py-3 border-t border-gray-200 bg-white space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-gray-400 uppercase tracking-wider">Review Notes</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+            placeholder="Internal notes..."
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-400 uppercase tracking-wider">Resolution {isResolved ? '' : '(required to resolve)'}</label>
+          <textarea value={resolution} onChange={e => setResolution(e.target.value)} rows={2}
+            placeholder="What was done to resolve this..."
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {status === 'pending' && (
+          <Button onClick={() => mutation.mutate({ id: ir.id, review_status: 'acknowledged', review_notes: notes })}
+            disabled={mutation.isPending}>Acknowledge</Button>
+        )}
+        {status === 'acknowledged' && (
+          <Button onClick={() => mutation.mutate({ id: ir.id, review_status: 'in_progress', review_notes: notes })}
+            disabled={mutation.isPending}>Mark In Progress</Button>
+        )}
+        {(status === 'acknowledged' || status === 'in_progress') && (
+          <Button onClick={() => mutation.mutate({ id: ir.id, review_status: 'resolved', review_notes: notes, resolution })}
+            disabled={mutation.isPending || !resolution}>
+            Resolve
+          </Button>
+        )}
+        <button onClick={() => mutation.mutate({ id: ir.id, review_notes: notes, resolution: resolution || undefined })}
+          disabled={mutation.isPending}
+          className="text-xs text-gray-500 hover:text-[#1e3a5f]">
+          {isResolved ? 'Update Notes' : 'Save Notes'}
+        </button>
+        {isResolved && (
+          <button onClick={() => mutation.mutate({ id: ir.id, review_status: 'in_progress', review_notes: notes })}
+            disabled={mutation.isPending}
+            className="text-xs text-amber-600 hover:text-amber-700 font-medium">Reopen</button>
+        )}
+      </div>
     </div>
   );
 }

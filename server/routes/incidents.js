@@ -60,8 +60,8 @@ router.get('/', authenticate, async (req, res, next) => {
       params.push(professor_id);
     }
 
-    if (reviewed === 'true') { where += ' AND ir.reviewed = 1'; }
-    else if (reviewed === 'false') { where += ' AND ir.reviewed = 0'; }
+    if (reviewed === 'true') { where += ' AND ir.review_status = "resolved"'; }
+    else if (reviewed === 'false') { where += ' AND ir.review_status != "resolved"'; }
 
     const [rows] = await pool.query(
       `SELECT ir.*,
@@ -83,16 +83,68 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/incidents/:id/review — admin acknowledges/resolves
+// PATCH /api/incidents/:id/review — update status (acknowledged → in_progress → resolved)
 router.patch('/:id/review', authenticate, async (req, res, next) => {
   try {
-    const { review_notes, resolution } = req.body;
-    await pool.query(
-      `UPDATE incident_report SET reviewed = 1, reviewed_by_user_id = ?, reviewed_at = NOW(),
-              review_notes = ?, resolution = ?, ts_updated = NOW() WHERE id = ?`,
-      [req.user.userId, review_notes || null, resolution || null, req.params.id]
-    );
+    const { review_status, review_notes, resolution } = req.body;
+    const validStatuses = ['acknowledged', 'in_progress', 'resolved'];
+    if (review_status && !validStatuses.includes(review_status)) {
+      return res.status(400).json({ success: false, error: 'Invalid status' });
+    }
+    if (review_status === 'resolved' && !resolution) {
+      return res.status(400).json({ success: false, error: 'Resolution note required to resolve' });
+    }
+
+    const fields = ['ts_updated = NOW()'];
+    const values = [];
+
+    if (review_status) {
+      fields.push('review_status = ?');
+      values.push(review_status);
+      fields.push('reviewed = ?');
+      values.push(review_status === 'resolved' ? 1 : 0);
+    }
+    if (review_notes !== undefined) { fields.push('review_notes = ?'); values.push(review_notes || null); }
+    if (resolution !== undefined) { fields.push('resolution = ?'); values.push(resolution || null); }
+
+    // Set reviewer on first status change
+    fields.push('reviewed_by_user_id = COALESCE(reviewed_by_user_id, ?)');
+    values.push(req.user.userId);
+    if (review_status === 'resolved') { fields.push('reviewed_at = NOW()'); }
+
+    values.push(req.params.id);
+    await pool.query(`UPDATE incident_report SET ${fields.join(', ')} WHERE id = ?`, values);
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/incidents/:id/notes — activity thread
+router.get('/:id/notes', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT n.*, CONCAT(u.first_name, ' ', u.last_name) AS author_name,
+              CONCAT(tu.first_name, ' ', tu.last_name) AS tagged_name
+       FROM incident_note n
+       JOIN user u ON u.id = n.user_id
+       LEFT JOIN user tu ON tu.id = n.tagged_user_id
+       WHERE n.incident_id = ?
+       ORDER BY n.ts_inserted ASC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/incidents/:id/notes — add a note (optionally tag someone)
+router.post('/:id/notes', authenticate, async (req, res, next) => {
+  try {
+    const { note, tagged_user_id } = req.body;
+    if (!note) return res.status(400).json({ success: false, error: 'Note required' });
+    const [result] = await pool.query(
+      'INSERT INTO incident_note (incident_id, user_id, note, tagged_user_id) VALUES (?,?,?,?)',
+      [req.params.id, req.user.userId, note, tagged_user_id || null]
+    );
+    res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
 });
 
