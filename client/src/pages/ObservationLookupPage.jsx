@@ -229,7 +229,21 @@ export default function ObservationLookupPage() {
 const CATEGORIES = ['Professional Conduct', 'Organization', 'Authority', 'Education', 'Rapport', 'Flexibility'];
 const RatingPicker = SharedRatingPicker;
 
+const PDF_KEYS = {
+  formal: 'observation_pdf_formal',
+  peer_to_peer: 'observation_pdf_peer_to_peer',
+  support_session: 'observation_pdf_support_session',
+};
+
 function ObservationForm({ item, onSuccess, onBack }) {
+  // Fetch PDF links from system settings
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings-observation-pdfs'],
+    queryFn: () => api.get('/settings', { params: { prefix: 'observation_pdf' } }).then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const pdfUrls = settingsData?.data || {};
+
   const [form, setForm] = useState({
     observation_type: 'formal',
     mode: 'in_person',
@@ -289,6 +303,12 @@ function ObservationForm({ item, onSuccess, onBack }) {
               }`}>{label}</button>
           ))}
         </div>
+        {pdfUrls[PDF_KEYS[form.observation_type]] && (
+          <a href={pdfUrls[PDF_KEYS[form.observation_type]]} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 mt-2 text-xs text-[#1e3a5f] font-medium hover:underline">
+            View {form.observation_type === 'formal' ? 'Formal' : form.observation_type === 'peer_to_peer' ? 'Peer to Peer' : 'Support Session'} PDF Template
+          </a>
+        )}
       </div>
 
       <div>

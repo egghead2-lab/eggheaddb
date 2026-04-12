@@ -60,12 +60,12 @@ const ENTITIES = {
       first_session_date: { label: 'First Session Date', type: 'date', col: 'prog.first_session_date' },
       last_session_date: { label: 'Last Session Date', type: 'date', col: 'prog.last_session_date' },
       // People
-      lead_professor: { label: 'Lead Professor', type: 'text', col: "CONCAT(lp.professor_nickname, ' ', lp.last_name)" },
-      assistant_professor: { label: 'Assistant Professor', type: 'text', col: "CONCAT(ap.professor_nickname, ' ', ap.last_name)" },
+      lead_professor: { label: 'Lead Professor', type: 'text', col: "CONCAT(lp.professor_nickname, ' ', lp.last_name)", idCol: 'prog.lead_professor_id', idType: 'professor' },
+      assistant_professor: { label: 'Assistant Professor', type: 'text', col: "CONCAT(ap.professor_nickname, ' ', ap.last_name)", idCol: 'prog.assistant_professor_id', idType: 'professor' },
       has_assistant: { label: 'Has Assistant', type: 'boolean', col: 'prog.assistant_professor_id IS NOT NULL', raw: true },
-      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
-      field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)" },
-      client_manager: { label: 'Client Manager', type: 'text', col: "CONCAT(cmgr.first_name, ' ', cmgr.last_name)" },
+      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)", idCol: 'ga.scheduling_coordinator_user_id', idType: 'user' },
+      field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)", idCol: 'ga.field_manager_user_id', idType: 'user' },
+      client_manager: { label: 'Client Manager', type: 'text', col: "CONCAT(cmgr.first_name, ' ', cmgr.last_name)", idCol: 'loc.client_manager_user_id', idType: 'user' },
       // Financials
       parent_cost: { label: 'Parent Cost', type: 'number', col: 'prog.parent_cost' },
       our_cut: { label: 'Our Cut', type: 'number', col: 'prog.our_cut' },
@@ -143,7 +143,7 @@ const ENTITIES = {
       status: { label: 'Professor Status', type: 'select', options: 'professor_status' },
       area: { label: 'Geographic Area', type: 'select', options: 'area' },
       onboard_status: { label: 'Onboard Status', type: 'text', col: 'os.onboard_status_name' },
-      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
+      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)", idCol: 'p.scheduling_coordinator_owner_id', idType: 'user' },
       city: { label: 'City', type: 'text', col: 'c.city_name' },
       email: { label: 'Email', type: 'text', col: 'p.email' },
       phone: { label: 'Phone', type: 'text', col: 'p.phone_number' },
@@ -212,9 +212,9 @@ const ENTITIES = {
       address: { label: 'Address', type: 'text', col: 'loc.address' },
       phone: { label: 'Location Phone', type: 'text', col: 'loc.location_phone' },
       // People
-      client_manager: { label: 'Client Manager', type: 'text', col: "COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm.first_name, ' ', cm.last_name))" },
-      field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)" },
-      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)" },
+      client_manager: { label: 'Client Manager', type: 'text', col: "COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm.first_name, ' ', cm.last_name))", idCol: 'COALESCE(loc.client_manager_user_id, ga.client_manager_user_id)', idType: 'user' },
+      field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)", idCol: 'ga.field_manager_user_id', idType: 'user' },
+      scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)", idCol: 'ga.scheduling_coordinator_user_id', idType: 'user' },
       point_of_contact: { label: 'Point of Contact', type: 'text', col: 'loc.point_of_contact' },
       poc_email: { label: 'Contact Email', type: 'text', col: 'loc.poc_email' },
       poc_phone: { label: 'Contact Phone', type: 'text', col: 'loc.poc_phone' },
@@ -272,7 +272,7 @@ const HAVING_COLS = new Set([
 ]);
 
 async function buildRuntimeContext(user, pool) {
-  const ctx = { userId: user?.userId, role: user?.role, userAreas: [] };
+  const ctx = { userId: user?.userId, role: user?.role, userAreas: [], professorId: null };
   if (ctx.userId) {
     // Get areas this user manages (as SC or FM)
     const [scAreas] = await pool.query(
@@ -280,6 +280,10 @@ async function buildRuntimeContext(user, pool) {
       [ctx.userId, ctx.userId]
     );
     ctx.userAreas = scAreas.map(a => a.id);
+
+    // Get professor_id if this user is linked to a professor
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [ctx.userId]);
+    if (prof) ctx.professorId = prof.id;
   }
   return ctx;
 }
@@ -291,6 +295,12 @@ function buildFilterClause(fieldDef, f, runtimeContext = {}) {
 
   // Resolve dynamic values
   if (f.value === 'CURRENT_USER' && runtimeContext.userId) {
+    // Use ID column if available, resolving to professor_id or user_id as appropriate
+    if (fieldDef.idCol && fieldDef.idType) {
+      const resolvedId = fieldDef.idType === 'professor' ? runtimeContext.professorId : runtimeContext.userId;
+      if (resolvedId) return { clause: `${fieldDef.idCol} = ?`, params: [resolvedId] };
+      return { clause: '1=0', params: [] }; // no matching ID (e.g. user has no professor record)
+    }
     return { clause: `${col} = ?`, params: [runtimeContext.userId] };
   }
   if (f.value === 'CURRENT_USER_AREAS' && runtimeContext.userAreas?.length) {

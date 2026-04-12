@@ -824,5 +824,38 @@ router.delete('/responsibilities/:id', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ============================================================
+// SYSTEM SETTINGS
+// ============================================================
+
+// GET /api/settings — all settings (or filtered by prefix)
+router.get('/settings', authenticate, async (req, res, next) => {
+  try {
+    const { prefix } = req.query;
+    let where = '1=1';
+    const params = [];
+    if (prefix) { where += ' AND setting_key LIKE ?'; params.push(`${prefix}%`); }
+    const [rows] = await pool.query(`SELECT * FROM system_setting WHERE ${where} ORDER BY setting_key`, params);
+    const map = {};
+    rows.forEach(r => { map[r.setting_key] = r.setting_value; });
+    res.json({ success: true, data: map });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/settings — update one or more settings
+router.put('/settings', authenticate, async (req, res, next) => {
+  try {
+    const settings = req.body;
+    for (const [key, value] of Object.entries(settings)) {
+      await pool.query(
+        `INSERT INTO system_setting (setting_key, setting_value, ts_updated) VALUES (?, ?, NOW())
+         ON DUPLICATE KEY UPDATE setting_value = ?, ts_updated = NOW()`,
+        [key, value || null, value || null]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
 
