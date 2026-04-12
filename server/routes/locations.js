@@ -239,6 +239,28 @@ router.put('/:id', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/locations/:id/past-programs — history of programs at this location
+router.get('/:id/past-programs', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.last_session_date,
+              prog.parent_cost, prog.our_cut, prog.lab_fee, prog.number_enrolled,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
+              cs.class_status_name,
+              pt.program_type_name,
+              cl.class_name
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       WHERE prog.location_id = ? AND prog.active = 1
+       ORDER BY prog.first_session_date DESC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/locations/:id/info-sheet — public-facing info for professors
 router.get('/:id/info-sheet', authenticate, async (req, res, next) => {
   try {

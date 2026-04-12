@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getPrograms } from '../api/programs';
 import { useGeneralData, useLocationList } from '../hooks/useReferenceData';
+import { CopyableTable } from '../components/ui/CopyableTable';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -181,7 +182,7 @@ export default function ProgramsPage() {
           <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
         ) : (
           <>
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <CopyableTable className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
@@ -243,7 +244,7 @@ export default function ProgramsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </CopyableTable>
             <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
               <span>{total} program{total !== 1 ? 's' : ''}</span>
               {total > limit && (

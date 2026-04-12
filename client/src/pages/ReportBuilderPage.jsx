@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
+import { CopyableTable } from '../components/ui/CopyableTable';
 import { formatDate, formatCurrency } from '../lib/utils';
 
 const OPERATORS = {
@@ -261,7 +262,7 @@ export default function ReportBuilderPage() {
 
         {/* Existing reports */}
         {isLoading ? <Spinner className="w-6 h-6" /> : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <CopyableTable className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -302,7 +303,7 @@ export default function ReportBuilderPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CopyableTable>
         )}
 
         {/* Preview results */}

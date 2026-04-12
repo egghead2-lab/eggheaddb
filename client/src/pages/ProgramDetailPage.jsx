@@ -18,6 +18,7 @@ import { RosterPanel } from '../components/RosterPanel';
 import { SessionsPanel } from '../components/SessionsPanel';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { formatDate, formatTime, formatCurrency, toFormData } from '../lib/utils';
+import PastProgramsPanel from '../components/PastProgramsPanel';
 import { WEEKDAY_KEYS, WEEKDAYS } from '../lib/constants';
 
 export default function ProgramDetailPage() {
@@ -199,6 +200,9 @@ export default function ProgramDetailPage() {
               <Input label="General Notes" {...register('general_notes')} />
             </div>
           </Section>
+
+          {/* Past programs at this location */}
+          {watch('location_id') && <PastProgramsPanel locationId={watch('location_id')} />}
 
           {/* Invoicing */}
           <Section title={(() => {

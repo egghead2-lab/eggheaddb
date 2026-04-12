@@ -20,6 +20,7 @@ import { useColumnPrefs } from '../hooks/useColumnPrefs';
 import { ColumnPicker } from '../components/ui/ColumnPicker';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { BulkEditBar } from '../components/ui/BulkEditBar';
+import { CopyableTable } from '../components/ui/CopyableTable';
 
 const COLUMNS = [
   { key: 'nickname', label: 'Preferred Name' },
@@ -149,7 +150,7 @@ export default function ProfessorsPage() {
           <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
         ) : (
           <>
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <CopyableTable className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
@@ -215,7 +216,7 @@ export default function ProfessorsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </CopyableTable>
             <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
               <span>{total} professor{total !== 1 ? 's' : ''}</span>
               {total > limit && (

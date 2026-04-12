@@ -16,6 +16,7 @@ import { useColumnPrefs } from '../hooks/useColumnPrefs';
 import { ColumnPicker } from '../components/ui/ColumnPicker';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { BulkEditBar } from '../components/ui/BulkEditBar';
+import { CopyableTable } from '../components/ui/CopyableTable';
 
 const COLUMNS = [
   { key: 'date', label: 'Date' },
@@ -142,7 +143,7 @@ export default function PartiesPage() {
           <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
         ) : (
           <>
-            <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+            <CopyableTable className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
@@ -214,7 +215,7 @@ export default function PartiesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </CopyableTable>
             <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
               <span>{total} part{total !== 1 ? 'ies' : 'y'}</span>
               {total > limit && (
