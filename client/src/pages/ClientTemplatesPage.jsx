@@ -31,7 +31,9 @@ export default function ClientTemplatesPage() {
     queryKey: ['cm-all-templates', filterCat],
     queryFn: () => api.get('/client-management/templates', { params: filterCat ? { category: filterCat } : {} }).then(r => r.data),
   });
-  const templates = data?.data || [];
+  const CM_CATS = new Set(CATEGORIES.map(c => c.value));
+  const allTemplates = data?.data || [];
+  const templates = filterCat ? allTemplates : allTemplates.filter(t => CM_CATS.has(t.category));
 
   const saveMutation = useMutation({
     mutationFn: (tpl) => tpl.isNew
