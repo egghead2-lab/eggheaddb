@@ -59,6 +59,18 @@ import PartyEmailTemplatesPage from './pages/PartyEmailTemplatesPage';
 import PartyCalendarPage from './pages/PartyCalendarPage';
 import PartyAssignPage from './pages/PartyAssignPage';
 import IncidentReportPage from './pages/IncidentReportPage';
+import ClientTemplatesPage from './pages/ClientTemplatesPage';
+import StartingEmailsPage from './pages/client-management/StartingEmailsPage';
+import FirstDayParentPage from './pages/client-management/FirstDayParentPage';
+import SecondWeekPage from './pages/client-management/SecondWeekPage';
+import SubEmailsPage from './pages/client-management/SubEmailsPage';
+import NewProfessorPage from './pages/client-management/NewProfessorPage';
+import LastDayPage from './pages/client-management/LastDayPage';
+import ParentFeedbackPage from './pages/client-management/ParentFeedbackPage';
+import SiteCheckInsPage from './pages/client-management/SiteCheckInsPage';
+import NpsEmailsPage from './pages/client-management/NpsEmailsPage';
+import RosterEmailsPage from './pages/client-management/RosterEmailsPage';
+import RebookingPage from './pages/client-management/RebookingPage';
 import ShipmentCyclesPage from './pages/ShipmentCyclesPage';
 import StandardOrderBuilderPage from './pages/StandardOrderBuilderPage';
 import MarkShippedPage from './pages/MarkShippedPage';
@@ -162,6 +174,18 @@ export default function App() {
       <Route path="/party-calendar" element={<ProtectedRoute><PartyCalendarPage /></ProtectedRoute>} />
       <Route path="/parties/assign" element={<ProtectedRoute><PartyAssignPage /></ProtectedRoute>} />
       <Route path="/incident-report" element={<ProtectedRoute><IncidentReportPage /></ProtectedRoute>} />
+      <Route path="/client-management/templates" element={<ProtectedRoute><ClientTemplatesPage /></ProtectedRoute>} />
+      <Route path="/client-management/starting-emails" element={<ProtectedRoute><StartingEmailsPage /></ProtectedRoute>} />
+      <Route path="/client-management/first-day-parent" element={<ProtectedRoute><FirstDayParentPage /></ProtectedRoute>} />
+      <Route path="/client-management/second-week" element={<ProtectedRoute><SecondWeekPage /></ProtectedRoute>} />
+      <Route path="/client-management/sub-emails" element={<ProtectedRoute><SubEmailsPage /></ProtectedRoute>} />
+      <Route path="/client-management/new-professor" element={<ProtectedRoute><NewProfessorPage /></ProtectedRoute>} />
+      <Route path="/client-management/last-day" element={<ProtectedRoute><LastDayPage /></ProtectedRoute>} />
+      <Route path="/client-management/parent-feedback" element={<ProtectedRoute><ParentFeedbackPage /></ProtectedRoute>} />
+      <Route path="/client-management/site-check-ins" element={<ProtectedRoute><SiteCheckInsPage /></ProtectedRoute>} />
+      <Route path="/client-management/nps-emails" element={<ProtectedRoute><NpsEmailsPage /></ProtectedRoute>} />
+      <Route path="/client-management/roster-emails" element={<ProtectedRoute><RosterEmailsPage /></ProtectedRoute>} />
+      <Route path="/client-management/rebooking" element={<ProtectedRoute><RebookingPage /></ProtectedRoute>} />
       <Route path="/materials/cycles" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
       <Route path="/materials/standard-order" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
       <Route path="/materials/mark-shipped" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />
