@@ -230,4 +230,100 @@ router.post('/unassign', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/sub-management/claimed — pending/approved sub claims for schedulers
+router.get('/claimed', async (req, res, next) => {
+  try {
+    const { status = 'pending', scheduler_id } = req.query;
+
+    // If scheduler_id is set, show only claims for areas they manage
+    let areaFilter = '';
+    let areaParams = [];
+    if (scheduler_id) {
+      areaFilter = `AND ga.scheduling_coordinator_user_id = ?`;
+      areaParams = [parseInt(scheduler_id)];
+    }
+
+    const [rows] = await pool.query(
+      `SELECT sc.id AS claim_id, sc.session_id, sc.professor_id, sc.role, sc.status,
+              sc.expected_pay, sc.claimed_at, sc.reject_reason,
+              sc.reviewed_by, sc.reviewed_at,
+              p.professor_nickname, p.last_name AS professor_last,
+              p.phone_number AS professor_phone,
+              s.session_date, s.session_time,
+              prog.id AS program_id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.lead_professor_id, prog.assistant_professor_id,
+              cs.class_status_name,
+              loc.nickname AS location_nickname,
+              ga.geographic_area_name,
+              p_off.professor_nickname AS off_professor_name,
+              reviewer.name AS reviewed_by_name
+       FROM sub_claim sc
+       JOIN session s ON s.id = sc.session_id
+       JOIN program prog ON prog.id = s.program_id
+       JOIN professor p ON p.id = sc.professor_id
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN city ci ON ci.id = loc.city_id
+       LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, ci.geographic_area_id)
+       LEFT JOIN user reviewer ON reviewer.id = sc.reviewed_by
+       LEFT JOIN day_off d ON d.date_requested = s.session_date AND d.active = 1
+         AND (d.professor_id = prog.lead_professor_id OR d.professor_id = prog.assistant_professor_id)
+       LEFT JOIN professor p_off ON p_off.id = d.professor_id
+       WHERE sc.active = 1 AND sc.status = ?
+         AND s.session_date >= CURDATE()
+         ${areaFilter}
+       ORDER BY s.session_date ASC, s.session_time ASC`,
+      [status, ...areaParams]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/sub-management/claimed/approve — approve a sub claim (assigns professor to session)
+router.post('/claimed/approve', async (req, res, next) => {
+  try {
+    const { claim_id } = req.body;
+    if (!claim_id) return res.status(400).json({ success: false, error: 'claim_id required' });
+
+    const [[claim]] = await pool.query(
+      'SELECT * FROM sub_claim WHERE id = ? AND active = 1 AND status = ?',
+      [claim_id, 'pending']
+    );
+    if (!claim) return res.status(404).json({ success: false, error: 'Claim not found or already processed' });
+
+    // Assign the professor to the session
+    if (claim.role === 'Assistant') {
+      await pool.query('UPDATE session SET assistant_id = ?, ts_updated = NOW() WHERE id = ?',
+        [claim.professor_id, claim.session_id]);
+    } else {
+      await pool.query('UPDATE session SET professor_id = ?, ts_updated = NOW() WHERE id = ?',
+        [claim.professor_id, claim.session_id]);
+    }
+
+    // Mark claim as approved
+    await pool.query(
+      `UPDATE sub_claim SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+      [req.user.userId, claim_id]
+    );
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/sub-management/claimed/reject — reject a sub claim
+router.post('/claimed/reject', async (req, res, next) => {
+  try {
+    const { claim_id, reason } = req.body;
+    if (!claim_id) return res.status(400).json({ success: false, error: 'claim_id required' });
+
+    await pool.query(
+      `UPDATE sub_claim SET status = 'rejected', reject_reason = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND active = 1`,
+      [reason || null, req.user.userId, claim_id]
+    );
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

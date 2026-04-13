@@ -301,6 +301,171 @@ router.get('/all-attendance', authenticate, async (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// PROFESSOR SUBSTITUTE CLAIMING
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/schedule/available-subs — sessions needing subs in professor's area
+router.get('/available-subs', authenticate, async (req, res, next) => {
+  try {
+    const [[prof]] = await pool.query(
+      `SELECT p.id, p.base_pay, p.assist_pay,
+              COALESCE(c.geographic_area_id, p.geographic_area_id) AS area_id
+       FROM professor p
+       LEFT JOIN city c ON c.id = p.city_id
+       WHERE p.user_id = ? AND p.active = 1`,
+      [req.user.userId]
+    );
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+
+    // Get professor's sessions today/tomorrow to check time conflicts
+    const [mySessionsRaw] = await pool.query(
+      `SELECT s.session_date, COALESCE(s.session_time, prog.start_time) AS start_time, prog.class_length_minutes
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       WHERE s.active = 1
+         AND s.session_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+         AND (COALESCE(s.professor_id, prog.lead_professor_id) = ? OR COALESCE(s.assistant_id, prog.assistant_professor_id) = ?)`,
+      [prof.id, prof.id]
+    );
+
+    // Find sessions needing subs: day_off exists, no replacement assigned, in professor's area
+    // Also exclude sessions already claimed by someone
+    const [rows] = await pool.query(
+      `SELECT d.id AS day_off_id, d.date_requested,
+              sr.reason_name,
+              s.id AS session_id, s.session_date, s.session_time,
+              s.professor_pay AS session_pay, s.assistant_pay AS session_assist_pay,
+              prog.id AS program_id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.lead_professor_id, prog.assistant_professor_id,
+              prog.lead_professor_pay, prog.assistant_professor_pay,
+              cs.class_status_name,
+              loc.nickname AS location_nickname, loc.address,
+              ga.geographic_area_name,
+              p_off.professor_nickname AS off_professor_name,
+              CASE WHEN prog.lead_professor_id = d.professor_id THEN 'Lead' ELSE 'Assistant' END AS role_needing_sub
+       FROM day_off d
+       JOIN session s ON s.session_date = d.date_requested AND s.active = 1
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN substitute_reason sr ON sr.id = d.substitute_reason_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN city ci ON ci.id = loc.city_id
+       LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, ci.geographic_area_id)
+       LEFT JOIN professor p_off ON p_off.id = d.professor_id
+       LEFT JOIN sub_claim sc ON sc.session_id = s.id
+         AND sc.role = CASE WHEN prog.lead_professor_id = d.professor_id THEN 'Lead' ELSE 'Assistant' END
+         AND sc.active = 1 AND sc.status IN ('pending', 'approved')
+       WHERE d.active = 1
+         AND d.date_requested BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+         AND cs.class_status_name NOT LIKE 'Cancelled%'
+         AND (prog.lead_professor_id = d.professor_id OR prog.assistant_professor_id = d.professor_id)
+         AND (
+           (prog.lead_professor_id = d.professor_id AND (s.professor_id IS NULL OR s.professor_id = d.professor_id))
+           OR
+           (prog.assistant_professor_id = d.professor_id AND (s.assistant_id IS NULL OR s.assistant_id = d.professor_id))
+         )
+         AND COALESCE(loc.geographic_area_id_online, ci.geographic_area_id) = ?
+         AND sc.id IS NULL
+         AND d.professor_id != ?
+       ORDER BY s.session_date ASC, s.session_time ASC`,
+      [prof.area_id, prof.id]
+    );
+
+    // Filter out time conflicts with professor's own schedule
+    const available = rows.filter(row => {
+      const subDate = (row.session_date || '').toString().split('T')[0];
+      const subTime = row.session_time || row.start_time;
+      if (!subTime) return true;
+
+      const subMins = timeToMinutes(subTime);
+      const subLen = row.class_length_minutes || 60;
+
+      return !mySessionsRaw.some(my => {
+        const myDate = (my.session_date || '').toString().split('T')[0];
+        if (myDate !== subDate) return false;
+        const myMins = timeToMinutes(my.start_time);
+        const myLen = my.class_length_minutes || 60;
+        // Overlap check
+        return subMins < myMins + myLen && subMins + subLen > myMins;
+      });
+    });
+
+    // Calculate expected pay for each
+    const result = available.map(row => {
+      const role = row.role_needing_sub;
+      let expectedPay = 0;
+      if (role === 'Lead') {
+        expectedPay = parseFloat(row.session_pay) || parseFloat(row.lead_professor_pay) || parseFloat(prof.base_pay) || 0;
+      } else {
+        expectedPay = parseFloat(row.session_assist_pay) || parseFloat(row.assistant_professor_pay) || parseFloat(prof.assist_pay) || 0;
+      }
+      return { ...row, expected_pay: expectedPay };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+function timeToMinutes(t) {
+  if (!t) return 0;
+  const str = t.toString();
+  const parts = str.split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
+}
+
+// POST /api/schedule/claim-sub — professor claims a substitute session
+router.post('/claim-sub', authenticate, async (req, res, next) => {
+  try {
+    const { session_id, role } = req.body;
+    if (!session_id) return res.status(400).json({ success: false, error: 'session_id required' });
+
+    const [[prof]] = await pool.query(
+      'SELECT id, base_pay, assist_pay FROM professor WHERE user_id = ? AND active = 1',
+      [req.user.userId]
+    );
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+
+    // Verify session exists and needs a sub
+    const [[session]] = await pool.query(
+      `SELECT s.id, s.session_date, s.professor_pay, s.assistant_pay,
+              prog.lead_professor_pay, prog.assistant_professor_pay
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id
+       WHERE s.id = ? AND s.active = 1`,
+      [session_id]
+    );
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+
+    // Check not already claimed
+    const [[existingClaim]] = await pool.query(
+      `SELECT id FROM sub_claim WHERE session_id = ? AND role = ? AND active = 1 AND status IN ('pending', 'approved')`,
+      [session_id, role || 'Lead']
+    );
+    if (existingClaim) return res.status(400).json({ success: false, error: 'This session has already been claimed' });
+
+    // Calculate expected pay
+    const actualRole = role || 'Lead';
+    let expectedPay = 0;
+    if (actualRole === 'Lead') {
+      expectedPay = parseFloat(session.professor_pay) || parseFloat(session.lead_professor_pay) || parseFloat(prof.base_pay) || 0;
+    } else {
+      expectedPay = parseFloat(session.assistant_pay) || parseFloat(session.assistant_professor_pay) || parseFloat(prof.assist_pay) || 0;
+    }
+
+    await pool.query(
+      `INSERT INTO sub_claim (session_id, professor_id, role, status, expected_pay, claimed_at, active)
+       VALUES (?, ?, ?, 'pending', ?, NOW(), 1)`,
+      [session_id, prof.id, actualRole, expectedPay]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, error: 'Already claimed' });
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // FULL SCHEDULE VIEW (used by both professors and schedulers)
 // ═══════════════════════════════════════════════════════════════════
 

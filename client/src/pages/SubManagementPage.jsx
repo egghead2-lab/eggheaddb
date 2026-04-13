@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { useGeneralData } from '../hooks/useReferenceData';
+import { useAuth } from '../hooks/useAuth';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -10,7 +11,8 @@ import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { Section } from '../components/ui/Section';
-import { formatDate, formatTime, formatPhone } from '../lib/utils';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
+import { formatDate, formatTime, formatPhone, formatCurrency } from '../lib/utils';
 
 function SubNeedCard({ need, onFindSub }) {
   return (
@@ -102,6 +104,140 @@ function ProfessorRow({ prof, need, onAssign, isPending }) {
 }
 
 export default function SubManagementPage() {
+  const [tab, setTab] = useState('needs'); // 'needs' | 'claimed'
+
+  return (
+    <AppShell>
+      <PageHeader title="Sub Management" />
+      <div className="px-6 pt-4">
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit mb-4">
+          {[['needs', 'Sub Needs'], ['claimed', 'Claimed Subs']].map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                tab === key ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>{label}</button>
+          ))}
+        </div>
+      </div>
+      {tab === 'needs' ? <SubNeedsPanel /> : <ClaimedSubsPanel />}
+    </AppShell>
+  );
+}
+
+function ClaimedSubsPanel() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const [filter, setFilter] = useState('all'); // 'all' | 'mine'
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['claimed-subs', filter === 'mine' ? user?.id : null],
+    queryFn: () => api.get('/sub-management/claimed', {
+      params: { status: 'pending', ...(filter === 'mine' ? { scheduler_id: user?.id } : {}) }
+    }).then(r => r.data),
+  });
+  const claims = data?.data || [];
+
+  const approveMutation = useMutation({
+    mutationFn: (claim_id) => api.post('/sub-management/claimed/approve', { claim_id }),
+    onSuccess: () => qc.invalidateQueries(['claimed-subs']),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (claim_id) => api.post('/sub-management/claimed/reject', { claim_id }),
+    onSuccess: () => qc.invalidateQueries(['claimed-subs']),
+  });
+
+  return (
+    <div className="px-6 pb-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          {[['all', 'All Claimed'], ['mine', 'My Areas']].map(([key, label]) => (
+            <button key={key} onClick={() => setFilter(key)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                filter === key ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>{label}</button>
+          ))}
+        </div>
+        <span className="text-sm text-gray-400">{claims.length} pending claim{claims.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>
+      ) : claims.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <div className="text-lg mb-1">No pending claims</div>
+          <div className="text-sm">Professors haven't claimed any substitute sessions yet</div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Date</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Claimed By</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Role</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600">Area</th>
+                <th className="text-right px-3 py-2 font-medium text-gray-600">Expected Pay</th>
+                <th className="w-40 px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {claims.map(c => {
+                const dateStr = (c.session_date || '').split('T')[0];
+                return (
+                  <tr key={c.claim_id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 text-xs">
+                      {formatDate(dateStr)}
+                      <div className="text-gray-400">{new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Link to={`/programs/${c.program_id}`} className="font-medium text-[#1e3a5f] hover:underline text-sm">
+                        {c.program_nickname}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 text-xs">{formatTime(c.session_time || c.start_time)}</td>
+                    <td className="px-3 py-2 text-gray-600 text-xs">{c.location_nickname || '—'}</td>
+                    <td className="px-3 py-2">
+                      <span className="font-medium text-sm">{c.professor_nickname} {c.professor_last}</span>
+                      {c.professor_phone && <div className="text-[10px] text-gray-400">{formatPhone(c.professor_phone)}</div>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                        c.role === 'Lead' ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
+                      }`}>{c.role}</span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">{c.geographic_area_name || '—'}</td>
+                    <td className="px-3 py-2 text-right font-medium text-green-700 text-sm">
+                      {c.expected_pay ? formatCurrency(c.expected_pay) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => approveMutation.mutate(c.claim_id)}
+                          disabled={approveMutation.isPending}
+                          className="px-2.5 py-1 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors disabled:opacity-50">
+                          Approve
+                        </button>
+                        <ConfirmButton onConfirm={() => rejectMutation.mutate(c.claim_id)}
+                          confirmLabel="Reject?" className="text-xs text-gray-400 hover:text-red-500">
+                          Reject
+                        </ConfirmButton>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubNeedsPanel() {
   const qc = useQueryClient();
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
@@ -187,10 +323,9 @@ export default function SubManagementPage() {
   const today = new Date().toISOString().split('T')[0];
 
   return (
-    <AppShell>
-      <PageHeader title="Sub Management" action={
-        <div className="text-sm text-gray-500">{needs.length} session{needs.length !== 1 ? 's' : ''} needing subs</div>
-      }>
+    <>
+      <div className="px-6 flex items-center gap-3 mb-2">
+        <span className="text-sm text-gray-500">{needs.length} session{needs.length !== 1 ? 's' : ''} needing subs</span>
         <Select value={days} onChange={e => setDays(e.target.value)} className="w-36">
           <option value="7">Next 7 days</option>
           <option value="14">Next 14 days</option>
@@ -198,9 +333,9 @@ export default function SubManagementPage() {
           <option value="60">Next 60 days</option>
           <option value="90">Next 90 days</option>
         </Select>
-      </PageHeader>
+      </div>
 
-      <div className="p-6">
+      <div className="px-6 pb-6">
         {/* Area filter chips */}
         <div className="flex flex-wrap gap-1.5 mb-4">
           <span className="text-xs text-gray-500 py-1 mr-1">Areas:</span>
@@ -327,6 +462,6 @@ export default function SubManagementPage() {
           )}
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

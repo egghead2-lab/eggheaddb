@@ -37,6 +37,19 @@ export default function ProfessorTodayPage() {
     onSuccess: () => { qc.invalidateQueries(['my-pending-parties']); qc.invalidateQueries(['my-today']); },
   });
 
+  // Available subs in professor's area
+  const { data: subsData } = useQuery({
+    queryKey: ['available-subs'],
+    queryFn: () => api.get('/schedule/available-subs').then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+  const availableSubs = subsData?.data || [];
+
+  const claimMutation = useMutation({
+    mutationFn: ({ session_id, role }) => api.post('/schedule/claim-sub', { session_id, role }),
+    onSuccess: () => { qc.invalidateQueries(['available-subs']); },
+  });
+
   if (isLoading) return <AppShell><div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div></AppShell>;
 
   return (
@@ -66,10 +79,58 @@ export default function ProfessorTodayPage() {
           </div>
         )}
 
-        {sessions.length === 0 && pendingParties.length === 0 ? (
+        {/* Available subs in your area */}
+        {availableSubs.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="text-sm font-bold text-[#1e3a5f]">Available Substitutes in Your Area</h2>
+              <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">{availableSubs.length}</span>
+            </div>
+            <div className="space-y-2">
+              {availableSubs.map(sub => (
+                <div key={`${sub.session_id}-${sub.role_needing_sub}`}
+                  className="bg-white rounded-xl border border-blue-200 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-gray-900 text-sm">{sub.program_nickname}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {formatDate((sub.session_date || '').split('T')[0])}
+                        {sub.session_time || sub.start_time ? ` at ${formatTime(sub.session_time || sub.start_time)}` : ''}
+                        {sub.class_length_minutes ? ` (${sub.class_length_minutes} min)` : ''}
+                        {' · '}{sub.location_nickname || ''}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {sub.role_needing_sub} sub for {sub.off_professor_name}
+                        {sub.reason_name ? ` — ${sub.reason_name}` : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {sub.expected_pay > 0 && (
+                        <span className="text-sm font-medium text-green-700">{formatCurrency(sub.expected_pay)}</span>
+                      )}
+                      <button onClick={() => claimMutation.mutate({ session_id: sub.session_id, role: sub.role_needing_sub })}
+                        disabled={claimMutation.isPending}
+                        className="px-3 py-1.5 rounded-lg bg-[#1e3a5f] text-white text-xs font-medium hover:bg-[#152a47] active:scale-95 transition-all disabled:opacity-50">
+                        {claimMutation.isPending ? '...' : 'Claim Sub'}
+                      </button>
+                    </div>
+                  </div>
+                  {claimMutation.isSuccess && claimMutation.variables?.session_id === sub.session_id && (
+                    <div className="text-xs text-green-600 mt-1">Claimed! Awaiting scheduler approval.</div>
+                  )}
+                  {claimMutation.isError && claimMutation.variables?.session_id === sub.session_id && (
+                    <div className="text-xs text-red-600 mt-1">{claimMutation.error?.response?.data?.error || 'Failed to claim'}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {sessions.length === 0 && pendingParties.length === 0 && availableSubs.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <div className="text-lg mb-1">No classes today or tomorrow</div>
-            <div className="text-sm">Enjoy your time off!</div>
+            <div className="text-sm">No substitute opportunities in your area right now either.</div>
           </div>
         ) : (
           <div className="space-y-6">
