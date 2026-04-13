@@ -31,9 +31,24 @@ export default function RebookingPage() {
   const [subject, setSubject] = useState('');
   const [testMode, setTestMode] = useState(false);
   const [testEmail, setTestEmail] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
+  const [locSearch, setLocSearch] = useState('');
 
   const { data: locList } = useLocationList();
   const locations = locList?.data || [];
+
+  // Locations needing rebooking
+  const { data: rebookLocData } = useQuery({
+    queryKey: ['rebooking-locations', areaFilter],
+    queryFn: () => api.get('/client-management/rebooking/locations', { params: areaFilter ? { area: areaFilter } : {} }).then(r => r.data),
+  });
+  const rebookLocations = (rebookLocData?.data || []).filter(l =>
+    !locSearch || (l.school_name || l.nickname || '').toLowerCase().includes(locSearch.toLowerCase())
+  );
+
+  // Areas for filter
+  const { data: refData } = useQuery({ queryKey: ['general-data'], queryFn: () => api.get('/general-data').then(r => r.data), staleTime: 5 * 60000 });
+  const areas = refData?.data?.areas || [];
 
   const { data, isLoading } = useQuery({
     queryKey: ['rebooking-location', locationId],
@@ -117,15 +132,40 @@ export default function RebookingPage() {
         <div className="flex gap-6">
           {/* Left — Location selector + programs */}
           <div className="w-[50%] space-y-4">
-            <div className="w-80">
-              <SearchSelect placeholder="Search location..." value={locationId} onChange={v => { setLocationId(v); setIncluded(new Set()); }}
-                options={locations} displayKey="nickname" valueKey="id" />
+            <div className="flex gap-2">
+              <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1.5 text-xs">
+                <option value="">All Areas</option>
+                {areas.map(a => <option key={a.id} value={a.geographic_area_name}>{a.geographic_area_name}</option>)}
+              </select>
+              <input type="text" value={locSearch} onChange={e => setLocSearch(e.target.value)}
+                placeholder="Search locations..."
+                className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-xs" />
             </div>
 
-            {isLoading && <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>}
+            {/* Locations needing rebooking */}
+            {!locationId && (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden max-h-[400px] overflow-y-auto">
+                <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-700 sticky top-0">
+                  Locations Needing Rebooking ({rebookLocations.length})
+                </div>
+                {rebookLocations.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 text-xs">No locations without future classes</div>
+                ) : rebookLocations.map(l => (
+                  <div key={l.id} onClick={() => { setLocationId(String(l.id)); setIncluded(new Set()); }}
+                    className="px-3 py-2 border-b border-gray-50 cursor-pointer hover:bg-blue-50/30 text-xs">
+                    <div className="font-medium text-gray-900">{l.school_name || l.nickname}</div>
+                    <div className="text-gray-500">{l.geographic_area_name || '—'} {l.last_program_end ? `· Last class ended ${formatDate(l.last_program_end)}` : ''}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {isLoading && locationId && <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>}
 
             {locationId && !isLoading && (
               <>
+                <button onClick={() => setLocationId('')} className="text-xs text-gray-500 hover:text-[#1e3a5f]">← Back to location list</button>
                 {/* Location info */}
                 <div className="bg-white rounded-lg border border-gray-200 p-3 text-xs space-y-1">
                   <div className="font-medium text-gray-900">{loc.school_name || loc.nickname}</div>

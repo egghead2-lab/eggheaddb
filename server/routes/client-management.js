@@ -114,6 +114,37 @@ router.post('/send', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/client-management/bulk-mark-done — mark multiple items done
+router.post('/bulk-mark-done', authenticate, async (req, res, next) => {
+  try {
+    const { category, items, id_field } = req.body;
+    if (!category || !items?.length) return res.status(400).json({ success: false, error: 'Category and items required' });
+    for (const id of items) {
+      const data = { tool_category: category, sent_by_user_id: req.user.userId, notes: 'Bulk marked done', test_mode: 0 };
+      if (id_field === 'location_id') data.location_id = id; else data.program_id = id;
+      await pool.query(
+        `INSERT INTO client_email_log (tool_category, program_id, location_id, sent_by_user_id, notes, test_mode) VALUES (?,?,?,?,?,?)`,
+        [data.tool_category, data.program_id || null, data.location_id || null, data.sent_by_user_id, data.notes, 0]
+      );
+    }
+    res.json({ success: true, count: items.length });
+  } catch (err) { next(err); }
+});
+
+// POST /api/client-management/mark-done — log as done without sending email
+router.post('/mark-done', authenticate, async (req, res, next) => {
+  try {
+    const { category, program_id, location_id, notes } = req.body;
+    if (!category) return res.status(400).json({ success: false, error: 'Category required' });
+    await pool.query(
+      `INSERT INTO client_email_log (tool_category, program_id, location_id, sent_by_user_id, notes, test_mode)
+       VALUES (?,?,?,?,?,0)`,
+      [category, program_id || null, location_id || null, req.user.userId, notes || 'Marked done (no email)']
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // ============================================================
 // TOOL-SPECIFIC DATA ENDPOINTS
 // ============================================================
@@ -471,6 +502,32 @@ router.get('/roster-emails', authenticate, async (req, res, next) => {
       sent: sent.progSet.has(r.id),
     }));
     res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// GET /api/client-management/rebooking/locations — locations needing rebooking (active but no future class booked)
+router.get('/rebooking/locations', authenticate, async (req, res, next) => {
+  try {
+    const { area } = req.query;
+    let areaWhere = '';
+    const params = [];
+    if (area) { areaWhere = ' AND ga.geographic_area_name = ?'; params.push(area); }
+    const [rows] = await pool.query(
+      `SELECT loc.id, loc.nickname, loc.school_name, loc.point_of_contact, loc.poc_email, loc.site_coordinator_email,
+              ga.geographic_area_name,
+              (SELECT MAX(p2.last_session_date) FROM program p2 WHERE p2.location_id = loc.id AND p2.active = 1) AS last_program_end,
+              (SELECT COUNT(*) FROM program p3 WHERE p3.location_id = loc.id AND p3.active = 1
+               AND p3.first_session_date > CURDATE()) AS future_program_count
+       FROM location loc
+       LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, loc.city_id)
+       LEFT JOIN city c ON c.id = loc.city_id
+       LEFT JOIN geographic_area ga2 ON ga2.id = c.geographic_area_id
+       WHERE loc.active = 1${areaWhere}
+       HAVING future_program_count = 0
+       ORDER BY loc.school_name`,
+      params
+    );
+    res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 

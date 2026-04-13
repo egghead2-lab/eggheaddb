@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { ClientEmailTool } from '../../components/ClientEmailTool';
 
 export default function NewProfessorPage() {
@@ -6,8 +7,9 @@ export default function NewProfessorPage() {
       title="New Professor Emails"
       category="new_professor_email"
       endpoint="/client-management/new-professor"
+      defaultRange="today"
       columns={[
-        { key: 'program_nickname', label: 'Class', render: r => <span className="font-medium text-gray-900">{r.program_nickname}</span> },
+        { key: 'program_nickname', label: 'Class', render: r => <Link to={`/programs/${r.id}`} onClick={e => e.stopPropagation()} className="font-medium text-[#1e3a5f] hover:underline">{r.program_nickname}</Link> },
         { key: 'payment_through_us', label: 'Through EH', render: r => r.payment_through_us ? <span className="text-amber-600 font-medium">Yes</span> : <span className="text-gray-400">No</span> },
         { key: 'livescan_required', label: 'Vax Card', render: r => r.livescan_required ? <span className="text-amber-600">Yes</span> : <span className="text-gray-300">—</span> },
         { key: 'virtus_required', label: 'Virtus', render: r => r.virtus_required ? <span className="text-amber-600">Yes</span> : <span className="text-gray-300">—</span> },

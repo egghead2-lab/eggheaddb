@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { ClientEmailTool, formatDate } from '../../components/ClientEmailTool';
 
 export default function SubEmailsPage() {
@@ -6,10 +7,11 @@ export default function SubEmailsPage() {
       title="Sub Emails"
       category="sub_email"
       endpoint="/client-management/sub-emails"
+      defaultRange="today"
       idField="program_id"
       rowId={r => r.session_id}
       columns={[
-        { key: 'program_nickname', label: 'Class', render: r => <span className="font-medium text-gray-900">{r.program_nickname}</span> },
+        { key: 'program_nickname', label: 'Class', render: r => <Link to={`/programs/${r.program_id}`} onClick={e => e.stopPropagation()} className="font-medium text-[#1e3a5f] hover:underline">{r.program_nickname}</Link> },
         { key: 'sub_name', label: 'Sub Professor' },
         { key: 'regular_name', label: 'Subbing For' },
         { key: 'livescan_required', label: 'Vax Card', render: r => r.livescan_required ? <span className="text-amber-600">Yes</span> : <span className="text-gray-300">—</span> },

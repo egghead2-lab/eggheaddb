@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { ClientEmailTool } from '../../components/ClientEmailTool';
 import { formatCurrency } from '../../lib/utils';
 
@@ -8,7 +9,7 @@ export default function RosterEmailsPage() {
       category="roster_email"
       endpoint="/client-management/roster-emails"
       columns={[
-        { key: 'program_nickname', label: 'Class', render: r => <span className="font-medium text-gray-900">{r.program_nickname}</span> },
+        { key: 'program_nickname', label: 'Class', render: r => <Link to={`/programs/${r.id}`} onClick={e => e.stopPropagation()} className="font-medium text-[#1e3a5f] hover:underline">{r.program_nickname}</Link> },
         { key: 'number_enrolled', label: 'Our #', render: r => <span className="font-medium">{r.number_enrolled ?? '—'}</span> },
         { key: 'roster_count', label: 'Roster #', render: r => <span className="font-medium">{r.roster_count}</span> },
         { key: 'discrepancy', label: 'Diff', render: r => {

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
@@ -14,35 +14,30 @@ const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function getDays(p) { return DAYS.map((d,i) => p[d] ? DAY_SHORT[i] : null).filter(Boolean).join(', '); }
 
 /**
- * Shared shell for all client management email tools.
- *
  * Props:
- *  - title: string
- *  - category: string (email template category slug)
- *  - endpoint: string (API endpoint for data, e.g. '/client-management/starting-emails')
- *  - columns: array of { key, label, render? }
- *  - getRecipient: (row) => email string
- *  - getMergeData: (row) => { field: value } for template merge
- *  - idField: 'program_id' | 'location_id' (which field to use for sent tracking)
- *  - rowId: (row) => id value (default: row.id)
- *  - extraFilters?: JSX for additional filter controls
- *  - tabs?: array of { key, label } for multi-tab tools
- *  - tabParam?: string (query param for tab, e.g. 'tab')
+ *  - title, category, endpoint, columns, getRecipient, getMergeData
+ *  - idField: 'program_id' | 'location_id'
+ *  - rowId: (row) => id
+ *  - defaultRange: 'today' | 'week' (default: 'week')
+ *  - tabs, tabParam, extraFilters
  */
-export function ClientEmailTool({ title, category, endpoint, columns, getRecipient, getMergeData, idField = 'program_id', rowId, extraFilters, tabs, tabParam }) {
+export function ClientEmailTool({ title, category, endpoint, columns, getRecipient, getMergeData, idField = 'program_id', rowId, extraFilters, tabs, tabParam, defaultRange = 'week' }) {
   const qc = useQueryClient();
-  const tableRef = useRef(null);
 
-  // Date range
+  // Date range based on defaultRange prop
   const now = new Date();
+  const today = now.toISOString().split('T')[0];
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
-  const [dateFrom, setDateFrom] = useState(weekStart.toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState(weekEnd.toISOString().split('T')[0]);
+
+  const [dateFrom, setDateFrom] = useState(defaultRange === 'today' ? today : weekStart.toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState(defaultRange === 'today' ? today : weekEnd.toISOString().split('T')[0]);
   const [activeTab, setActiveTab] = useState(tabs?.[0]?.key || '');
 
   // Selected row for preview
   const [selectedId, setSelectedId] = useState(null);
+  // Bulk selection
+  const [checked, setChecked] = useState(new Set());
 
   // Email state
   const [templateId, setTemplateId] = useState('');
@@ -63,7 +58,6 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
 
   // Templates
   const activeCat = tabs ? (activeTab ? `${category}_${activeTab}` : category) : category;
-  // Try exact category first, fall back to base
   const { data: tplData } = useQuery({
     queryKey: ['cm-templates', activeCat],
     queryFn: () => api.get('/client-management/templates', { params: { category: activeCat } }).then(r => r.data),
@@ -75,6 +69,15 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
   const sentCount = rows.filter(r => r.sent).length;
   const totalCount = rows.length;
   const isComplete = totalCount > 0 && sentCount === totalCount;
+  const unsentRows = rows.filter(r => !r.sent);
+
+  // Bulk select helpers
+  const toggleCheck = (id) => setChecked(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allChecked = unsentRows.length > 0 && unsentRows.every(r => checked.has(getId(r)));
+  const toggleAll = () => {
+    if (allChecked) setChecked(new Set());
+    else setChecked(new Set(unsentRows.map(r => getId(r))));
+  };
 
   // Apply template
   const applyTemplate = (tplId, row) => {
@@ -85,36 +88,75 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
     let subject = tpl.subject || '';
     let body = tpl.body_html || '';
     for (const [key, val] of Object.entries(mergeData)) {
-      const placeholder = `{{${key}}}`;
-      subject = subject.replaceAll(placeholder, val || '');
-      body = body.replaceAll(placeholder, val || '');
+      subject = subject.replaceAll(`{{${key}}}`, val || '');
+      body = body.replaceAll(`{{${key}}}`, val || '');
     }
     setEmailSubject(subject);
     setEmailBody(body);
   };
 
-  // Select a row
   const selectRow = (row) => {
     setSelectedId(getId(row));
-    if (templates.length > 0) {
-      applyTemplate(templates[0].id, row);
-    }
+    if (templates.length > 0) applyTemplate(templates[0].id, row);
   };
 
-  // Send
+  // Send single
   const sendMutation = useMutation({
     mutationFn: () => api.post('/client-management/send', {
-      category: activeCat,
-      [idField]: selectedId,
-      template_id: templateId || null,
+      category: activeCat, [idField]: selectedId, template_id: templateId || null,
       recipient_email: getRecipient ? getRecipient(selectedRow) : '',
-      subject: emailSubject,
-      body: emailBody,
-      test_mode: testMode,
-      test_email: testEmail,
+      subject: emailSubject, body: emailBody, test_mode: testMode, test_email: testEmail,
     }),
-    onSuccess: () => { qc.invalidateQueries([endpoint]); },
+    onSuccess: () => qc.invalidateQueries([endpoint]),
   });
+
+  // Mark done single
+  const markDoneMutation = useMutation({
+    mutationFn: () => api.post('/client-management/mark-done', { category: activeCat, [idField]: selectedId }),
+    onSuccess: () => qc.invalidateQueries([endpoint]),
+  });
+
+  // Bulk mark done
+  const bulkDoneMutation = useMutation({
+    mutationFn: () => api.post('/client-management/bulk-mark-done', { category: activeCat, items: [...checked], id_field: idField }),
+    onSuccess: () => { qc.invalidateQueries([endpoint]); setChecked(new Set()); },
+  });
+
+  // Bulk template selection (independent of single-row preview)
+  const [bulkTemplateId, setBulkTemplateId] = useState('');
+
+  // Bulk send (sends same template to all checked, merging per-row)
+  const [bulkSending, setBulkSending] = useState(false);
+  const bulkSend = async () => {
+    const tplId = bulkTemplateId || templateId;
+    if (!tplId) { alert('Select a template first'); return; }
+    const tpl = templates.find(t => String(t.id) === String(tplId));
+    if (!tpl) return;
+    setBulkSending(true);
+    let sent = 0;
+    for (const id of checked) {
+      const row = rows.find(r => getId(r) === id);
+      if (!row || row.sent) continue;
+      const mergeData = getMergeData ? getMergeData(row) : {};
+      let subj = tpl.subject || ''; let body = tpl.body_html || '';
+      for (const [key, val] of Object.entries(mergeData)) {
+        subj = subj.replaceAll(`{{${key}}}`, val || '');
+        body = body.replaceAll(`{{${key}}}`, val || '');
+      }
+      try {
+        await api.post('/client-management/send', {
+          category: activeCat, [idField]: id, template_id: tpl.id,
+          recipient_email: getRecipient ? getRecipient(row) : '',
+          subject: subj, body, test_mode: testMode, test_email: testEmail,
+        });
+        sent++;
+      } catch (e) { console.error('Bulk send error for', id, e); }
+    }
+    setBulkSending(false);
+    qc.invalidateQueries([endpoint]);
+    setChecked(new Set());
+    alert(`Sent ${sent} email${sent !== 1 ? 's' : ''}`);
+  };
 
   return (
     <AppShell>
@@ -148,6 +190,29 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
         {extraFilters}
       </div>
 
+      {/* Bulk action bar */}
+      {checked.size > 0 && (
+        <div className="px-6 py-2 bg-blue-50 border-b border-blue-200 flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-blue-800 font-medium">{checked.size} selected</span>
+          {templates.length > 0 && (
+            <select value={bulkTemplateId} onChange={e => setBulkTemplateId(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1 text-xs bg-white">
+              <option value="">Template for bulk send...</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          <Button onClick={() => { if (confirm(`Send ${checked.size} emails using selected template?`)) bulkSend(); }}
+            disabled={bulkSending || (!bulkTemplateId && !templateId)}>
+            {bulkSending ? 'Sending...' : `Send All (${checked.size})`}
+          </Button>
+          <button onClick={() => bulkDoneMutation.mutate()} disabled={bulkDoneMutation.isPending}
+            className="text-xs text-gray-500 border border-gray-200 px-2.5 py-1.5 rounded hover:bg-gray-50 bg-white">
+            {bulkDoneMutation.isPending ? 'Marking...' : `Mark all done (no email)`}
+          </button>
+          <button onClick={() => setChecked(new Set())} className="text-xs text-gray-400 ml-auto">Clear</button>
+        </div>
+      )}
+
       <div className="p-6">
         {isLoading ? (
           <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
@@ -162,6 +227,10 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
                   <table className="w-full text-xs">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
+                        <th className="w-8 px-2 py-2">
+                          <input type="checkbox" checked={allChecked} onChange={toggleAll}
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+                        </th>
                         {columns.map(col => (
                           <th key={col.key} className={`text-left px-3 py-2 font-medium text-gray-600 ${col.className || ''}`}>{col.label}</th>
                         ))}
@@ -169,20 +238,29 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {rows.map((r, i) => (
-                        <tr key={getId(r)} onClick={() => selectRow(r)}
-                          className={`cursor-pointer ${getId(r) === selectedId ? 'bg-[#1e3a5f]/5 ring-1 ring-inset ring-[#1e3a5f]/20' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/30`}>
-                          {columns.map(col => (
-                            <td key={col.key} className={`px-3 py-2 ${col.tdClass || ''}`}>
-                              {col.render ? col.render(r) : (r[col.key] ?? '—')}
+                      {rows.map((r, i) => {
+                        const id = getId(r);
+                        const isChecked = checked.has(id);
+                        return (
+                          <tr key={id} onClick={() => selectRow(r)}
+                            className={`cursor-pointer ${id === selectedId ? 'bg-[#1e3a5f]/5 ring-1 ring-inset ring-[#1e3a5f]/20' : isChecked ? 'bg-blue-50/50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/30`}>
+                            <td className="px-2 py-2 text-center" onClick={e => e.stopPropagation()}>
+                              <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(id)}
+                                disabled={r.sent}
+                                className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
                             </td>
-                          ))}
-                          <td className="px-2 py-2 text-center">
-                            {r.sent ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">Sent</span>
-                              : <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">—</span>}
-                          </td>
-                        </tr>
-                      ))}
+                            {columns.map(col => (
+                              <td key={col.key} className={`px-3 py-2 ${col.tdClass || ''}`}>
+                                {col.render ? col.render(r) : (r[col.key] ?? '—')}
+                              </td>
+                            ))}
+                            <td className="px-2 py-2 text-center">
+                              {r.sent ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">Sent</span>
+                                : <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">—</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </CopyableTable>
@@ -195,7 +273,13 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
                   <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-lg flex justify-between items-center">
                     <div>
-                      <div className="text-sm font-semibold text-gray-900">{selectedRow.program_nickname || selectedRow.school_name || selectedRow.nickname}</div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        {selectedRow.id && (selectedRow.program_nickname || selectedRow.class_name) ? (
+                          <Link to={`/programs/${selectedRow.id}`} className="text-[#1e3a5f] hover:underline" onClick={e => e.stopPropagation()}>
+                            {selectedRow.program_nickname || selectedRow.class_name}
+                          </Link>
+                        ) : (selectedRow.program_nickname || selectedRow.school_name || selectedRow.nickname)}
+                      </div>
                       <div className="text-[10px] text-gray-500">
                         To: {getRecipient ? getRecipient(selectedRow) : '—'}
                         {selectedRow.payment_through_us ? <span className="ml-2 text-amber-600 font-medium">Through Egghead</span> : ''}
@@ -224,7 +308,6 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
                         className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs font-mono" />
                     </div>
 
-                    {/* Test mode */}
                     <div className="flex items-center gap-2 border-t border-gray-100 pt-2">
                       <label className="flex items-center gap-1.5 text-xs text-gray-600">
                         <input type="checkbox" checked={testMode} onChange={e => setTestMode(e.target.checked)}
@@ -238,11 +321,16 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
                       )}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                       <Button onClick={() => { if (confirm(`Send email to ${testMode ? testEmail : getRecipient?.(selectedRow)}?`)) sendMutation.mutate(); }}
                         disabled={sendMutation.isPending || (!emailSubject && !emailBody)}>
                         {sendMutation.isPending ? 'Sending...' : testMode ? 'Send Test' : 'Send'}
                       </Button>
+                      <button onClick={() => markDoneMutation.mutate()}
+                        disabled={markDoneMutation.isPending}
+                        className="text-xs text-gray-500 border border-gray-200 px-2.5 py-1.5 rounded hover:bg-gray-50">
+                        {markDoneMutation.isPending ? 'Marking...' : 'Mark done (no email)'}
+                      </button>
                     </div>
                     {sendMutation.isSuccess && <p className="text-xs text-green-600">Sent successfully</p>}
                     {sendMutation.isError && <p className="text-xs text-red-600">{sendMutation.error?.response?.data?.error || 'Failed'}</p>}
@@ -257,5 +345,4 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
   );
 }
 
-// Export helpers for use in tool pages
 export { getDays, formatDate, formatTime };

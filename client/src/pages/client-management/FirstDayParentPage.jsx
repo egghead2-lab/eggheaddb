@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { ClientEmailTool, getDays, formatDate } from '../../components/ClientEmailTool';
 
 export default function FirstDayParentPage() {
@@ -6,8 +7,9 @@ export default function FirstDayParentPage() {
       title="First Day Parent Emails"
       category="first_day_parent"
       endpoint="/client-management/first-day-parent"
+      defaultRange="today"
       columns={[
-        { key: 'program_nickname', label: 'Class', render: r => <span className="font-medium text-gray-900">{r.program_nickname}</span> },
+        { key: 'program_nickname', label: 'Class', render: r => <Link to={`/programs/${r.id}`} onClick={e => e.stopPropagation()} className="font-medium text-[#1e3a5f] hover:underline">{r.program_nickname}</Link> },
         { key: 'first_session_date', label: 'Start Date', render: r => formatDate(r.first_session_date) },
         { key: 'day', label: 'Day', render: r => getDays(r) },
         { key: 'program_type_name', label: 'Type' },
