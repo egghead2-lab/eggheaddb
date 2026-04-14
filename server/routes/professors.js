@@ -738,4 +738,40 @@ router.get('/:id/observations', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Professor Incidents ────────────────────────────────────────
+
+router.get('/:id/incidents', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT pi.*, u.first_name AS reported_by_name
+       FROM professor_incident pi
+       LEFT JOIN user u ON u.id = pi.reported_by_user_id
+       WHERE pi.professor_id = ? AND pi.active = 1
+       ORDER BY pi.incident_date DESC, pi.ts_inserted DESC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/incidents', authenticate, async (req, res, next) => {
+  try {
+    const { incident_date, description } = req.body;
+    if (!description?.trim()) return res.status(400).json({ success: false, error: 'Description required' });
+    const [result] = await pool.query(
+      `INSERT INTO professor_incident (professor_id, incident_date, description, reported_by_user_id) VALUES (?,?,?,?)`,
+      [req.params.id, incident_date || null, description.trim(), req.user.userId]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+router.delete('/:id/incidents/:incidentId', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE professor_incident SET active = 0 WHERE id = ? AND professor_id = ?',
+      [req.params.incidentId, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

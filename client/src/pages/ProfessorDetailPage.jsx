@@ -15,6 +15,7 @@ import { Button } from '../components/ui/Button';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { useAuth } from '../hooks/useAuth';
 import { TRAINING_FIELDS } from '../lib/constants';
@@ -189,6 +190,64 @@ const FORM_STATUS_BADGE = {
   pending: 'bg-amber-100 text-amber-700',
   deleted: 'bg-gray-100 text-gray-400 line-through',
 };
+
+// ── Incident History ──────────────────────────────────────────────
+function IncidentSection({ professorId }) {
+  const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [incDate, setIncDate] = useState('');
+
+  const { data } = useQuery({
+    queryKey: ['professor-incidents', professorId],
+    queryFn: () => api.get(`/professors/${professorId}/incidents`).then(r => r.data),
+  });
+  const incidents = data?.data || [];
+
+  const addMutation = useMutation({
+    mutationFn: () => api.post(`/professors/${professorId}/incidents`, { incident_date: incDate || null, description: desc }),
+    onSuccess: () => { qc.invalidateQueries(['professor-incidents', professorId]); setAdding(false); setDesc(''); setIncDate(''); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (incId) => api.delete(`/professors/${professorId}/incidents/${incId}`),
+    onSuccess: () => qc.invalidateQueries(['professor-incidents', professorId]),
+  });
+
+  return (
+    <Section title={`Incidents (${incidents.length})`} defaultOpen={incidents.length > 0}>
+      {incidents.length === 0 && !adding && <p className="text-sm text-gray-400">No incidents logged</p>}
+      {incidents.map(inc => (
+        <div key={inc.id} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
+          <div className="flex-1">
+            <div className="text-sm text-gray-800">{inc.description}</div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              {inc.incident_date ? formatDate(inc.incident_date) : 'No date'}
+              {inc.reported_by_name && ` · ${inc.reported_by_name}`}
+            </div>
+          </div>
+          <ConfirmButton onConfirm={() => deleteMutation.mutate(inc.id)} className="text-xs text-gray-300 hover:text-red-500">Remove</ConfirmButton>
+        </div>
+      ))}
+      {adding ? (
+        <div className="mt-2 space-y-2">
+          <input type="date" value={incDate} onChange={e => setIncDate(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm w-44" />
+          <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Describe the incident..."
+            rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => addMutation.mutate()} disabled={!desc.trim() || addMutation.isPending}>
+              {addMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+            <button type="button" onClick={() => setAdding(false)} className="text-xs text-gray-400">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="mt-2 text-xs text-[#1e3a5f] hover:underline">+ Log Incident</button>
+      )}
+    </Section>
+  );
+}
 
 function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult }) {
   const qc = useQueryClient();
@@ -1346,6 +1405,9 @@ export default function ProfessorDetailPage() {
 
           {/* Evaluation History */}
           {!isNew && <EvaluationSection professorId={id} hireDate={prof.hire_date} lastEvalDate={prof.last_evaluation_date} lastEvalResult={prof.last_evaluation_result} />}
+
+          {/* Incidents */}
+          {!isNew && <IncidentSection professorId={id} />}
 
           {/* Audit History */}
           {!isNew && <AuditHistory table="professor" recordId={id} />}
