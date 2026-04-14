@@ -157,6 +157,23 @@ export default function ContractorDetailPage() {
                   className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
               </div>
               <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Type</label>
+                <select {...register('invoice_type')}
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
+                  <option value="">Not Set (defaults to 2nd Week)</option>
+                  <option value="Monthly">Monthly</option>
+                  <option value="2nd Week">2nd Week</option>
+                  <option value="After Last Class">After Last Class</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Per Location</label>
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input type="checkbox" {...register('invoice_per_location')} className="w-4 h-4 rounded border-gray-300" />
+                  Each location gets its own invoice
+                </label>
+              </div>
+              <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Notes</label>
                 <textarea {...register('invoice_notes')} rows={2}
                   className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />

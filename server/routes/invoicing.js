@@ -76,8 +76,11 @@ router.get('/queue', authenticate, async (req, res, next) => {
     // Compute effective invoice type and trigger status for each
     const today = new Date().toISOString().split('T')[0];
     const data = rows.map(r => {
-      const effectiveType = r.contractor_id ? (r.con_invoice_type || null) : (r.loc_invoice_type || null);
-      if (!effectiveType || effectiveType === 'Monthly') return null; // skip monthly
+      // Default to '2nd Week' if no invoice type is set anywhere
+      const effectiveType = r.contractor_id
+        ? (r.con_invoice_type || r.loc_invoice_type || '2nd Week')
+        : (r.loc_invoice_type || '2nd Week');
+      if (effectiveType === 'Monthly') return null; // skip monthly — handled in monthly tool
 
       const secondDate = r.second_session_date ? r.second_session_date.toISOString().split('T')[0] : null;
       const lastDate = r.actual_last_date ? r.actual_last_date.toISOString().split('T')[0] : null;

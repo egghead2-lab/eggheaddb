@@ -181,6 +181,16 @@ export default function LocationDetailPage() {
           {/* Invoicing */}
           <Section title="Invoicing" defaultOpen={true}>
             <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Type</label>
+                <select {...register('invoice_type')}
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
+                  <option value="">Not Set (defaults to 2nd Week)</option>
+                  <option value="Monthly">Monthly</option>
+                  <option value="2nd Week">2nd Week</option>
+                  <option value="After Last Class">After Last Class</option>
+                </select>
+              </div>
               <Toggle label="Invoice at District Level" checked={!!watch('invoice_at_district')} onChange={v => setValue('invoice_at_district', v ? 1 : 0, { shouldDirty: true })} />
             </div>
             <div className="grid grid-cols-3 gap-4 mt-4">

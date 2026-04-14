@@ -209,7 +209,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'school_calendar_link', 'invoicing_notes', 'tbd', 'tbd_notes', 'retained',
       'client_manager_user_id',
       'site_coordinator_name', 'site_coordinator_email', 'site_coordinator_phone', 'site_coordinator_role',
-      'invoice_contact_name', 'invoice_contact_email', 'invoice_contact_phone', 'invoice_at_district',
+      'invoice_type', 'invoice_contact_name', 'invoice_contact_email', 'invoice_contact_phone', 'invoice_at_district',
       'classroom_location', 'attendance_required', 'attendance_directions',
       'arrival_checkin_procedures', 'student_pickup_procedures', 'dismissal_procedures',
       'emergency_procedures', 'egghead_tips',

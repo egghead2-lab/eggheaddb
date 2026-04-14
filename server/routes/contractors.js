@@ -120,6 +120,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'day_of_notifications', 'client_vibe',
       'livescan_multiple', 'livescan_required', 'tb_required', 'professor_misc_notes',
       'behavioral_guidelines', 'area_demographic', 'flexibility_notes',
+      'invoice_type', 'invoice_per_location',
       'invoice_notes', 'last_updated', 'general_notes', 'active',
     ];
 
