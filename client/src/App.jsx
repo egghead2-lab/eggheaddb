@@ -71,6 +71,10 @@ import SiteCheckInsPage from './pages/client-management/SiteCheckInsPage';
 import NpsEmailsPage from './pages/client-management/NpsEmailsPage';
 import RosterEmailsPage from './pages/client-management/RosterEmailsPage';
 import RebookingPage from './pages/client-management/RebookingPage';
+import InvoiceQueuePage from './pages/invoicing/InvoiceQueuePage';
+import MonthlyInvoicingPage from './pages/invoicing/MonthlyInvoicingPage';
+import InvoiceTrackerPage from './pages/invoicing/InvoiceTrackerPage';
+import InvoiceRecordPage from './pages/invoicing/InvoiceRecordPage';
 import ShipmentCyclesPage from './pages/ShipmentCyclesPage';
 import StandardOrderBuilderPage from './pages/StandardOrderBuilderPage';
 import MarkShippedPage from './pages/MarkShippedPage';
@@ -186,6 +190,10 @@ export default function App() {
       <Route path="/client-management/nps-emails" element={<ProtectedRoute><NpsEmailsPage /></ProtectedRoute>} />
       <Route path="/client-management/roster-emails" element={<ProtectedRoute><RosterEmailsPage /></ProtectedRoute>} />
       <Route path="/client-management/rebooking" element={<ProtectedRoute><RebookingPage /></ProtectedRoute>} />
+      <Route path="/invoicing/queue" element={<ProtectedRoute><InvoiceQueuePage /></ProtectedRoute>} />
+      <Route path="/invoicing/monthly" element={<ProtectedRoute><MonthlyInvoicingPage /></ProtectedRoute>} />
+      <Route path="/invoicing/tracker" element={<ProtectedRoute><InvoiceTrackerPage /></ProtectedRoute>} />
+      <Route path="/invoicing/records" element={<ProtectedRoute><InvoiceRecordPage /></ProtectedRoute>} />
       <Route path="/materials/cycles" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
       <Route path="/materials/standard-order" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
       <Route path="/materials/mark-shipped" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />

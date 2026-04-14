@@ -1,0 +1,450 @@
+const express = require('express');
+const router = express.Router();
+const pool = require('../db/pool');
+const { authenticate } = require('../middleware/auth');
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+// Get effective invoice type for a location
+async function getEffectiveInvoiceType(locationId) {
+  const [[loc]] = await pool.query(
+    `SELECT l.invoice_type AS loc_type, l.contractor_id,
+            c.invoice_type AS con_type, c.invoice_per_location
+     FROM location l
+     LEFT JOIN contractor c ON c.id = l.contractor_id
+     WHERE l.id = ?`,
+    [locationId]
+  );
+  if (!loc) return null;
+  if (!loc.contractor_id) return { type: loc.loc_type, per_location: false };
+  if (!loc.con_type) return { type: null, error: 'Set invoice type on contractor first' };
+  return { type: loc.con_type, per_location: !!loc.invoice_per_location };
+}
+
+// Get last QB invoice number from system_setting
+async function getLastQbInvoiceNumber() {
+  const [[row]] = await pool.query("SELECT setting_value FROM system_setting WHERE setting_key = 'last_qb_invoice_number'");
+  return row ? parseInt(row.setting_value) || 0 : 0;
+}
+
+// ============================================================
+// INVOICE QUEUE (Non-Monthly)
+// ============================================================
+
+router.get('/queue', authenticate, async (req, res, next) => {
+  try {
+    const { contractor_id, location_id, invoice_type, status } = req.query;
+
+    // Get all non-monthly programs that are active, live, not yet invoiced
+    let where = `prog.active = 1 AND prog.live = 1
+      AND cs.class_status_name NOT LIKE 'Cancelled%'`;
+    const params = [];
+
+    if (contractor_id) { where += ' AND loc.contractor_id = ?'; params.push(contractor_id); }
+    if (location_id) { where += ' AND prog.location_id = ?'; params.push(location_id); }
+
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.last_session_date,
+              prog.session_count, prog.number_enrolled, prog.parent_cost, prog.our_cut, prog.lab_fee,
+              prog.invoice_date_sent, prog.invoice_paid, prog.invoice_notes, prog.invoice_needed,
+              prog.class_pricing_type_id, prog.payment_through_us,
+              loc.id AS location_id, loc.nickname AS location_nickname, loc.school_name,
+              loc.contractor_id, loc.invoice_type AS loc_invoice_type,
+              con.contractor_name, con.invoice_type AS con_invoice_type, con.invoice_per_location,
+              cs.class_status_name,
+              cpt.class_pricing_type_name,
+              pt.program_type_name,
+              (SELECT s2.session_date FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1
+               ORDER BY s2.session_date ASC LIMIT 1 OFFSET 1) AS second_session_date,
+              (SELECT MAX(s3.session_date) FROM session s3 WHERE s3.program_id = prog.id AND s3.active = 1) AS actual_last_date,
+              (SELECT COUNT(*) FROM session s4 WHERE s4.program_id = prog.id AND s4.active = 1
+               AND s4.session_date <= CURDATE()) AS sessions_completed
+       FROM program prog
+       JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN contractor con ON con.id = loc.contractor_id
+       LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       WHERE ${where}
+       ORDER BY prog.last_session_date ASC, con.contractor_name, loc.nickname`,
+      params
+    );
+
+    // Compute effective invoice type and trigger status for each
+    const today = new Date().toISOString().split('T')[0];
+    const data = rows.map(r => {
+      const effectiveType = r.contractor_id ? (r.con_invoice_type || null) : (r.loc_invoice_type || null);
+      if (!effectiveType || effectiveType === 'Monthly') return null; // skip monthly
+
+      const secondDate = r.second_session_date ? r.second_session_date.toISOString().split('T')[0] : null;
+      const lastDate = r.actual_last_date ? r.actual_last_date.toISOString().split('T')[0] : null;
+
+      let triggered = false;
+      if (effectiveType === '2nd Week' && secondDate && secondDate <= today) triggered = true;
+      if (effectiveType === 'After Last Class' && lastDate && lastDate < today) triggered = true;
+
+      const alreadyInvoiced = !!r.invoice_date_sent;
+      let rowStatus = alreadyInvoiced ? 'Invoiced' : triggered ? 'Ready' : 'Pending';
+
+      // Calculate total
+      let lineAmount = 0;
+      if (r.class_pricing_type_name === 'Flat Fee') {
+        lineAmount = parseFloat(r.our_cut) || 0;
+      } else {
+        lineAmount = (parseFloat(r.our_cut) || 0) * (r.number_enrolled || 0);
+      }
+      const labFeeTotal = parseFloat(r.lab_fee) || 0;
+
+      return {
+        ...r, effective_invoice_type: effectiveType, triggered, status: rowStatus,
+        line_amount: lineAmount, lab_fee_total: labFeeTotal,
+        total: lineAmount + labFeeTotal,
+      };
+    }).filter(Boolean);
+
+    // Filter by invoice_type if specified
+    let filtered = data;
+    if (invoice_type) filtered = filtered.filter(r => r.effective_invoice_type === invoice_type);
+    if (status === 'Ready') filtered = filtered.filter(r => r.status === 'Ready');
+    else if (status === 'Pending') filtered = filtered.filter(r => r.status === 'Pending' || r.status === 'Ready');
+    else if (status !== 'All') filtered = filtered.filter(r => r.status !== 'Invoiced');
+
+    const lastQb = await getLastQbInvoiceNumber();
+    res.json({ success: true, data: filtered, lastQbInvoice: lastQb });
+  } catch (err) { next(err); }
+});
+
+// GET /api/invoicing/queue/siblings/:programId — other programs at same contractor for grouping
+router.get('/queue/siblings/:programId', authenticate, async (req, res, next) => {
+  try {
+    const [[prog]] = await pool.query(
+      `SELECT prog.location_id, loc.contractor_id, con.invoice_per_location
+       FROM program prog
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN contractor con ON con.id = loc.contractor_id
+       WHERE prog.id = ?`,
+      [req.params.programId]
+    );
+    if (!prog || !prog.contractor_id) return res.json({ success: true, data: [] });
+
+    let scopeWhere = prog.invoice_per_location
+      ? 'prog.location_id = ?'
+      : 'loc.contractor_id = ?';
+    const scopeId = prog.invoice_per_location ? prog.location_id : prog.contractor_id;
+
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.last_session_date, prog.our_cut, prog.number_enrolled,
+              prog.lab_fee, prog.class_pricing_type_id, prog.invoice_date_sent,
+              cpt.class_pricing_type_name,
+              (SELECT MAX(s2.session_date) FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1) AS actual_last_date
+       FROM program prog
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
+       WHERE prog.active = 1 AND prog.live = 1 AND ${scopeWhere}
+         AND prog.id != ? AND prog.invoice_date_sent IS NULL
+       ORDER BY prog.last_session_date ASC`,
+      [scopeId, req.params.programId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// MONTHLY INVOICING
+// ============================================================
+
+router.get('/monthly', authenticate, async (req, res, next) => {
+  try {
+    const { start_date, end_date, contractor_id } = req.query;
+    if (!start_date || !end_date) return res.status(400).json({ success: false, error: 'Start and end date required' });
+
+    let conWhere = '';
+    const params = [start_date, end_date, start_date, end_date];
+    if (contractor_id) { conWhere = ' AND loc.contractor_id = ?'; params.push(contractor_id); }
+
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.our_cut, prog.lab_fee, prog.number_enrolled,
+              prog.first_session_date, prog.last_session_date, prog.class_pricing_type_id,
+              prog.invoice_date_sent, prog.invoice_notes,
+              loc.id AS location_id, loc.nickname AS location_nickname, loc.school_name,
+              loc.contractor_id,
+              con.contractor_name, con.invoice_per_location,
+              cpt.class_pricing_type_name,
+              pt.program_type_name,
+              (SELECT COUNT(*) FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1
+               AND s2.session_date BETWEEN ? AND ?) AS dates_in_period,
+              (SELECT GROUP_CONCAT(DATE_FORMAT(s3.session_date, '%m/%d') ORDER BY s3.session_date SEPARATOR ', ')
+               FROM session s3 WHERE s3.program_id = prog.id AND s3.active = 1
+               AND s3.session_date BETWEEN ? AND ?) AS date_list
+       FROM program prog
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
+       LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       WHERE prog.active = 1 AND prog.live = 1
+         AND con.invoice_type = 'Monthly'
+         ${conWhere}
+       HAVING dates_in_period > 0
+       ORDER BY con.contractor_name, loc.nickname, prog.program_nickname`,
+      params
+    );
+
+    // Calculate amounts per program
+    const data = rows.map(r => {
+      const weeklyRate = parseFloat(r.our_cut) || 0;
+      const amount = weeklyRate * (r.dates_in_period || 0);
+      const labFee = parseFloat(r.lab_fee) || 0;
+      return { ...r, weekly_rate: weeklyRate, invoice_amount: amount, lab_fee_total: labFee };
+    });
+
+    // Group by contractor (or location if per_location)
+    const groups = {};
+    data.forEach(r => {
+      const key = r.invoice_per_location ? `loc_${r.location_id}` : `con_${r.contractor_id}`;
+      if (!groups[key]) {
+        groups[key] = {
+          contractor_id: r.contractor_id,
+          contractor_name: r.contractor_name,
+          location_id: r.invoice_per_location ? r.location_id : null,
+          location_name: r.invoice_per_location ? (r.school_name || r.location_nickname) : null,
+          customer_name: r.invoice_per_location ? (r.school_name || r.location_nickname) : r.contractor_name,
+          programs: [],
+          total: 0,
+        };
+      }
+      groups[key].programs.push(r);
+      groups[key].total += r.invoice_amount + r.lab_fee_total;
+    });
+
+    const lastQb = await getLastQbInvoiceNumber();
+    res.json({ success: true, data: Object.values(groups), lastQbInvoice: lastQb });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// GENERATE INVOICE (shared for monthly and non-monthly)
+// ============================================================
+
+router.post('/generate', authenticate, async (req, res, next) => {
+  try {
+    const { invoice_number, invoice_type, contractor_id, location_id, billing_month,
+            billing_period_start, billing_period_end, invoice_date, due_date, memo,
+            customer_name, total_amount, qb_invoice_number, programs, charge_lab_fees } = req.body;
+
+    if (!invoice_number || !invoice_date || !due_date || !customer_name || !programs?.length) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Create invoice record
+      const [result] = await conn.query(
+        `INSERT INTO invoice_record (invoice_number, invoice_type, contractor_id, location_id,
+          billing_month, billing_period_start, billing_period_end, invoice_date, due_date,
+          memo, customer_name, total_amount, qb_invoice_number, created_by_user_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [invoice_number, invoice_type, contractor_id || null, location_id || null,
+         billing_month || null, billing_period_start || null, billing_period_end || null,
+         invoice_date, due_date, memo || null, customer_name, total_amount,
+         qb_invoice_number || null, req.user.userId]
+      );
+      const invoiceId = result.insertId;
+
+      // Add programs
+      for (const p of programs) {
+        await conn.query(
+          `INSERT INTO invoice_record_program (invoice_record_id, program_id, line_amount, include_lab_fee, lab_fee_amount, status, notes)
+           VALUES (?,?,?,?,?,?,?)`,
+          [invoiceId, p.program_id, p.line_amount, charge_lab_fees ? 1 : 0,
+           charge_lab_fees ? (p.lab_fee_amount || 0) : 0, p.status || 'completed', p.notes || null]
+        );
+
+        // Mark program as invoiced
+        await conn.query(
+          'UPDATE program SET invoice_date_sent = ?, ts_updated = NOW() WHERE id = ?',
+          [invoice_date, p.program_id]
+        );
+      }
+
+      // Update last QB invoice number
+      if (qb_invoice_number) {
+        await conn.query(
+          `INSERT INTO system_setting (setting_key, setting_value, ts_updated) VALUES ('last_qb_invoice_number', ?, NOW())
+           ON DUPLICATE KEY UPDATE setting_value = ?, ts_updated = NOW()`,
+          [String(qb_invoice_number), String(qb_invoice_number)]
+        );
+      }
+
+      await conn.commit();
+      res.json({ success: true, id: invoiceId });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// INVOICE TRACKER
+// ============================================================
+
+router.get('/tracker', authenticate, async (req, res, next) => {
+  try {
+    const { contractor_id, location_id, paid_status, date_before } = req.query;
+    let where = 'ir.active = 1';
+    const params = [];
+    if (contractor_id) { where += ' AND ir.contractor_id = ?'; params.push(contractor_id); }
+    if (location_id) { where += ' AND ir.location_id = ?'; params.push(location_id); }
+    if (paid_status === 'Unpaid') where += ' AND ir.amount_paid = 0';
+    else if (paid_status === 'Partial') where += ' AND ir.amount_paid > 0 AND ir.amount_paid < ir.total_amount';
+    else if (paid_status === 'Paid') where += ' AND ir.is_paid = 1';
+    if (date_before) { where += ' AND ir.invoice_date <= ?'; params.push(date_before); }
+
+    const [rows] = await pool.query(
+      `SELECT ir.*,
+              con.contractor_name,
+              loc.nickname AS location_nickname,
+              CONCAT(u.first_name, ' ', u.last_name) AS created_by_name,
+              (SELECT COUNT(*) FROM invoice_record_program irp WHERE irp.invoice_record_id = ir.id) AS program_count
+       FROM invoice_record ir
+       LEFT JOIN contractor con ON con.id = ir.contractor_id
+       LEFT JOIN location loc ON loc.id = ir.location_id
+       LEFT JOIN user u ON u.id = ir.created_by_user_id
+       WHERE ${where}
+       ORDER BY ir.invoice_date DESC`,
+      params
+    );
+
+    const totalInvoiced = rows.reduce((s, r) => s + parseFloat(r.total_amount), 0);
+    const totalReceived = rows.reduce((s, r) => s + parseFloat(r.amount_paid), 0);
+
+    res.json({ success: true, data: rows, summary: { totalInvoiced, totalReceived, outstanding: totalInvoiced - totalReceived } });
+  } catch (err) { next(err); }
+});
+
+// GET /api/invoicing/tracker/:id/programs — programs on an invoice
+router.get('/tracker/:id/programs', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT irp.*, prog.program_nickname, loc.nickname AS location_nickname
+       FROM invoice_record_program irp
+       JOIN program prog ON prog.id = irp.program_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE irp.invoice_record_id = ?`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/invoicing/tracker/:id/payments — payments on an invoice
+router.get('/tracker/:id/payments', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ip.*, CONCAT(u.first_name, ' ', u.last_name) AS recorded_by_name
+       FROM invoice_payment ip
+       LEFT JOIN user u ON u.id = ip.recorded_by_user_id
+       WHERE ip.invoice_record_id = ?
+       ORDER BY ip.payment_date DESC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/invoicing/tracker/:id/payment — record a payment
+router.post('/tracker/:id/payment', authenticate, async (req, res, next) => {
+  try {
+    const { payment_date, amount, payment_notes } = req.body;
+    if (!payment_date || !amount) return res.status(400).json({ success: false, error: 'Date and amount required' });
+
+    await pool.query(
+      `INSERT INTO invoice_payment (invoice_record_id, payment_date, amount, payment_notes, recorded_by_user_id)
+       VALUES (?,?,?,?,?)`,
+      [req.params.id, payment_date, amount, payment_notes || null, req.user.userId]
+    );
+
+    // Recalculate total paid
+    const [[totals]] = await pool.query(
+      'SELECT COALESCE(SUM(amount), 0) AS total_paid FROM invoice_payment WHERE invoice_record_id = ?',
+      [req.params.id]
+    );
+    const [[invoice]] = await pool.query('SELECT total_amount FROM invoice_record WHERE id = ?', [req.params.id]);
+    const isPaid = parseFloat(totals.total_paid) >= parseFloat(invoice.total_amount);
+
+    await pool.query(
+      'UPDATE invoice_record SET amount_paid = ?, is_paid = ?, ts_updated = NOW() WHERE id = ?',
+      [totals.total_paid, isPaid ? 1 : 0, req.params.id]
+    );
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// INVOICE RECORD (historical log)
+// ============================================================
+
+router.get('/records', authenticate, async (req, res, next) => {
+  try {
+    const { contractor_id, location_id, invoice_type, month, paid_status } = req.query;
+    let where = 'ir.active = 1';
+    const params = [];
+    if (contractor_id) { where += ' AND ir.contractor_id = ?'; params.push(contractor_id); }
+    if (location_id) { where += ' AND ir.location_id = ?'; params.push(location_id); }
+    if (invoice_type) { where += ' AND ir.invoice_type = ?'; params.push(invoice_type); }
+    if (month) { where += ' AND ir.billing_month = ?'; params.push(month); }
+    if (paid_status === 'Paid') where += ' AND ir.is_paid = 1';
+    else if (paid_status === 'Unpaid') where += ' AND ir.is_paid = 0';
+
+    const [rows] = await pool.query(
+      `SELECT ir.*,
+              con.contractor_name,
+              loc.nickname AS location_nickname,
+              CONCAT(u.first_name, ' ', u.last_name) AS created_by_name
+       FROM invoice_record ir
+       LEFT JOIN contractor con ON con.id = ir.contractor_id
+       LEFT JOIN location loc ON loc.id = ir.location_id
+       LEFT JOIN user u ON u.id = ir.created_by_user_id
+       WHERE ${where}
+       ORDER BY ir.invoice_date DESC`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/invoicing/records/:id — update memo/notes, void
+router.patch('/records/:id', authenticate, async (req, res, next) => {
+  try {
+    const { memo, notes, active } = req.body;
+    const fields = []; const values = [];
+    if (memo !== undefined) { fields.push('memo = ?'); values.push(memo); }
+    if (notes !== undefined) { fields.push('notes = ?'); values.push(notes); }
+    if (active !== undefined) { fields.push('active = ?'); values.push(active); }
+    if (!fields.length) return res.status(400).json({ success: false, error: 'No fields' });
+    values.push(req.params.id);
+    await pool.query(`UPDATE invoice_record SET ${fields.join(', ')}, ts_updated = NOW() WHERE id = ?`, values);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/invoicing/records/:id/mark-sent
+router.post('/records/:id/mark-sent', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE invoice_record SET sent = 1, sent_at = CURDATE(), ts_updated = NOW() WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+module.exports = router;
