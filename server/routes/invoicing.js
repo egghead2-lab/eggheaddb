@@ -56,11 +56,18 @@ router.get('/queue', authenticate, async (req, res, next) => {
               cs.class_status_name,
               cpt.class_pricing_type_name,
               pt.program_type_name,
+              cl.formal_class_name,
               (SELECT s2.session_date FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1
                ORDER BY s2.session_date ASC LIMIT 1 OFFSET 1) AS second_session_date,
               (SELECT MAX(s3.session_date) FROM session s3 WHERE s3.program_id = prog.id AND s3.active = 1) AS actual_last_date,
               (SELECT COUNT(*) FROM session s4 WHERE s4.program_id = prog.id AND s4.active = 1
-               AND s4.session_date <= CURDATE()) AS sessions_completed
+               AND s4.session_date <= CURDATE()) AS sessions_completed,
+              (SELECT COUNT(*) FROM session s5 WHERE s5.program_id = prog.id AND s5.active = 1
+               AND s5.not_billed = 0) AS billable_sessions,
+              (SELECT GROUP_CONCAT(DATE_FORMAT(s6.session_date, '%m/%d') ORDER BY s6.session_date SEPARATOR ', ')
+               FROM session s6 WHERE s6.program_id = prog.id AND s6.active = 1 AND s6.not_billed = 0) AS billable_date_list,
+              (SELECT GROUP_CONCAT(DISTINCT g.grade_name ORDER BY g.id SEPARATOR '-')
+               FROM program_grade pg JOIN grade g ON g.id = pg.grade_id WHERE pg.program_id = prog.id) AS grade_range
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
@@ -92,19 +99,46 @@ router.get('/queue', authenticate, async (req, res, next) => {
       const alreadyInvoiced = !!r.invoice_date_sent;
       let rowStatus = alreadyInvoiced ? 'Invoiced' : triggered ? 'Ready' : 'Pending';
 
-      // Calculate total
+      // Calculate total — use billable sessions (excluding not_billed)
+      const billableSessions = r.billable_sessions || 0;
+      const ourCut = parseFloat(r.our_cut) || 0;
       let lineAmount = 0;
+      let weeklyRate = 0;
       if (r.class_pricing_type_name === 'Flat Fee') {
-        lineAmount = parseFloat(r.our_cut) || 0;
+        lineAmount = ourCut;
+        weeklyRate = billableSessions > 0 ? ourCut / billableSessions : ourCut;
       } else {
-        lineAmount = (parseFloat(r.our_cut) || 0) * (r.number_enrolled || 0);
+        // Per student: our_cut is per-student rate, multiply by enrolled
+        lineAmount = ourCut * (r.number_enrolled || 0);
+        weeklyRate = ourCut;
       }
       const labFeeTotal = parseFloat(r.lab_fee) || 0;
 
+      const grades = r.grade_range || '';
+
+      // Build text-for-invoice: location, grades, date list, # dates
+      const textForInvoice = [
+        r.school_name || r.location_nickname || '',
+        grades ? `Grades ${grades}` : '',
+        r.formal_class_name || '',
+        r.billable_date_list ? `Dates: ${r.billable_date_list}` : '',
+        billableSessions > 0 ? `${billableSessions} sessions` : '',
+      ].filter(Boolean).join(' - ');
+
+      // Map program type to QB product name
+      const typeMap = {
+        'Science': 'Enrichment Classes:Science Class',
+        'Engineering': 'Enrichment Classes:Engineering Class',
+        'Robotics': 'Enrichment Classes:Robotics Class',
+        'Financial Literacy': 'Enrichment Classes: Financial Literacy Class',
+      };
+      const qbItemName = typeMap[r.program_type_name] || 'Enrichment Classes:Science Class';
+
       return {
         ...r, effective_invoice_type: effectiveType, triggered, status: rowStatus,
-        line_amount: lineAmount, lab_fee_total: labFeeTotal,
-        total: lineAmount + labFeeTotal,
+        line_amount: lineAmount, lab_fee_total: labFeeTotal, weekly_rate: weeklyRate,
+        total: lineAmount + labFeeTotal, text_for_invoice: textForInvoice, qb_item_name: qbItemName,
+        grades, billable_sessions: billableSessions,
       };
     }).filter(Boolean);
 
@@ -172,17 +206,20 @@ router.get('/monthly', authenticate, async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.our_cut, prog.lab_fee, prog.number_enrolled,
               prog.first_session_date, prog.last_session_date, prog.class_pricing_type_id,
-              prog.invoice_date_sent, prog.invoice_notes,
+              prog.invoice_date_sent, prog.invoice_notes, prog.payment_through_us,
               loc.id AS location_id, loc.nickname AS location_nickname, loc.school_name,
               loc.contractor_id,
               con.contractor_name, con.invoice_per_location,
               cpt.class_pricing_type_name,
               pt.program_type_name,
               (SELECT COUNT(*) FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1
-               AND s2.session_date BETWEEN ? AND ?) AS dates_in_period,
+               AND s2.not_billed = 0 AND s2.session_date BETWEEN ? AND ?) AS dates_in_period,
               (SELECT GROUP_CONCAT(DATE_FORMAT(s3.session_date, '%m/%d') ORDER BY s3.session_date SEPARATOR ', ')
                FROM session s3 WHERE s3.program_id = prog.id AND s3.active = 1
-               AND s3.session_date BETWEEN ? AND ?) AS date_list
+               AND s3.not_billed = 0 AND s3.session_date BETWEEN ? AND ?) AS date_list,
+              (SELECT GROUP_CONCAT(DISTINCT g.grade_name ORDER BY g.id SEPARATOR '-')
+               FROM program_grade pg JOIN grade g ON g.id = pg.grade_id WHERE pg.program_id = prog.id) AS grade_range,
+              cl.formal_class_name
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
@@ -199,11 +236,32 @@ router.get('/monthly', authenticate, async (req, res, next) => {
     );
 
     // Calculate amounts per program
+    const typeMap = {
+      'Science': 'Enrichment Classes:Science Class',
+      'Engineering': 'Enrichment Classes:Engineering Class',
+      'Robotics': 'Enrichment Classes:Robotics Class',
+      'Financial Literacy': 'Enrichment Classes: Financial Literacy Class',
+    };
+
     const data = rows.map(r => {
-      const weeklyRate = parseFloat(r.our_cut) || 0;
-      const amount = weeklyRate * (r.dates_in_period || 0);
+      const ourCut = parseFloat(r.our_cut) || 0;
+      // Weekly rate = total cost / total billable sessions for the program
+      // For monthly, we bill: weekly_rate × dates_in_period
+      const datesInPeriod = r.dates_in_period || 0;
+      const amount = ourCut * datesInPeriod;
       const labFee = parseFloat(r.lab_fee) || 0;
-      return { ...r, weekly_rate: weeklyRate, invoice_amount: amount, lab_fee_total: labFee };
+      const qbItemName = typeMap[r.program_type_name] || 'Enrichment Classes:Science Class';
+
+      const textForInvoice = [
+        r.school_name || r.location_nickname || '',
+        r.grade_range ? `Grades ${r.grade_range}` : '',
+        r.formal_class_name || '',
+        r.date_list ? `Dates: ${r.date_list}` : '',
+        datesInPeriod > 0 ? `${datesInPeriod} sessions` : '',
+      ].filter(Boolean).join(' - ');
+
+      return { ...r, weekly_rate: ourCut, invoice_amount: amount, lab_fee_total: labFee,
+               qb_item_name: qbItemName, text_for_invoice: textForInvoice };
     });
 
     // Group by contractor (or location if per_location)

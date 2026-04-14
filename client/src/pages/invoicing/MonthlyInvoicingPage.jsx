@@ -112,9 +112,7 @@ function ContractorGroup({ group, billingMonth, startDate, endDate, lastQb, qc }
     const headers = ['*InvoiceNo','*Customer','*InvoiceDate','*DueDate','Terms','Location','Memo','Item(Product/Service)','ItemDescription','ItemQuantity','ItemRate','*ItemAmount','Service Date'];
     const csvRows = [headers.join(',')];
     group.programs.forEach(p => {
-      const itemType = `Enrichment Classes:${p.program_type_name || 'Science'} Class`;
-      const desc = `${p.school_name || p.location_nickname || ''} - ${p.program_nickname} (${p.date_list || ''})`;
-      csvRows.push([invoiceNum, `"${customerName}"`, invoiceDate, dueDate, 'Net 30', `"${p.location_nickname || ''}"`, `"${memo}"`, `"${itemType}"`, `"${desc}"`, p.dates_in_period, p.weekly_rate.toFixed(2), p.invoice_amount.toFixed(2), ''].join(','));
+      csvRows.push([invoiceNum, `"${customerName}"`, invoiceDate, dueDate, 'Net 30', `"${p.location_nickname || ''}"`, `"${memo}"`, `"${p.qb_item_name || ''}"`, `"${p.text_for_invoice || p.program_nickname}"`, p.dates_in_period, p.weekly_rate.toFixed(2), p.invoice_amount.toFixed(2), ''].join(','));
       if (chargeLabFees && p.lab_fee_total > 0) {
         csvRows.push([invoiceNum, `"${customerName}"`, invoiceDate, dueDate, 'Net 30', `"${p.location_nickname || ''}"`, `"${memo}"`, '"Lab Fee"', `"Lab fee - ${p.program_nickname}"`, 1, p.lab_fee_total.toFixed(2), p.lab_fee_total.toFixed(2), ''].join(','));
       }

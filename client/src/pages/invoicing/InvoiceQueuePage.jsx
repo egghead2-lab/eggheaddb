@@ -84,11 +84,9 @@ export default function InvoiceQueuePage() {
     const headers = ['*InvoiceNo','*Customer','*InvoiceDate','*DueDate','Terms','Location','Memo','Item(Product/Service)','ItemDescription','ItemQuantity','ItemRate','*ItemAmount','Service Date'];
     const csvRows = [headers.join(',')];
     checkedRows.forEach(r => {
-      const itemType = `Enrichment Classes:${r.program_type_name || 'Science'} Class`;
-      const desc = `${r.school_name || r.location_nickname || ''} - ${r.program_nickname}`;
-      const qty = r.class_pricing_type_name === 'Flat Fee' ? (r.sessions_completed || 1) : (r.number_enrolled || 1);
-      const rate = r.class_pricing_type_name === 'Flat Fee' ? (r.line_amount / qty) : (parseFloat(r.our_cut) || 0);
-      csvRows.push([invoiceNum, `"${customerName}"`, invoiceDate, dueDate, 'Net 30', `"${r.location_nickname || ''}"`, `"${memo}"`, `"${itemType}"`, `"${desc}"`, qty, rate.toFixed(2), r.line_amount.toFixed(2), ''].join(','));
+      const qty = r.class_pricing_type_name === 'Flat Fee' ? (r.billable_sessions || 1) : (r.number_enrolled || 1);
+      const rate = r.weekly_rate || 0;
+      csvRows.push([invoiceNum, `"${customerName}"`, invoiceDate, dueDate, 'Net 30', `"${r.location_nickname || ''}"`, `"${memo}"`, `"${r.qb_item_name || ''}"`, `"${r.text_for_invoice || r.program_nickname}"`, qty, rate.toFixed(2), r.line_amount.toFixed(2), ''].join(','));
       if (chargeLabFees && r.lab_fee_total > 0) {
         csvRows.push([invoiceNum, `"${customerName}"`, invoiceDate, dueDate, 'Net 30', `"${r.location_nickname || ''}"`, `"${memo}"`, '"Lab Fee"', `"Lab fee - ${r.program_nickname}"`, 1, r.lab_fee_total.toFixed(2), r.lab_fee_total.toFixed(2), ''].join(','));
       }
