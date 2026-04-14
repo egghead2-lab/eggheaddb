@@ -106,8 +106,9 @@ export default function ProgramDetailPage() {
         <div className="p-6 space-y-4 pb-32">
           {/* General Info + Professors + Pay */}
           <Section title="General Info" defaultOpen={true}>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <Input label="Program Nickname" {...register('program_nickname')} />
+              <Input label="Grade Range" placeholder="e.g. K-3, 4-6" {...register('grade_range')} />
               <Select label="Status" {...register('class_status_id')}>
                 <option value="">Select status…</option>
                 {(ref.classStatuses || []).filter(s => !isNew || !s.class_status_name.startsWith('Cancelled')).map(s => (

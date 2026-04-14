@@ -66,8 +66,7 @@ router.get('/queue', authenticate, async (req, res, next) => {
                AND s5.not_billed = 0) AS billable_sessions,
               (SELECT GROUP_CONCAT(DATE_FORMAT(s6.session_date, '%m/%d') ORDER BY s6.session_date SEPARATOR ', ')
                FROM session s6 WHERE s6.program_id = prog.id AND s6.active = 1 AND s6.not_billed = 0) AS billable_date_list,
-              (SELECT GROUP_CONCAT(DISTINCT g.grade_name ORDER BY g.id SEPARATOR '-')
-               FROM program_grade pg JOIN grade g ON g.id = pg.grade_id WHERE pg.program_id = prog.id) AS grade_range
+              prog.grade_range
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
@@ -217,8 +216,7 @@ router.get('/monthly', authenticate, async (req, res, next) => {
               (SELECT GROUP_CONCAT(DATE_FORMAT(s3.session_date, '%m/%d') ORDER BY s3.session_date SEPARATOR ', ')
                FROM session s3 WHERE s3.program_id = prog.id AND s3.active = 1
                AND s3.not_billed = 0 AND s3.session_date BETWEEN ? AND ?) AS date_list,
-              (SELECT GROUP_CONCAT(DISTINCT g.grade_name ORDER BY g.id SEPARATOR '-')
-               FROM program_grade pg JOIN grade g ON g.id = pg.grade_id WHERE pg.program_id = prog.id) AS grade_range,
+              prog.grade_range,
               cl.formal_class_name
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'

@@ -297,7 +297,7 @@ router.post('/', authenticate, async (req, res, next) => {
     const data = req.body;
 
     const fields = [
-      'program_nickname', 'class_status_id', 'location_id', 'live', 'class_id',
+      'program_nickname', 'class_status_id', 'location_id', 'live', 'class_id', 'grade_range',
       'start_time', 'class_length_minutes', 'monday', 'tuesday', 'wednesday', 'thursday',
       'friday', 'saturday', 'sunday', 'general_notes', 'parent_cost', 'our_cut', 'lab_fee',
       'number_enrolled', 'minimum_students', 'maximum_students', 'roster_received',
@@ -340,7 +340,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
     const data = req.body;
 
     const fields = [
-      'program_nickname', 'class_status_id', 'location_id', 'live', 'class_id',
+      'program_nickname', 'class_status_id', 'location_id', 'live', 'class_id', 'grade_range',
       'start_time', 'class_length_minutes', 'monday', 'tuesday', 'wednesday', 'thursday',
       'friday', 'saturday', 'sunday', 'general_notes', 'parent_cost', 'our_cut', 'lab_fee',
       'number_enrolled', 'minimum_students', 'maximum_students', 'roster_received',
