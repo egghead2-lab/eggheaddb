@@ -6,6 +6,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { formatDate } from '../lib/utils';
 
 const STATUS_COLORS = {
@@ -37,7 +38,7 @@ export default function BugBountyPage() {
   const bugs = data?.data || [];
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, status }) => api.put(`/bug-reports/${id}`, { status }),
+    mutationFn: ({ id, status, admin_notes }) => api.put(`/bug-reports/${id}`, { status, admin_notes }),
     onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); },
   });
 
@@ -101,53 +102,101 @@ export default function BugBountyPage() {
         ) : (
           <div className="space-y-2">
             {bugs.map(b => (
-              <div key={b.id} className="bg-white rounded-lg border border-gray-200 px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="text-sm text-gray-800">{b.description}</div>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-                      <span>{b.submitted_by_name}</span>
-                      <span>{formatDate(b.ts_inserted)}</span>
-                      {b.page_name && <span className="font-mono text-[10px] bg-gray-100 px-1 rounded">{b.page_name}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${STATUS_COLORS[b.status]}`}>
-                      {STATUS_LABELS[b.status]}
-                    </span>
-                    {isAdmin && (
-                      <div className="flex gap-1">
-                        {b.status !== 'approved_minor' && (
-                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'approved_minor' })}
-                            className="text-[10px] text-green-600 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-50">Minor</button>
-                        )}
-                        {b.status !== 'approved_major' && (
-                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'approved_major' })}
-                            className="text-[10px] text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded hover:bg-violet-50">Major</button>
-                        )}
-                        {b.status !== 'rejected' && (
-                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'rejected' })}
-                            className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Reject</button>
-                        )}
-                        {(b.status === 'approved_minor' || b.status === 'approved_major') && b.status !== 'fixed' && (
-                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'fixed' })}
-                            className="text-[10px] text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded hover:bg-emerald-50">Fixed</button>
-                        )}
-                        {b.status !== 'new' && (
-                          <button onClick={() => updateMutation.mutate({ id: b.id, status: 'new' })}
-                            className="text-[10px] text-blue-500 border border-blue-200 px-1.5 py-0.5 rounded hover:bg-blue-50">Reset</button>
-                        )}
-                        <button onClick={() => { if (confirm('Delete this bug report?')) deleteMutation.mutate(b.id); }}
-                          className="text-[10px] text-red-400 hover:text-red-600">×</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <BugCard key={b.id} bug={b} isAdmin={isAdmin}
+                onUpdate={updateMutation} onDelete={deleteMutation} />
             ))}
           </div>
         )}
       </div>
     </AppShell>
+  );
+}
+
+function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
+  const [responding, setResponding] = useState(false);
+  const [notes, setNotes] = useState(b.admin_notes || '');
+
+  const saveNotes = () => {
+    onUpdate.mutate({ id: b.id, admin_notes: notes });
+    setResponding(false);
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="text-sm text-gray-800">{b.description}</div>
+          <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
+            <span>{b.submitted_by_name}</span>
+            <span>{formatDate(b.ts_inserted)}</span>
+            {b.page_name && <span className="font-mono text-[10px] bg-gray-100 px-1 rounded">{b.page_name}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${STATUS_COLORS[b.status]}`}>
+            {STATUS_LABELS[b.status]}
+          </span>
+          {isAdmin && (
+            <div className="flex gap-1">
+              {b.status !== 'approved_minor' && (
+                <button onClick={() => onUpdate.mutate({ id: b.id, status: 'approved_minor' })}
+                  className="text-[10px] text-green-600 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-50">Minor</button>
+              )}
+              {b.status !== 'approved_major' && (
+                <button onClick={() => onUpdate.mutate({ id: b.id, status: 'approved_major' })}
+                  className="text-[10px] text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded hover:bg-violet-50">Major</button>
+              )}
+              {b.status !== 'rejected' && (
+                <button onClick={() => onUpdate.mutate({ id: b.id, status: 'rejected' })}
+                  className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Reject</button>
+              )}
+              {(b.status === 'approved_minor' || b.status === 'approved_major') && b.status !== 'fixed' && (
+                <button onClick={() => onUpdate.mutate({ id: b.id, status: 'fixed' })}
+                  className="text-[10px] text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded hover:bg-emerald-50">Fixed</button>
+              )}
+              {b.status !== 'new' && (
+                <button onClick={() => onUpdate.mutate({ id: b.id, status: 'new' })}
+                  className="text-[10px] text-blue-500 border border-blue-200 px-1.5 py-0.5 rounded hover:bg-blue-50">Reset</button>
+              )}
+              <button onClick={() => setResponding(r => !r)}
+                className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                  responding ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]' : 'text-[#1e3a5f] border-[#1e3a5f]/30 hover:bg-[#1e3a5f]/5'
+                }`}>Reply</button>
+              <ConfirmButton onConfirm={() => onDelete.mutate(b.id)}
+                className="text-[10px] text-red-400 hover:text-red-600">×</ConfirmButton>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Admin notes display (visible to everyone if notes exist) */}
+      {b.admin_notes && !responding && (
+        <div className="mt-2 px-3 py-2 bg-gray-50 rounded border border-gray-100 text-xs text-gray-600">
+          <span className="font-medium text-gray-500">Admin response:</span> {b.admin_notes}
+        </div>
+      )}
+
+      {/* Admin response form */}
+      {isAdmin && responding && (
+        <div className="mt-2">
+          <textarea value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Write a response to this bug report..."
+            rows={2}
+            className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f] resize-none" />
+          <div className="flex items-center gap-2 mt-1">
+            <button onClick={saveNotes} disabled={onUpdate.isPending}
+              className="text-xs px-3 py-1 rounded bg-[#1e3a5f] text-white font-medium hover:bg-[#152a47] disabled:opacity-50 transition-colors">
+              {onUpdate.isPending ? 'Saving...' : 'Save Response'}
+            </button>
+            <button onClick={() => { setResponding(false); setNotes(b.admin_notes || ''); }}
+              className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+            {b.admin_notes && (
+              <button onClick={() => { setNotes(''); onUpdate.mutate({ id: b.id, admin_notes: '' }); setResponding(false); }}
+                className="text-xs text-red-400 hover:text-red-600">Clear response</button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
