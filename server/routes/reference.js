@@ -449,7 +449,12 @@ router.get('/lessons', authenticate, async (req, res, next) => {
 router.get('/professors/list', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, professor_nickname, first_name, last_name, CONCAT(professor_nickname, ' ', last_name) AS display_name FROM professor WHERE active = 1 ORDER BY professor_nickname`
+      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.phone_number,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
+              ps.professor_status_name
+       FROM professor p
+       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
+       WHERE p.active = 1 ORDER BY p.professor_nickname`
     );
     res.json({ success: true, data: rows });
   } catch (err) {

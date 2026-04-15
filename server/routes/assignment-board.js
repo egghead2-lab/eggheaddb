@@ -26,8 +26,11 @@ router.get('/data', authenticate, async (req, res, next) => {
               loc.nickname AS location_nickname,
               cl.class_name,
               pt.program_type_name,
+              ct.class_type_name,
               lp.professor_nickname AS lead_professor_nickname,
-              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_display
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_display,
+              prog.lead_professor_pay,
+              loc.retained
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
@@ -35,6 +38,7 @@ router.get('/data', authenticate, async (req, res, next) => {
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN class_type ct ON ct.id = cl.class_type_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id AND lp.active = 1
        WHERE prog.active = 1
          AND cs.class_status_name IN ('Confirmed', 'Unconfirmed')
@@ -104,15 +108,20 @@ router.get('/data', authenticate, async (req, res, next) => {
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-    const enrichedPrograms = programs.map(p => {
+    const enrichedPrograms = [];
+    for (const p of programs) {
       const progDays = dayNames
         .map((d, i) => p[d] ? dayLabels[i] : null)
         .filter(Boolean);
-      return {
+      const isMultiDay = progDays.filter(d => ['Monday','Tuesday','Wednesday','Thursday','Friday'].includes(d)).length > 1;
+      const weekdayDays = progDays.filter(d => ['Monday','Tuesday','Wednesday','Thursday','Friday'].includes(d));
+      const displayDays = weekdayDays.length > 0 ? weekdayDays : [progDays[0] || ''];
+
+      const base = {
         id: p.id,
         nickname: p.program_nickname,
         className: p.class_name,
-        programType: (p.program_type_name || '').toLowerCase(),
+        programType: (p.class_type_name || p.program_type_name || '').toLowerCase(),
         professorId: p.lead_professor_id,
         professorName: p.lead_professor_display || '',
         locationNickname: p.location_nickname,
@@ -122,9 +131,16 @@ router.get('/data', authenticate, async (req, res, next) => {
         firstDate: p.first_session_date,
         lastDate: p.last_session_date,
         days: progDays,
-        displayDay: progDays.find(d => ['Monday','Tuesday','Wednesday','Thursday','Friday'].includes(d)) || progDays[0] || '',
+        isMultiDay,
+        pay: p.lead_professor_pay,
+        retained: !!p.retained,
       };
-    });
+
+      // Create one entry per weekday the program runs on
+      for (const day of displayDays) {
+        enrichedPrograms.push({ ...base, displayDay: day });
+      }
+    }
 
     const enrichedProfs = professors.map(p => ({
       id: p.id,
