@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../components/layout/AppShell';
@@ -128,6 +128,21 @@ export default function AssignmentBoardPage() {
     setLoaded(true);
   };
 
+  // Auto-scheduler
+  const [showAutoSchedule, setShowAutoSchedule] = useState(false);
+  const autoScheduleMut = useMutation({
+    mutationFn: () => api.post('/assignment-board/auto-schedule', {
+      areas: selectedAreas, start_date: startDate, end_date: endDate, only_unassigned: true,
+    }).then(r => r.data),
+  });
+
+  const applyAutoSuggestions = (suggestions) => {
+    const newAssignments = { ...assignments };
+    suggestions.forEach(s => { newAssignments[s.program_id] = s.suggested_professor_id; });
+    setAssignments(newAssignments);
+    setShowAutoSchedule(false);
+  };
+
   const getProfessorName = useCallback((profId) => {
     if (!profId) return null;
     const p = professors.find(pr => pr.id === profId);
@@ -188,6 +203,12 @@ export default function AssignmentBoardPage() {
               className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
           </div>
           <Button onClick={handleLoad} disabled={!selectedAreas.length}>Load Board</Button>
+          {loaded && programs.length > 0 && (
+            <Button onClick={() => { autoScheduleMut.mutate(); setShowAutoSchedule(true); }}
+              disabled={autoScheduleMut.isPending} variant="secondary">
+              {autoScheduleMut.isPending ? 'Calculating...' : 'Auto-Scheduler'}
+            </Button>
+          )}
         </div>
         <div className="flex flex-wrap gap-1.5 mt-3">
           <span className="text-xs text-gray-500 py-1 mr-1">Areas:</span>
@@ -205,6 +226,15 @@ export default function AssignmentBoardPage() {
           ))}
         </div>
       </div>
+
+      {/* Auto-Scheduler results */}
+      {showAutoSchedule && autoScheduleMut.data && (
+        <AutoSchedulePanel
+          data={autoScheduleMut.data.data}
+          onApply={applyAutoSuggestions}
+          onClose={() => setShowAutoSchedule(false)}
+        />
+      )}
 
       {/* Unsaved banner */}
       {changes.length > 0 && (
@@ -335,6 +365,104 @@ function PendingHiresPanel() {
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+function AutoSchedulePanel({ data, onApply, onClose }) {
+  const [selected, setSelected] = useState(() => new Set(data.suggestions.map(s => s.program_id)));
+
+  const toggleSelect = (id) => setSelected(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+
+  const selectedSuggestions = data.suggestions.filter(s => selected.has(s.program_id));
+  const [expandedId, setExpandedId] = useState(null);
+
+  return (
+    <div className="bg-blue-50 border-b border-blue-200">
+      <div className="px-6 py-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-bold text-[#1e3a5f]">Auto-Scheduler Results</h2>
+          <div className="flex gap-3 text-xs mt-0.5">
+            <span className="text-gray-600">{data.stats.total} programs analyzed</span>
+            <span className="text-green-700 font-medium">{data.stats.suggested} matched</span>
+            {data.stats.unassignable > 0 && <span className="text-red-600">{data.stats.unassignable} unassignable</span>}
+            <span className="text-gray-400">avg score: {data.stats.avg_score}</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => onApply(selectedSuggestions)} size="sm">
+            Apply {selected.size} Suggestion{selected.size !== 1 ? 's' : ''}
+          </Button>
+          <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">Dismiss</button>
+        </div>
+      </div>
+
+      {data.suggestions.length > 0 && (
+        <div className="px-6 pb-3 max-h-64 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-blue-100/50 sticky top-0">
+              <tr>
+                <th className="w-8 px-1 py-1"><input type="checkbox" checked={selected.size === data.suggestions.length}
+                  onChange={() => selected.size === data.suggestions.length ? setSelected(new Set()) : setSelected(new Set(data.suggestions.map(s => s.program_id)))}
+                  className="w-3 h-3" /></th>
+                <th className="text-left px-2 py-1 font-medium text-gray-600">Program</th>
+                <th className="text-left px-2 py-1 font-medium text-gray-600">Location</th>
+                <th className="text-left px-2 py-1 font-medium text-gray-600">Suggested Professor</th>
+                <th className="text-center px-2 py-1 font-medium text-gray-600">Score</th>
+                <th className="text-left px-2 py-1 font-medium text-gray-600">Key Reasons</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-blue-100">
+              {data.suggestions.map(s => (
+                <React.Fragment key={s.program_id}>
+                  <tr className={`cursor-pointer hover:bg-blue-100/30 ${selected.has(s.program_id) ? '' : 'opacity-40'}`}
+                    onClick={() => setExpandedId(expandedId === s.program_id ? null : s.program_id)}>
+                    <td className="px-1 py-1.5" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(s.program_id)}
+                        onChange={() => toggleSelect(s.program_id)} className="w-3 h-3" />
+                    </td>
+                    <td className="px-2 py-1.5 font-medium text-gray-800">{s.program_nickname}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{s.location_nickname}</td>
+                    <td className="px-2 py-1.5 text-[#1e3a5f] font-medium">{s.suggested_professor_name}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <span className={`px-1.5 py-0.5 rounded font-bold text-[10px] ${
+                        s.score >= 100 ? 'bg-green-100 text-green-700' : s.score >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                      }`}>{s.score}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-gray-500">{s.reasons.slice(0, 3).join(', ')}</td>
+                  </tr>
+                  {expandedId === s.program_id && (
+                    <tr><td colSpan={6} className="px-4 py-2 bg-white/50">
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(s.score_breakdown).map(([k, v]) => (
+                          <span key={k} className={`text-[10px] px-1.5 py-0.5 rounded ${v > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                            {k}: {v > 0 ? '+' : ''}{v}
+                          </span>
+                        ))}
+                      </div>
+                    </td></tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data.unassignable.length > 0 && (
+        <div className="px-6 pb-3">
+          <div className="text-[10px] font-bold text-red-600 mb-1">Unassignable ({data.unassignable.length})</div>
+          <div className="flex flex-wrap gap-1">
+            {data.unassignable.map(u => (
+              <span key={u.program_id} className="text-[9px] px-1.5 py-0.5 rounded bg-red-50 text-red-600" title={u.reason}>
+                {u.program_nickname}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
