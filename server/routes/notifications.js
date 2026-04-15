@@ -144,10 +144,10 @@ router.get('/sessions', authenticate, async (req, res, next) => {
                 ap.professor_nickname AS assistant_professor_name, ap.phone_number AS assistant_phone,
                 loc.nickname AS location_nickname, loc.address, loc.point_of_contact, loc.poc_phone,
                 ct.class_type_name, l.lesson_name,
-                ga_lp.geographic_area_name AS lead_area,
-                ga_ap.geographic_area_name AS assist_area,
-                CONCAT(sc_lp.first_name, ' ', sc_lp.last_name) AS lead_coordinator,
-                CONCAT(sc_ap.first_name, ' ', sc_ap.last_name) AS assist_coordinator
+                COALESCE(ga_lp.geographic_area_name, ga_loc.geographic_area_name) AS lead_area,
+                COALESCE(ga_ap.geographic_area_name, ga_loc.geographic_area_name) AS assist_area,
+                COALESCE(CONCAT(sc_lp.first_name, ' ', sc_lp.last_name), CONCAT(sc_loc.first_name, ' ', sc_loc.last_name)) AS lead_coordinator,
+                COALESCE(CONCAT(sc_ap.first_name, ' ', sc_ap.last_name), CONCAT(sc_loc.first_name, ' ', sc_loc.last_name)) AS assist_coordinator
          FROM session s
          JOIN program prog ON prog.id = s.program_id AND prog.active = 1
          LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
@@ -159,8 +159,11 @@ router.get('/sessions', authenticate, async (req, res, next) => {
          LEFT JOIN lesson l ON l.id = s.lesson_id
          LEFT JOIN geographic_area ga_lp ON ga_lp.id = lp.geographic_area_id
          LEFT JOIN geographic_area ga_ap ON ga_ap.id = ap.geographic_area_id
+         LEFT JOIN city loc_city ON loc_city.id = loc.city_id
+         LEFT JOIN geographic_area ga_loc ON ga_loc.id = loc_city.geographic_area_id
          LEFT JOIN user sc_lp ON sc_lp.id = lp.scheduling_coordinator_owner_id
          LEFT JOIN user sc_ap ON sc_ap.id = ap.scheduling_coordinator_owner_id
+         LEFT JOIN user sc_loc ON sc_loc.id = ga_loc.scheduling_coordinator_user_id
          WHERE s.active = 1 AND s.session_date = ?
            AND cs.class_status_name NOT LIKE 'Cancelled%'
          ORDER BY ga_lp.geographic_area_name, prog.program_nickname, s.session_time`,
