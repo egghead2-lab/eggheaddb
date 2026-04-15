@@ -90,7 +90,7 @@ router.get('/', authenticate, async (req, res, next) => {
               prog.session_count
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
-       LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
        LEFT JOIN class_type ct2 ON ct2.id = cl.class_type_id
@@ -111,7 +111,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id AND pt.active = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
-       LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        LEFT JOIN city c ON c.id = loc.city_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
