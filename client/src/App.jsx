@@ -98,6 +98,7 @@ import ClassPlannerPage from './pages/ClassPlannerPage';
 import BugBountyPage from './pages/BugBountyPage';
 import SchoolInfoSheetPage from './pages/SchoolInfoSheetPage';
 import RosterApprovalsPage from './pages/RosterApprovalsPage';
+import TwilioResponsesPage from './pages/TwilioResponsesPage';
 import CurriculumSettingPage from './pages/CurriculumSettingPage';
 import UnscheduledProgramsPage from './pages/UnscheduledProgramsPage';
 
@@ -121,6 +122,7 @@ export default function App() {
       <Route path="/my-attendance" element={<ProtectedRoute><ProfessorAttendancePage /></ProtectedRoute>} />
       <Route path="/classroom-attendance" element={<ProtectedRoute><ClassroomAttendancePage /></ProtectedRoute>} />
       <Route path="/class-planner" element={<ProtectedRoute><ClassPlannerPage /></ProtectedRoute>} />
+      <Route path="/twilio-responses" element={<ProtectedRoute><TwilioResponsesPage /></ProtectedRoute>} />
       <Route path="/curriculum-setting" element={<ProtectedRoute><CurriculumSettingPage /></ProtectedRoute>} />
       <Route path="/unscheduled-programs" element={<ProtectedRoute><UnscheduledProgramsPage /></ProtectedRoute>} />
       <Route path="/bug-bounty" element={<ProtectedRoute><BugBountyPage /></ProtectedRoute>} />

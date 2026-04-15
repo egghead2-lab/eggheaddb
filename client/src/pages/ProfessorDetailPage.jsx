@@ -1100,6 +1100,37 @@ export default function ProfessorDetailPage() {
   });
 
   const onSubmit = (data) => mutation.mutate(data);
+  const onError = (errors) => {
+    console.error('Form validation errors:', errors);
+    const firstError = Object.entries(errors)[0];
+    const fieldName = firstError?.[0]?.replace(/_/g, ' ') || 'unknown';
+    setSaveStatus({ type: 'error', msg: `Fix required field: ${fieldName}` });
+    setTimeout(() => setSaveStatus(null), 5000);
+
+    // Auto-open collapsed section containing the error field and scroll to it
+    setTimeout(() => {
+      const el = document.querySelector(`[name="${firstError?.[0]}"]`);
+      if (el) {
+        // Already visible? Just scroll
+        if (el.offsetParent) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.focus();
+          return;
+        }
+        // Find the collapsed section and click its toggle to open it
+        let sectionEl = el.closest('.border.border-gray-200.rounded-lg');
+        if (sectionEl) {
+          const toggleBtn = sectionEl.querySelector('button');
+          if (toggleBtn) toggleBtn.click();
+          // After React re-renders, scroll to the field
+          setTimeout(() => {
+            const field = document.querySelector(`[name="${firstError?.[0]}"]`);
+            if (field) { field.scrollIntoView({ behavior: 'smooth', block: 'center' }); field.focus(); }
+          }, 200);
+        }
+      }
+    }, 100);
+  };
 
   if (!isNew && isLoading) {
     return <AppShell><div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div></AppShell>;
@@ -1108,7 +1139,7 @@ export default function ProfessorDetailPage() {
   return (
     <AppShell>
       <UnsavedChangesModal when={isDirty} />
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit, onError)}>
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
@@ -1311,7 +1342,7 @@ export default function ProfessorDetailPage() {
           {/* Section 5: HR Info */}
           <Section title="HR Info">
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Birthday" type="date" required {...register('birthday', { required: 'Required' })} error={errors.birthday?.message} />
+              <Input label="Birthday" type="date" {...register('birthday')} />
               <Input label="Hire Date" type="date" required {...register('hire_date', { required: 'Required' })} error={errors.hire_date?.message} />
               <Input label="Termination Date" type="date" {...register('termination_date')} />
               <Input label="Termination Reason" {...register('termination_rason')} />

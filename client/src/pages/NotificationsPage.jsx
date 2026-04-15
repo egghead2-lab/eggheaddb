@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
@@ -103,9 +104,9 @@ export default function NotificationsPage() {
   const templates = allTemplates.filter(t => categories.includes(t.category));
 
   // Counts
-  const sentCount = rows.filter(r => r.send_status === 'sent').length;
   const confirmedCount = rows.filter(r => r.confirm_status === 'confirmed').length;
-  const unsentCount = rows.length - sentCount;
+  const awaitingCount = rows.filter(r => r.send_status === 'sent' && r.confirm_status !== 'confirmed').length;
+  const unsentCount = rows.filter(r => r.send_status !== 'sent' && r.confirm_status !== 'confirmed').length;
   const allDone = rows.length > 0 && confirmedCount === rows.length;
 
   // Selection
@@ -140,8 +141,18 @@ export default function NotificationsPage() {
     onSuccess: () => { qc.invalidateQueries(['notifications']); qc.invalidateQueries(['notifications-unconfirmed']); },
   });
 
-  const [showResponses, setShowResponses] = useState(false);
   const [processResults, setProcessResults] = useState(null);
+
+  // SMS sending toggle
+  const { data: sendingData } = useQuery({
+    queryKey: ['sms-sending-enabled'],
+    queryFn: () => api.get('/notifications/sending-enabled').then(r => r.data),
+  });
+  const sendingEnabled = sendingData?.enabled !== false;
+  const toggleSendingMut = useMutation({
+    mutationFn: (enabled) => api.put('/notifications/sending-enabled', { enabled }),
+    onSuccess: () => qc.invalidateQueries(['sms-sending-enabled']),
+  });
 
   const processMut = useMutation({
     mutationFn: () => api.post('/notifications/process-responses').then(r => r.data),
@@ -164,11 +175,6 @@ export default function NotificationsPage() {
     onError: (e) => showStatus('Error: ' + (e?.response?.data?.error || e.message), 'error'),
   });
 
-  const { data: responsesData } = useQuery({
-    queryKey: ['twilio-responses'],
-    queryFn: () => api.get('/notifications/responses').then(r => r.data),
-    enabled: showResponses,
-  });
 
   const customSendMut = useMutation({
     mutationFn: (data) => api.post('/notifications/send-custom', data).then(r => r.data),
@@ -235,27 +241,37 @@ export default function NotificationsPage() {
   return (
     <AppShell>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div>
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-gray-900">Twilio Notifications</h1>
-          <div className="flex gap-3 mt-1 text-xs">
+          <button onClick={() => toggleSendingMut.mutate(!sendingEnabled)}
+            className={`text-xs px-2.5 py-1 rounded font-medium ${
+              sendingEnabled ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' : 'bg-red-100 text-red-700 hover:bg-green-100 hover:text-green-700'
+            }`}>
+            {sendingEnabled ? 'SMS Enabled' : 'SMS Disabled'}
+          </button>
+        </div>
+        <div className="flex items-center gap-3 mt-2">
+          <div className="flex gap-3 text-xs">
             {allDone
               ? <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">ALL CONFIRMED</span>
               : <>
                   <span className="text-gray-500">{rows.length} total</span>
                   <span className="text-green-600 font-medium">{confirmedCount} confirmed</span>
-                  <span className="text-amber-600">{sentCount - confirmedCount} awaiting</span>
-                  <span className="text-gray-400">{unsentCount} unsent</span>
+                  {awaitingCount > 0 && <span className="text-amber-600">{awaitingCount} awaiting</span>}
+                  {unsentCount > 0 && <span className="text-gray-400">{unsentCount} unsent</span>}
                 </>}
           </div>
+          <div className="flex gap-2 ml-auto">
+            <Button onClick={() => processMut.mutate()} disabled={processMut.isPending} size="sm" variant="secondary">
+              {processMut.isPending ? 'Checking...' : 'Check Responses'}
+            </Button>
+            <Link to="/twilio-responses"
+              className="text-xs px-2 py-1.5 rounded font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center">
+              View Responses
+            </Link>
+          </div>
         </div>
-        <Button onClick={() => processMut.mutate()} disabled={processMut.isPending} size="sm" variant="secondary">
-          {processMut.isPending ? 'Checking...' : 'Check Twilio Responses'}
-        </Button>
-        <button onClick={() => setShowResponses(v => !v)}
-          className={`text-xs px-2 py-1.5 rounded font-medium ${showResponses ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-          {showResponses ? 'Hide Responses' : 'View Responses'}
-        </button>
       </div>
 
       <div className="p-6 space-y-4 pb-32">
@@ -271,18 +287,18 @@ export default function NotificationsPage() {
             ))}
           </div>
           {areas.length > 1 && (
-            <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm">
+            <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)} className="rounded border border-gray-300 px-3 pr-8 py-1.5 text-sm w-auto">
               <option value="">All Areas</option>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
           {coords.length > 1 && (
-            <select value={coordFilter} onChange={e => setCoordFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm">
+            <select value={coordFilter} onChange={e => setCoordFilter(e.target.value)} className="rounded border border-gray-300 px-3 pr-8 py-1.5 text-sm w-auto">
               <option value="">All Coordinators</option>
               {coords.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
-          <select value={confirmFilter} onChange={e => setConfirmFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <select value={confirmFilter} onChange={e => setConfirmFilter(e.target.value)} className="rounded border border-gray-300 px-3 pr-8 py-1.5 text-sm w-auto">
             <option value="">All Status</option>
             <option value="confirmed">Confirmed</option>
             <option value="unconfirmed">Unconfirmed</option>
@@ -384,10 +400,35 @@ export default function NotificationsPage() {
                         </button>
                       </td>
                       <td className="px-2 py-2">
-                        <button onClick={() => setPreviewRow(previewRow === r.row_key ? null : r.row_key)}
-                          className={`text-xs px-1.5 py-0.5 rounded font-medium ${previewRow === r.row_key ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                          {previewRow === r.row_key ? 'Hide' : 'View Msg'}
-                        </button>
+                        <div className="flex gap-1">
+                          <button onClick={() => setPreviewRow(previewRow === r.row_key ? null : r.row_key)}
+                            className={`text-xs px-1.5 py-0.5 rounded font-medium ${previewRow === r.row_key ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                            {previewRow === r.row_key ? 'Hide' : 'Msg'}
+                          </button>
+                          {isSent ? (
+                            <button onClick={() => {
+                              sendMut.mutate([{
+                                session_id: r.session_id || null, professor_id: r.professor_id,
+                                phone: r.phone_formatted || r.phone_number, message: buildMessage(r),
+                                type: r.template_category || tab, notification_date: date,
+                              }]);
+                            }} disabled={sendMut.isPending}
+                              className="text-xs px-1.5 py-0.5 rounded font-medium bg-amber-50 text-amber-600 hover:bg-amber-100">
+                              Resend
+                            </button>
+                          ) : (
+                            <button onClick={() => {
+                              sendMut.mutate([{
+                                session_id: r.session_id || null, professor_id: r.professor_id,
+                                phone: r.phone_formatted || r.phone_number, message: buildMessage(r),
+                                type: r.template_category || tab, notification_date: date,
+                              }]);
+                            }} disabled={sendMut.isPending}
+                              className="text-xs px-1.5 py-0.5 rounded font-medium bg-blue-50 text-blue-600 hover:bg-blue-100">
+                              Send
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     {previewRow === r.row_key && (
@@ -402,13 +443,6 @@ export default function NotificationsPage() {
               </tbody>
             </table>
           </div>
-        )}
-
-        {/* Twilio Responses */}
-        {showResponses && (
-          <Section title="Twilio Responses (Last 24h)" defaultOpen={true}>
-            <ResponsesPanel responses={responsesData?.data || []} processResults={processResults} />
-          </Section>
         )}
 
         {/* Confirm Phrases */}

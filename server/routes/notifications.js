@@ -355,6 +355,13 @@ router.post('/send', authenticate, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'No items to send' });
     }
 
+    // Check if sending is disabled
+    const [[sendingSetting]] = await pool.query("SELECT setting_value FROM app_setting WHERE setting_key = 'sms_sending_enabled'");
+    const sendingEnabled = !sendingSetting || sendingSetting.setting_value !== 'false';
+    if (!sendingEnabled) {
+      return res.status(400).json({ success: false, error: 'SMS sending is currently disabled by admin' });
+    }
+
     const validTypes = new Set(['class', 'party', 'observation', 'party_observation', 'custom']);
     const typeMap = { class_lead: 'class', class_assistant: 'class', party_lead: 'party', party_assistant: 'party' };
     const results = [];
@@ -530,14 +537,23 @@ router.post('/process-responses', authenticate, async (req, res, next) => {
             [profId]
           );
           if (logs.length > 0) {
+            let actualConfirmed = 0;
             for (const log of logs) {
-              await pool.query(
-                "UPDATE notification_log SET confirm_status = 'confirmed', confirmed_at = NOW(), response_message = ? WHERE id = ?",
-                [msg.body, log.id]
+              // Double-check it's still unconfirmed (another message in this batch may have already confirmed it)
+              const [[check]] = await pool.query(
+                "SELECT confirm_status FROM notification_log WHERE id = ? AND (confirm_status IS NULL OR confirm_status = 'unconfirmed')",
+                [log.id]
               );
+              if (check) {
+                await pool.query(
+                  "UPDATE notification_log SET confirm_status = 'confirmed', confirmed_at = NOW(), response_message = ? WHERE id = ?",
+                  [msg.body, log.id]
+                );
+                actualConfirmed++;
+              }
             }
-            matchStatus = 'confirmed';
-            matchedCount = logs.length;
+            matchStatus = actualConfirmed > 0 ? 'confirmed' : 'no_outstanding';
+            matchedCount = actualConfirmed;
           } else {
             matchStatus = 'no_outstanding';
           }
@@ -567,6 +583,26 @@ router.get('/responses', authenticate, async (req, res, next) => {
       `SELECT * FROM twilio_response WHERE created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR) ORDER BY received_at DESC`
     );
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/notifications/sending-enabled
+router.get('/sending-enabled', authenticate, async (req, res, next) => {
+  try {
+    const [[row]] = await pool.query("SELECT setting_value FROM app_setting WHERE setting_key = 'sms_sending_enabled'");
+    res.json({ success: true, enabled: !row || row.setting_value !== 'false' });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/notifications/sending-enabled
+router.put('/sending-enabled', authenticate, async (req, res, next) => {
+  try {
+    const { enabled } = req.body;
+    await pool.query(
+      "INSERT INTO app_setting (setting_key, setting_value) VALUES ('sms_sending_enabled', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+      [enabled ? 'true' : 'false', enabled ? 'true' : 'false']
+    );
+    res.json({ success: true, enabled });
   } catch (err) { next(err); }
 });
 
@@ -612,8 +648,8 @@ router.get('/unconfirmed', authenticate, async (req, res, next) => {
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN geographic_area ga ON ga.id = lp.geographic_area_id
        LEFT JOIN user sc ON sc.id = lp.scheduling_coordinator_owner_id
-       LEFT JOIN notification_log nl ON nl.session_id = s.id AND nl.professor_id = lp.id
-         AND nl.notification_date = ? AND nl.active = 1
+       JOIN notification_log nl ON nl.session_id = s.id AND nl.professor_id = lp.id
+         AND nl.notification_date = ? AND nl.active = 1 AND nl.send_status = 'sent'
        WHERE s.active = 1 AND s.session_date = ?
          AND (nl.confirm_status IS NULL OR nl.confirm_status = 'unconfirmed')
          AND cs.class_status_name NOT LIKE 'Cancelled%'

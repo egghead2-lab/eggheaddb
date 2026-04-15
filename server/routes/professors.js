@@ -423,6 +423,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
     res.json({ success: true });
   } catch (err) {
+    console.error('[Professor PUT] Error:', err.message, err.code, err.sql?.substring(0, 200));
     next(err);
   }
 });
