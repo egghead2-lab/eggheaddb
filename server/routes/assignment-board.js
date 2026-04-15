@@ -57,7 +57,9 @@ router.get('/data', authenticate, async (req, res, next) => {
       SELECT p.id, p.professor_nickname, p.last_name,
              CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
              ps.professor_status_name,
-             ga.geographic_area_name AS home_territory
+             ga.geographic_area_name AS home_territory,
+             p.science_trained_id, p.engineering_trained_id, p.robotics_trained_id, p.studysmart_trained_id,
+             p.virtus, p.tb_test
       FROM professor p
       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
       LEFT JOIN city c ON c.id = p.city_id
@@ -72,7 +74,9 @@ router.get('/data', authenticate, async (req, res, next) => {
       profQuery += ` UNION SELECT p.id, p.professor_nickname, p.last_name,
              CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
              ps.professor_status_name,
-             ga.geographic_area_name AS home_territory
+             ga.geographic_area_name AS home_territory,
+             p.science_trained_id, p.engineering_trained_id, p.robotics_trained_id, p.studysmart_trained_id,
+             p.virtus, p.tb_test
       FROM professor p
       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
       LEFT JOIN city c ON c.id = p.city_id
@@ -124,7 +128,12 @@ router.get('/data', authenticate, async (req, res, next) => {
         programType: (p.class_type_name || p.program_type_name || '').toLowerCase(),
         professorId: p.lead_professor_id,
         professorName: p.lead_professor_display || '',
+        locationId: p.location_id,
         locationNickname: p.location_nickname,
+        contractorId: p.contractor_id,
+        livescanRequired: !!p.livescan_required,
+        virtusRequired: !!p.virtus_required,
+        tbRequired: !!p.tb_required,
         status: p.class_status_name,
         startTime: p.start_time,
         classLength: p.class_length_minutes,
@@ -142,6 +151,20 @@ router.get('/data', authenticate, async (req, res, next) => {
       }
     }
 
+    // Load livescans for professors
+    let livescanMap = {};
+    if (profIds.length) {
+      const [livescans] = await pool.query(
+        'SELECT professor_id, location_id, contractor_id FROM livescan WHERE professor_id IN (?) AND active = 1',
+        [profIds]
+      );
+      livescans.forEach(ls => {
+        if (!livescanMap[ls.professor_id]) livescanMap[ls.professor_id] = { locations: [], contractors: [] };
+        if (ls.location_id) livescanMap[ls.professor_id].locations.push(ls.location_id);
+        if (ls.contractor_id) livescanMap[ls.professor_id].contractors.push(ls.contractor_id);
+      });
+    }
+
     const enrichedProfs = professors.map(p => ({
       id: p.id,
       name: p.display_name,
@@ -149,6 +172,14 @@ router.get('/data', authenticate, async (req, res, next) => {
       status: p.professor_status_name,
       homeTerritory: p.home_territory || '',
       availability: availMap[p.id] || {},
+      scienceTrained: !!p.science_trained_id,
+      engineeringTrained: !!p.engineering_trained_id,
+      roboticsTrained: !!p.robotics_trained_id,
+      finlitTrained: !!p.studysmart_trained_id,
+      virtus: !!p.virtus,
+      tbTest: !!p.tb_test,
+      livescanLocations: livescanMap[p.id]?.locations || [],
+      livescanContractors: livescanMap[p.id]?.contractors || [],
     }));
 
     res.json({ success: true, data: { programs: enrichedPrograms, professors: enrichedProfs } });

@@ -143,6 +143,49 @@ export default function AssignmentBoardPage() {
     setShowAutoSchedule(false);
   };
 
+  // Warning computation
+  const [showWarnings, setShowWarnings] = useState(true);
+  const profMap = useMemo(() => {
+    const m = {};
+    professors.forEach(p => { m[p.id] = p; });
+    return m;
+  }, [professors]);
+
+  const progMap = useMemo(() => {
+    const m = {};
+    programs.forEach(p => { if (!m[p.id]) m[p.id] = p; }); // first entry per program (dedup multi-day)
+    return m;
+  }, [programs]);
+
+  const warnings = useMemo(() => {
+    const w = [];
+    for (const [progId, profId] of Object.entries(assignments)) {
+      if (!profId) continue;
+      const prof = profMap[profId];
+      const prog = progMap[parseInt(progId)];
+      if (!prof || !prog) continue;
+
+      const type = prog.programType;
+      // Training check
+      if (type === 'science' && !prof.scienceTrained) w.push({ progId: parseInt(progId), profId, nickname: prog.nickname, profName: prof.name, type: 'training', msg: `${prof.name} is not Science trained` });
+      if (type === 'engineering' && !prof.engineeringTrained) w.push({ progId: parseInt(progId), profId, nickname: prog.nickname, profName: prof.name, type: 'training', msg: `${prof.name} is not Engineering trained` });
+      if (type === 'robotics' && !prof.roboticsTrained) w.push({ progId: parseInt(progId), profId, nickname: prog.nickname, profName: prof.name, type: 'training', msg: `${prof.name} is not Robotics trained` });
+      if (type === 'financial literacy' && !prof.finlitTrained) w.push({ progId: parseInt(progId), profId, nickname: prog.nickname, profName: prof.name, type: 'training', msg: `${prof.name} is not Financial Literacy trained` });
+
+      // Livescan check
+      if (prog.livescanRequired) {
+        const hasLs = prof.livescanLocations?.includes(prog.locationId) || prof.livescanContractors?.includes(prog.contractorId);
+        if (!hasLs) w.push({ progId: parseInt(progId), profId, nickname: prog.nickname, profName: prof.name, type: 'livescan', msg: `${prof.name} needs livescan at ${prog.locationNickname}` });
+      }
+
+      // Virtus check
+      if (prog.virtusRequired && !prof.virtus) w.push({ progId: parseInt(progId), profId, nickname: prog.nickname, profName: prof.name, type: 'virtus', msg: `${prof.name} needs Virtus for ${prog.locationNickname}` });
+    }
+    return w;
+  }, [assignments, profMap, progMap]);
+
+  const warningProgIds = useMemo(() => new Set(warnings.map(w => w.progId)), [warnings]);
+
   const getProfessorName = useCallback((profId) => {
     if (!profId) return null;
     const p = professors.find(pr => pr.id === profId);
@@ -236,6 +279,29 @@ export default function AssignmentBoardPage() {
         />
       )}
 
+      {/* Compliance warnings */}
+      {warnings.length > 0 && (
+        <div className={`border-b ${showWarnings ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-50/50 border-yellow-100'}`}>
+          <button onClick={() => setShowWarnings(v => !v)}
+            className="w-full px-6 py-1.5 flex items-center gap-2 text-left">
+            <span className="text-yellow-600 text-sm">⚠</span>
+            <span className="text-xs font-medium text-yellow-800">{warnings.length} compliance warning{warnings.length !== 1 ? 's' : ''}</span>
+            <span className="text-[10px] text-yellow-600 ml-auto">{showWarnings ? 'hide' : 'show'}</span>
+          </button>
+          {showWarnings && (
+            <div className="px-6 pb-2 flex flex-wrap gap-1">
+              {warnings.map((w, i) => (
+                <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                  w.type === 'livescan' ? 'bg-red-100 text-red-700' :
+                  w.type === 'virtus' ? 'bg-purple-100 text-purple-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>{w.nickname}: {w.msg}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Unsaved banner */}
       {changes.length > 0 && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-3">
@@ -296,7 +362,7 @@ export default function AssignmentBoardPage() {
               <DroppableCell key={`unassigned-${day}`} day={day} profId={null}
                 programs={getCell(null, day)} assignments={assignments} originals={originals}
                 onDrop={handleDrop} onDragStart={setDragItem} getProfessorName={getProfessorName}
-                allProfessors={professors} allProfsGlobal={allProfsGlobal} onClickAssign={handleClickAssign} />
+                allProfessors={professors} allProfsGlobal={allProfsGlobal} onClickAssign={handleClickAssign} warningProgIds={warningProgIds} />
             ))}
 
             {/* Professor rows */}
@@ -321,7 +387,7 @@ export default function AssignmentBoardPage() {
                     programs={getCell(prof.id, day)} assignments={assignments} originals={originals}
                     unavailable={!prof.availability[day]} profStatus={prof.status}
                     onDrop={handleDrop} onDragStart={setDragItem} getProfessorName={getProfessorName}
-                    allProfessors={professors} allProfsGlobal={allProfsGlobal} onClickAssign={handleClickAssign} />
+                    allProfessors={professors} allProfsGlobal={allProfsGlobal} onClickAssign={handleClickAssign} warningProgIds={warningProgIds} />
                 ))}
               </>
             ))}
@@ -467,7 +533,7 @@ function AutoSchedulePanel({ data, onApply, onClose }) {
   );
 }
 
-function DroppableCell({ day, profId, programs, assignments, originals, unavailable, profStatus, onDrop, onDragStart, getProfessorName, allProfessors, onClickAssign, allProfsGlobal }) {
+function DroppableCell({ day, profId, programs, assignments, originals, unavailable, profStatus, onDrop, onDragStart, getProfessorName, allProfessors, onClickAssign, allProfsGlobal, warningProgIds }) {
   const ref = useRef(null);
   const [over, setOver] = useState(false);
   const [assigningId, setAssigningId] = useState(null);
@@ -486,7 +552,8 @@ function DroppableCell({ day, profId, programs, assignments, originals, unavaila
         const originalAssigned = p.id in originals ? originals[p.id] : p.professorId;
         const isChanged = currentAssigned !== originalAssigned;
         const prevName = isChanged ? (getProfessorName(originalAssigned) || 'Unassigned') : null;
-        const typeClass = TYPE_STYLE[p.programType] || '';
+        const hasWarning = warningProgIds?.has(p.id);
+        const typeClass = hasWarning ? 'bg-yellow-300 border-l-4 border-l-yellow-600' : (TYPE_STYLE[p.programType] || '');
         const isAssigning = assigningId === p.id;
 
         const isExpanded = expandedId === p.id;
