@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -124,31 +124,21 @@ export default function ToolManagerPage() {
 
         {showGroupManager && (
           <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-6">
-            <div className="text-xs font-semibold text-gray-600 mb-2">Sidebar Groups</div>
-            <div className="space-y-1.5 mb-3">
-              {navGroupOptions.filter(g => existingGroups.includes(g) || customGroups.includes(g)).map(g => (
-                <div key={g} className="flex items-center gap-2">
-                  {renamingGroup === g ? (
-                    <>
-                      <input type="text" value={renameValue} onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim() && renameValue !== g) renameGroupMutation.mutate({ oldName: g, newName: renameValue.trim() }); }}
-                        className="rounded border border-gray-300 px-2 py-1 text-xs flex-1 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" autoFocus />
-                      <button type="button" onClick={() => { if (renameValue.trim() && renameValue !== g) renameGroupMutation.mutate({ oldName: g, newName: renameValue.trim() }); }}
-                        disabled={!renameValue.trim() || renameValue === g || renameGroupMutation.isPending}
-                        className="text-xs text-[#1e3a5f] hover:underline disabled:opacity-40">Save</button>
-                      <button type="button" onClick={() => setRenamingGroup(null)} className="text-xs text-gray-400">Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-gray-700 flex-1">{g}</span>
-                      <span className="text-[10px] text-gray-400">{grouped[g]?.length || 0} tools</span>
-                      <button type="button" onClick={() => { setRenamingGroup(g); setRenameValue(g); }}
-                        className="text-[10px] text-gray-400 hover:text-[#1e3a5f]">rename</button>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Sidebar Groups (drag to reorder)</div>
+            <GroupDragList
+              groups={navGroupOptions.filter(g => existingGroups.includes(g) || customGroups.includes(g))}
+              grouped={grouped}
+              renamingGroup={renamingGroup} setRenamingGroup={setRenamingGroup}
+              renameValue={renameValue} setRenameValue={setRenameValue}
+              renameGroupMutation={renameGroupMutation}
+              onReorder={(order) => {
+                api.put('/tools/group-order', { order }).then(() => {
+                  qc.invalidateQueries(['sidebar-group-order']);
+                  qc.invalidateQueries(['my-permissions']);
+                  qc.invalidateQueries(['tools-admin']);
+                });
+              }}
+            />
             <div className="pt-2 border-t border-gray-200 space-y-2">
               <div className="flex gap-2 items-center">
                 <input type="text" value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
@@ -178,11 +168,12 @@ export default function ToolManagerPage() {
 
         {Object.entries(grouped).map(([groupName, groupTools]) => (
           <div key={groupName} className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">{groupName}</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">{groupName} <span className="text-[10px] text-gray-400 font-normal">({groupTools.length})</span></h3>
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="w-12 px-1 py-2 font-medium text-gray-600 text-center">Order</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600 w-36">Path</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-600 w-40">Label</th>
                     <th className="text-left px-2 py-2 font-medium text-gray-600 w-24">Group</th>
@@ -195,8 +186,27 @@ export default function ToolManagerPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {groupTools.map(tool => (
+                  {groupTools.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((tool, ti) => (
                     <tr key={tool.id} className={tool.universal ? 'bg-green-50/30' : ''}>
+                      <td className="px-1 py-2 text-center">
+                        <div className="flex flex-col items-center gap-0.5">
+                          {ti > 0 && (
+                            <button onClick={() => {
+                              // Reassign all sort_orders in this group with the swap applied
+                              const sorted = [...groupTools].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                              [sorted[ti - 1], sorted[ti]] = [sorted[ti], sorted[ti - 1]];
+                              sorted.forEach((t, i) => updateMutation.mutate({ id: t.id, data: { sort_order: i + 1 } }));
+                            }} className="text-[10px] text-gray-300 hover:text-gray-600 leading-none">▲</button>
+                          )}
+                          {ti < groupTools.length - 1 && (
+                            <button onClick={() => {
+                              const sorted = [...groupTools].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                              [sorted[ti], sorted[ti + 1]] = [sorted[ti + 1], sorted[ti]];
+                              sorted.forEach((t, i) => updateMutation.mutate({ id: t.id, data: { sort_order: i + 1 } }));
+                            }} className="text-[10px] text-gray-300 hover:text-gray-600 leading-none">▼</button>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-2 text-xs text-gray-500 font-mono">{tool.path}</td>
                       <td className="px-3 py-1">
                         <input defaultValue={tool.label}
@@ -235,5 +245,68 @@ export default function ToolManagerPage() {
         ))}
       </div>
     </AppShell>
+  );
+}
+
+function GroupDragList({ groups: initialGroups, grouped, renamingGroup, setRenamingGroup, renameValue, setRenameValue, renameGroupMutation, onReorder }) {
+  const [items, setItems] = useState(initialGroups);
+  const dragItem = useRef(null);
+  const dragOver = useRef(null);
+
+  // Sync if parent groups change
+  if (JSON.stringify(initialGroups) !== JSON.stringify(items) && !dragItem.current) {
+    // Only sync when not dragging
+  }
+
+  const handleDragStart = (idx) => { dragItem.current = idx; };
+  const handleDragEnter = (idx) => { dragOver.current = idx; };
+  const handleDragEnd = () => {
+    if (dragItem.current === null || dragOver.current === null || dragItem.current === dragOver.current) {
+      dragItem.current = null;
+      dragOver.current = null;
+      return;
+    }
+    const next = [...items];
+    const [moved] = next.splice(dragItem.current, 1);
+    next.splice(dragOver.current, 0, moved);
+    setItems(next);
+    onReorder(next);
+    dragItem.current = null;
+    dragOver.current = null;
+  };
+
+  return (
+    <div className="space-y-1 mb-3">
+      {items.map((g, idx) => (
+        <div key={g}
+          draggable
+          onDragStart={() => handleDragStart(idx)}
+          onDragEnter={() => handleDragEnter(idx)}
+          onDragEnd={handleDragEnd}
+          onDragOver={e => e.preventDefault()}
+          className="flex items-center gap-2 bg-white rounded px-2 py-1.5 border border-gray-200 cursor-grab active:cursor-grabbing hover:border-[#1e3a5f]/30 transition-colors select-none">
+          <span className="text-gray-300 text-xs">⠿</span>
+          {renamingGroup === g ? (
+            <>
+              <input type="text" value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim() && renameValue !== g) renameGroupMutation.mutate({ oldName: g, newName: renameValue.trim() }); }}
+                onClick={e => e.stopPropagation()}
+                className="rounded border border-gray-300 px-2 py-1 text-xs flex-1 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" autoFocus />
+              <button type="button" onClick={() => { if (renameValue.trim() && renameValue !== g) renameGroupMutation.mutate({ oldName: g, newName: renameValue.trim() }); }}
+                disabled={!renameValue.trim() || renameValue === g || renameGroupMutation.isPending}
+                className="text-xs text-[#1e3a5f] hover:underline disabled:opacity-40">Save</button>
+              <button type="button" onClick={() => setRenamingGroup(null)} className="text-xs text-gray-400">Cancel</button>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-gray-700 flex-1">{g}</span>
+              <span className="text-[10px] text-gray-400">{grouped[g]?.length || 0}</span>
+              <button type="button" onClick={() => { setRenamingGroup(g); setRenameValue(g); }}
+                className="text-[10px] text-gray-400 hover:text-[#1e3a5f]">rename</button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

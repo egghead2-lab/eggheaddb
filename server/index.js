@@ -33,6 +33,7 @@ const evaluationsRoutes = require('./routes/evaluations');
 const hiringRequestsRoutes = require('./routes/hiring-requests');
 const materialsRoutes = require('./routes/materials');
 const plannerRoutes = require('./routes/planner');
+const curriculumRoutes = require('./routes/curriculum');
 const quickbooksRoutes = require('./routes/quickbooks');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -111,6 +112,7 @@ app.use('/api/evaluations', evaluationsRoutes);
 app.use('/api/hiring-requests', hiringRequestsRoutes);
 app.use('/api/materials', materialsRoutes);
 app.use('/api/planner', plannerRoutes);
+app.use('/api/curriculum', curriculumRoutes);
 app.use('/api/quickbooks', quickbooksRoutes);
 
 // Error handler

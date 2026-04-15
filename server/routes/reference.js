@@ -331,6 +331,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
       pool.query(`SELECT id, reason_name FROM substitute_reason WHERE active = 1 ORDER BY sort_order, reason_name`),
       pool.query(`SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS display_name FROM user WHERE active = 1 AND role_id IN (2, 8) ORDER BY first_name`),
       pool.query(`SELECT ur.id, ur.user_id, ur.responsibility, ur.geographic_area_id, CONCAT(u.first_name, ' ', u.last_name) AS user_name, ga.geographic_area_name FROM user_responsibility ur JOIN user u ON u.id = ur.user_id AND u.active = 1 LEFT JOIN geographic_area ga ON ga.id = ur.geographic_area_id WHERE ur.active = 1 ORDER BY ur.responsibility, ga.geographic_area_name`),
+      pool.query(`SELECT id, class_name, class_code, class_type_id, program_type_id FROM class WHERE active = 1 ORDER BY class_name`),
     ];
 
     const results = await Promise.all(queries);
@@ -364,6 +365,7 @@ router.get('/general-data', authenticate, async (req, res, next) => {
         substituteReasons: results[23][0],
         staffUsers: results[24][0],
         userResponsibilities: results[25][0],
+        classes: results[26][0],
       },
     });
   } catch (err) {

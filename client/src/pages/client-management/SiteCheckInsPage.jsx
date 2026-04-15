@@ -10,7 +10,7 @@ import { formatPhone } from '../../lib/utils';
 
 const CONTACT_TYPES = ['Emailed', 'Called', 'Left Voicemail', 'Spoke With', 'No Answer'];
 
-export default function SiteCheckInsPage() {
+export default function SiteCheckInsPage({ toolSelector }) {
   const qc = useQueryClient();
   const now = new Date();
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
@@ -35,6 +35,7 @@ export default function SiteCheckInsPage() {
 
   return (
     <AppShell>
+      {toolSelector}
       <PageHeader title="Site Check-Ins (Retained)" action={
         <span className={`text-xs px-2 py-1 rounded font-medium ${sentCount === locations.length && locations.length > 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
           {sentCount}/{locations.length} contacted

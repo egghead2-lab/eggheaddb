@@ -21,7 +21,7 @@ function getDays(p) { return DAYS.map((d,i) => p[d] ? DAY_SHORT[i] : null).filte
  *  - defaultRange: 'today' | 'week' (default: 'week')
  *  - tabs, tabParam, extraFilters
  */
-export function ClientEmailTool({ title, category, endpoint, columns, getRecipient, getMergeData, idField = 'program_id', rowId, extraFilters, tabs, tabParam, defaultRange = 'week' }) {
+export function ClientEmailTool({ title, category, endpoint, columns, getRecipient, getMergeData, idField = 'program_id', rowId, extraFilters, tabs, tabParam, defaultRange = 'week', toolSelector }) {
   const qc = useQueryClient();
 
   // Date range based on defaultRange prop
@@ -160,6 +160,7 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
 
   return (
     <AppShell>
+      {toolSelector}
       <PageHeader title={title} action={
         <div className="flex items-center gap-3">
           <span className={`text-xs px-2 py-1 rounded font-medium ${isComplete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>

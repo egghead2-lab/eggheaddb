@@ -61,6 +61,8 @@ import PartyAssignPage from './pages/PartyAssignPage';
 import IncidentReportPage from './pages/IncidentReportPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ClientTemplatesPage from './pages/ClientTemplatesPage';
+import ClientEmailsPage from './pages/client-management/ClientEmailsPage';
+import FeedbackToolsPage from './pages/client-management/FeedbackToolsPage';
 import StartingEmailsPage from './pages/client-management/StartingEmailsPage';
 import FirstDayParentPage from './pages/client-management/FirstDayParentPage';
 import SecondWeekPage from './pages/client-management/SecondWeekPage';
@@ -96,6 +98,8 @@ import ClassPlannerPage from './pages/ClassPlannerPage';
 import BugBountyPage from './pages/BugBountyPage';
 import SchoolInfoSheetPage from './pages/SchoolInfoSheetPage';
 import RosterApprovalsPage from './pages/RosterApprovalsPage';
+import CurriculumSettingPage from './pages/CurriculumSettingPage';
+import UnscheduledProgramsPage from './pages/UnscheduledProgramsPage';
 
 export default function App() {
   return (
@@ -117,6 +121,8 @@ export default function App() {
       <Route path="/my-attendance" element={<ProtectedRoute><ProfessorAttendancePage /></ProtectedRoute>} />
       <Route path="/classroom-attendance" element={<ProtectedRoute><ClassroomAttendancePage /></ProtectedRoute>} />
       <Route path="/class-planner" element={<ProtectedRoute><ClassPlannerPage /></ProtectedRoute>} />
+      <Route path="/curriculum-setting" element={<ProtectedRoute><CurriculumSettingPage /></ProtectedRoute>} />
+      <Route path="/unscheduled-programs" element={<ProtectedRoute><UnscheduledProgramsPage /></ProtectedRoute>} />
       <Route path="/bug-bounty" element={<ProtectedRoute><BugBountyPage /></ProtectedRoute>} />
       <Route path="/locations/:id/info-sheet" element={<ProtectedRoute><SchoolInfoSheetPage /></ProtectedRoute>} />
       <Route path="/roster-approvals" element={<ProtectedRoute><RosterApprovalsPage /></ProtectedRoute>} />
@@ -181,6 +187,8 @@ export default function App() {
       <Route path="/incident-report" element={<ProtectedRoute><IncidentReportPage /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
       <Route path="/client-management/templates" element={<ProtectedRoute><ClientTemplatesPage /></ProtectedRoute>} />
+      <Route path="/client-management/emails" element={<ProtectedRoute><ClientEmailsPage /></ProtectedRoute>} />
+      <Route path="/client-management/feedback" element={<ProtectedRoute><FeedbackToolsPage /></ProtectedRoute>} />
       <Route path="/client-management/starting-emails" element={<ProtectedRoute><StartingEmailsPage /></ProtectedRoute>} />
       <Route path="/client-management/first-day-parent" element={<ProtectedRoute><FirstDayParentPage /></ProtectedRoute>} />
       <Route path="/client-management/second-week" element={<ProtectedRoute><SecondWeekPage /></ProtectedRoute>} />

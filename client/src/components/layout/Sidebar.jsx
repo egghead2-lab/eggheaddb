@@ -103,6 +103,12 @@ export function Sidebar() {
     staleTime: 2 * 60 * 1000,
   });
 
+  const { data: serverGroupOrder } = useQuery({
+    queryKey: ['sidebar-group-order'],
+    queryFn: () => api.get('/tools/group-order').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Build nav groups
   const navGroups = useMemo(() => {
     if (!permData?.data?.length) return FALLBACK_GROUPS;
@@ -116,7 +122,7 @@ export function Sidebar() {
 
     // Use custom order if set, otherwise default
     const defaultOrder = ['My Classes', 'Dashboard', 'Operations', 'People', 'Parties', 'Sales', 'Scheduling', 'Hiring', 'Onboarding', 'Field Managing', 'FM Tools', 'Curriculum', 'Client Management', 'Human Resources', 'Warehouse Tools', 'Admin', 'Tools'];
-    const order = groupOrder || defaultOrder;
+    const order = groupOrder || serverGroupOrder?.data || defaultOrder;
     const sorted = [];
     for (const name of order) {
       if (groups[name]) { sorted.push(groups[name]); delete groups[name]; }

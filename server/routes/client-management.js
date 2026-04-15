@@ -581,4 +581,39 @@ router.get('/session-dates/:programId', authenticate, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+// GET /api/client-management/counts — badge counts for each tool
+router.get('/counts', authenticate, async (req, res, next) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+    const ws = weekStart.toISOString().split('T')[0];
+    const we = weekEnd.toISOString().split('T')[0];
+
+    // Count unsent items per tool (simplified — counts programs in each endpoint's date range that haven't been emailed)
+    const queries = await Promise.all([
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'starting_email' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'first_day_parent' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id JOIN session s2 ON s2.program_id = p.id AND s2.active = 1 AND s2.session_date BETWEEN ? AND ? LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'second_week_email' WHERE p.active = 1 AND cs.confirmed = 1 AND cel.id IS NULL AND (SELECT COUNT(*) FROM session sx WHERE sx.program_id = p.id AND sx.active = 1 AND sx.session_date <= ?) = 2`, [today, today, today]),
+      pool.query(`SELECT COUNT(DISTINCT s.id) as cnt FROM session s JOIN program p ON p.id = s.program_id AND p.active = 1 LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'sub_email' AND DATE(cel.created_at) = s.session_date WHERE s.active = 1 AND s.session_date BETWEEN ? AND ? AND s.professor_id IS NOT NULL AND s.professor_id != p.lead_professor_id AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'new_professor_email' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category LIKE 'last_day%' WHERE p.active = 1 AND cs.confirmed = 1 AND p.last_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'roster_email' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [ws, we]),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        starting: queries[0][0][0]?.cnt || 0,
+        first_day: queries[1][0][0]?.cnt || 0,
+        second_week: queries[2][0][0]?.cnt || 0,
+        sub: queries[3][0][0]?.cnt || 0,
+        new_professor: queries[4][0][0]?.cnt || 0,
+        last_day: queries[5][0][0]?.cnt || 0,
+        roster: queries[6][0][0]?.cnt || 0,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

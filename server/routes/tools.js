@@ -145,4 +145,25 @@ router.put('/:id/roles', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/tools/group-order — get sidebar group order
+router.get('/group-order', authenticate, async (req, res, next) => {
+  try {
+    const [[row]] = await pool.query("SELECT setting_value FROM app_setting WHERE setting_key = 'sidebar_group_order'");
+    res.json({ success: true, data: row ? JSON.parse(row.setting_value) : null });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/tools/group-order — save sidebar group order
+router.put('/group-order', authenticate, async (req, res, next) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order)) return res.status(400).json({ success: false, error: 'order array required' });
+    await pool.query(
+      "INSERT INTO app_setting (setting_key, setting_value) VALUES ('sidebar_group_order', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+      [JSON.stringify(order), JSON.stringify(order)]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
