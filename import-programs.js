@@ -463,11 +463,7 @@ async function main() {
           assistPay = numOrNull(row[assistPayStart + s] || '');
         }
 
-        // Date-specific notes
-        let specificNotes = null;
-        if (dateNotesStart >= 0 && (dateNotesStart + s) < row.length) {
-          specificNotes = strOrNull(row[dateNotesStart + s] || '', 1024);
-        }
+        // Date-specific notes — SKIPPED (columns JL+)
 
         await pool.query(
           `INSERT INTO session (program_id, lesson_id, professor_id, professor_pay,
@@ -475,72 +471,12 @@ async function main() {
             not_billed, ts_inserted, ts_updated, active)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW(), 1)`,
           [csvId, lessonId, sessionProfId, sessionProfPay, assistId, assistPay,
-           sessionDate, sessionTime, specificNotes]
+           sessionDate, sessionTime, null]
         );
         sessionsInserted++;
       }
 
-      // ── Insert student roster ─────────────────────────────────────
-      if (studentNameStart >= 0) {
-        for (let s = 0; s < 20; s++) {
-          const nameIdx = studentNameStart + s;
-          if (nameIdx >= row.length) break;
-          const studentName = (row[nameIdx] || '').trim();
-          if (!studentName) continue;
-
-          // Try to find existing student
-          let studentId = studentMap[studentName.toLowerCase()];
-
-          if (!studentId) {
-            // Create student
-            const parts = studentName.split(/\s+/);
-            const firstName = parts[0] || studentName;
-            const lastName = parts.slice(1).join(' ') || '';
-            try {
-              const [result] = await pool.query(
-                'INSERT INTO student (first_name, last_name, ts_inserted, ts_updated, active) VALUES (?, ?, NOW(), NOW(), 1)',
-                [firstName.substring(0, 64), lastName.substring(0, 64)]
-              );
-              studentId = result.insertId;
-              studentMap[studentName.toLowerCase()] = studentId;
-            } catch (e) {
-              continue; // skip if can't create
-            }
-          }
-
-          // Gender/Age
-          let gender = null, age = null;
-          if (studentGenderStart >= 0 && (studentGenderStart + s) < row.length) {
-            const ga = (row[studentGenderStart + s] || '').trim();
-            if (ga) {
-              const gMatch = ga.match(/^(M|F|Male|Female)/i);
-              if (gMatch) gender = gMatch[1].substring(0, 1).toUpperCase();
-              const aMatch = ga.match(/(\d+)/);
-              if (aMatch) age = parseInt(aMatch[1]);
-            }
-          }
-
-          // Notes
-          let notes = null;
-          if (studentNotesStart >= 0 && (studentNotesStart + s) < row.length) {
-            notes = strOrNull(row[studentNotesStart + s] || '', 255);
-          }
-
-          // Lab fee
-          let labFeeStr = null;
-          if (studentLabFeeStart >= 0 && (studentLabFeeStart + s) < row.length) {
-            labFeeStr = strOrNull(row[studentLabFeeStart + s] || '', 255);
-          }
-
-          await pool.query(
-            `INSERT INTO program_roster (program_id, student_id, gender, age, date_applied,
-              student_lab_fee, notes, ts_inserted, ts_updated, active)
-             VALUES (?, ?, ?, ?, CURDATE(), ?, ?, NOW(), NOW(), 1)`,
-            [csvId, studentId, gender, age, labFeeStr, notes]
-          );
-          rostersInserted++;
-        }
-      }
+      // ── Student roster — SKIPPED for speed (columns JL+) ─────────
 
       if (programsInserted % 200 === 0) console.log(`  Processed ${programsInserted} programs...`);
     } catch (e) {

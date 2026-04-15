@@ -174,9 +174,39 @@ export default function LocationDetailPage() {
               <Toggle label="Set Dates Ourselves" checked={!!watch('set_dates_ourselves')} onChange={v => setValue('set_dates_ourselves', v ? 1 : 0, { shouldDirty: true })} />
               <Toggle label="Observes Allowed" checked={!!watch('observes_allowed')} onChange={v => setValue('observes_allowed', v ? 1 : 0, { shouldDirty: true })} />
               <Toggle label="TBD" checked={!!watch('tbd')} onChange={v => setValue('tbd', v ? 1 : 0, { shouldDirty: true })} />
-              {watch('tbd') && <div className="col-span-2"><Input label="TBD Notes" {...register('tbd_notes')} /></div>}
+              {watch('tbd') && watch('tbd') !== '0' && watch('tbd') !== 0 ? <div className="col-span-2"><Input label="TBD Notes" {...register('tbd_notes')} /></div> : null}
             </div>
           </Section>
+
+          {/* School Cut */}
+          {!isNew && loc.cutTypes && loc.cutTypes.length > 0 && (
+            <Section title="School Cut" defaultOpen={true}>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Cut Type</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Amount</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {loc.cutTypes.map(ct => (
+                    <tr key={ct.id}>
+                      <td className="px-3 py-2">{ct.cut_type_name || '—'}</td>
+                      <td className="px-3 py-2">
+                        {ct.amount != null
+                          ? ct.cut_type_unit === 'Percentage'
+                            ? `${parseFloat(ct.amount)}%`
+                            : `$${parseFloat(ct.amount).toFixed(2)}`
+                          : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500">{ct.description || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          )}
 
           {/* Invoicing */}
           <Section title="Invoicing" defaultOpen={true}>
