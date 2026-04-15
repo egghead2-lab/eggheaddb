@@ -148,8 +148,10 @@ export default function AssignmentBoardPage() {
   const profMap = useMemo(() => {
     const m = {};
     professors.forEach(p => { m[p.id] = p; });
+    // Also include global profs for out-of-area assignments (less data but enough for warnings)
+    allProfsGlobal.forEach(p => { if (!m[p.id]) m[p.id] = p; });
     return m;
-  }, [professors]);
+  }, [professors, allProfsGlobal]);
 
   const progMap = useMemo(() => {
     const m = {};
@@ -161,7 +163,7 @@ export default function AssignmentBoardPage() {
     const w = [];
     for (const [progId, profId] of Object.entries(assignments)) {
       if (!profId) continue;
-      const prof = profMap[profId];
+      const prof = profMap[profId] || profMap[parseInt(profId)] || profMap[String(profId)];
       const prog = progMap[parseInt(progId)];
       if (!prof || !prog) continue;
 
@@ -268,6 +270,20 @@ export default function AssignmentBoardPage() {
             }`}>{a.geographic_area_name}</button>
           ))}
         </div>
+        {loaded && (
+          <div className="flex items-center gap-3 mt-2 text-[9px] text-gray-400">
+            <span>Legend:</span>
+            <span className="px-1 rounded bg-violet-50 text-violet-600">Science</span>
+            <span className="px-1 rounded bg-emerald-50 text-emerald-600">Engineering</span>
+            <span className="px-1 rounded bg-blue-50 text-blue-600">Robotics</span>
+            <span className="px-1 rounded bg-amber-50 text-amber-600">FinLit</span>
+            <span className="px-1 rounded bg-purple-200 text-purple-700 font-bold">M</span><span>Multi-day</span>
+            <span className="px-1 rounded bg-blue-200 text-blue-700 font-bold">R</span><span>Retained</span>
+            <span className="px-1 rounded bg-red-200 text-red-700 font-bold">LS</span><span>Livescan req.</span>
+            <span className="px-1 rounded bg-purple-200 text-purple-700 font-bold">V</span><span>Virtus req.</span>
+            <span className="px-1 rounded bg-yellow-300 text-yellow-800 font-bold">!</span><span>Compliance issue</span>
+          </div>
+        )}
       </div>
 
       {/* Auto-Scheduler results */}
@@ -368,20 +384,7 @@ export default function AssignmentBoardPage() {
             {/* Professor rows */}
             {sortedProfs.map(prof => (
               <>
-                <div key={`label-${prof.id}`} className="bg-white border-b border-r border-gray-200 px-2 py-1 sticky left-0 z-[5] bg-white">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[11px] font-medium leading-tight">{prof.name}</span>
-                    <span className={`px-1 py-0 text-[8px] font-medium rounded ${STATUS_PILL[prof.status] || 'bg-gray-100 text-gray-600'}`}>{prof.status.charAt(0)}</span>
-                  </div>
-                  <div className="flex gap-0.5 mt-0.5">
-                    {WEEKDAYS.map(d => (
-                      <span key={d} className={`text-[8px] w-3 text-center rounded ${prof.availability[d] ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-300'}`}>
-                        {d.charAt(0)}
-                      </span>
-                    ))}
-                    {prof.homeTerritory && <span className="text-[8px] text-gray-400 ml-1 truncate">{prof.homeTerritory}</span>}
-                  </div>
-                </div>
+                <ProfessorLabel key={`label-${prof.id}`} prof={prof} />
                 {WEEKDAYS.map(day => (
                   <DroppableCell key={`${prof.id}-${day}`} day={day} profId={prof.id}
                     programs={getCell(prof.id, day)} assignments={assignments} originals={originals}
@@ -431,6 +434,50 @@ function PendingHiresPanel() {
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ProfessorLabel({ prof }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="bg-white border-b border-r border-gray-200 px-2 py-1 sticky left-0 z-[5] bg-white">
+      <div className="flex items-center gap-1 flex-wrap cursor-pointer" onClick={() => setExpanded(v => !v)}>
+        <span className="text-[11px] font-medium leading-tight">{prof.name}</span>
+        <span className={`px-1 py-0 text-[8px] font-medium rounded ${STATUS_PILL[prof.status] || 'bg-gray-100 text-gray-600'}`}
+          title={prof.status}>{prof.status.charAt(0)}</span>
+      </div>
+      <div className="flex gap-0.5 mt-0.5">
+        {WEEKDAYS.map(d => (
+          <span key={d} className={`text-[8px] w-3 text-center rounded ${prof.availability[d] ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-300'}`}>
+            {d.charAt(0)}
+          </span>
+        ))}
+        {prof.homeTerritory && <span className="text-[8px] text-gray-400 ml-1 truncate">{prof.homeTerritory}</span>}
+      </div>
+      {expanded && (
+        <div className="mt-1 pt-1 border-t border-gray-100 text-[9px] space-y-0.5">
+          <div className="flex flex-wrap gap-1">
+            <span className="text-gray-400">Training:</span>
+            {prof.scienceTrained && <span className="px-1 rounded bg-violet-100 text-violet-700">Science</span>}
+            {prof.engineeringTrained && <span className="px-1 rounded bg-emerald-100 text-emerald-700">Engineering</span>}
+            {prof.roboticsTrained && <span className="px-1 rounded bg-blue-100 text-blue-700">Robotics</span>}
+            {prof.finlitTrained && <span className="px-1 rounded bg-amber-100 text-amber-700">FinLit</span>}
+            {!prof.scienceTrained && !prof.engineeringTrained && !prof.roboticsTrained && !prof.finlitTrained && <span className="text-gray-300">None</span>}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <span className="text-gray-400">Compliance:</span>
+            {prof.virtus ? <span className="px-1 rounded bg-green-100 text-green-700">Virtus</span> : <span className="px-1 rounded bg-red-50 text-red-400">No Virtus</span>}
+            {prof.tbTest ? <span className="px-1 rounded bg-green-100 text-green-700">TB</span> : <span className="px-1 rounded bg-red-50 text-red-400">No TB</span>}
+          </div>
+          {prof.livescanLocations?.length > 0 && (
+            <div className="flex flex-wrap gap-0.5">
+              <span className="text-gray-400">Livescans:</span>
+              <span className="text-gray-600">{prof.livescanLocations.length} location{prof.livescanLocations.length !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -569,8 +616,10 @@ function DroppableCell({ day, profId, programs, assignments, originals, unavaila
             >
               <div className="flex items-center gap-0.5">
                 <div className="text-[10px] font-medium text-gray-900 truncate leading-tight flex-1">{p.nickname}</div>
-                {p.isMultiDay && <span className="text-[7px] px-0.5 rounded bg-purple-200 text-purple-700 font-bold shrink-0">M</span>}
-                {p.retained && <span className="text-[7px] px-0.5 rounded bg-blue-200 text-blue-700 font-bold shrink-0">R</span>}
+                {p.isMultiDay && <span className="text-[7px] px-0.5 rounded bg-purple-200 text-purple-700 font-bold shrink-0" title="Multi-day program">M</span>}
+                {p.retained && <span className="text-[7px] px-0.5 rounded bg-blue-200 text-blue-700 font-bold shrink-0" title="Retained client">R</span>}
+                {p.livescanRequired && <span className="text-[7px] px-0.5 rounded bg-red-200 text-red-700 font-bold shrink-0" title="Livescan required">LS</span>}
+                {p.virtusRequired && <span className="text-[7px] px-0.5 rounded bg-purple-200 text-purple-700 font-bold shrink-0" title="Virtus required">V</span>}
                 <button onClick={e => { e.preventDefault(); e.stopPropagation(); setAssigningId(isAssigning ? null : p.id); setSearchQ(''); }}
                   className="text-[8px] text-gray-400 hover:text-[#1e3a5f] shrink-0 leading-none" title="Reassign">
                   {isAssigning ? '×' : '✎'}
@@ -596,6 +645,13 @@ function DroppableCell({ day, profId, programs, assignments, originals, unavaila
                   <span className="text-gray-400">Pay:</span><span>{p.pay ? `$${parseFloat(p.pay).toFixed(0)}` : '—'}</span>
                   <span className="text-gray-400">Status:</span><span>{p.status}</span>
                   {p.retained && <><span className="text-gray-400">Retained:</span><span className="text-blue-600 font-medium">Yes</span></>}
+                  <span className="text-gray-400">Requires:</span>
+                  <span className="flex gap-1">
+                    {p.livescanRequired && <span className="px-1 rounded bg-red-100 text-red-700">Livescan</span>}
+                    {p.virtusRequired && <span className="px-1 rounded bg-purple-100 text-purple-700">Virtus</span>}
+                    {p.tbRequired && <span className="px-1 rounded bg-amber-100 text-amber-700">TB</span>}
+                    {!p.livescanRequired && !p.virtusRequired && !p.tbRequired && <span className="text-gray-300">None</span>}
+                  </span>
                 </div>
               </div>
             )}

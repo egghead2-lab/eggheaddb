@@ -15,7 +15,7 @@ async function checkProfessorConflicts(professorId, programId, options = {}) {
   const [[newProg]] = await pool.query(
     `SELECT prog.id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
             prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
-            prog.first_session_date, prog.last_session_date
+            prog.first_session_date, prog.last_session_date, prog.location_id
      FROM program prog WHERE prog.id = ?`, [programId]
   );
   if (!newProg || !newProg.start_time) return conflicts;
@@ -30,7 +30,8 @@ async function checkProfessorConflicts(professorId, programId, options = {}) {
   const [existingProgs] = await pool.query(
     `SELECT prog.id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
             prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
-            prog.first_session_date, prog.last_session_date
+            prog.first_session_date, prog.last_session_date,
+            prog.location_id
      FROM program prog
      LEFT JOIN class_status cs ON cs.id = prog.class_status_id
      WHERE prog.active = 1
@@ -41,26 +42,50 @@ async function checkProfessorConflicts(professorId, programId, options = {}) {
     [professorId, professorId, options.excludeProgramId || programId]
   );
 
-  // Check day + time overlaps
+  // Load actual session dates for the new program and existing ones
+  const allIds = [programId, ...existingProgs.map(p => p.id)];
+  const [sessionRows] = await pool.query(
+    `SELECT program_id, session_date FROM session WHERE program_id IN (?) AND active = 1`,
+    [allIds]
+  );
+  const sessionDateMap = {};
+  sessionRows.forEach(s => {
+    if (!sessionDateMap[s.program_id]) sessionDateMap[s.program_id] = new Set();
+    sessionDateMap[s.program_id].add(s.session_date.toISOString().split('T')[0]);
+  });
+  const newDates = sessionDateMap[programId] || new Set();
+
+  // Check actual session date + time overlaps
   for (const existing of existingProgs) {
     if (!existing.start_time) continue;
-    const exDays = getDays(existing);
-    const overlappingDays = newDays.filter(d => exDays.includes(d));
-    if (overlappingDays.length === 0) continue;
 
-    // Check time overlap
     const exStart = timeToMinutes(existing.start_time);
     const exEnd = exStart + (existing.class_length_minutes || 60);
 
-    if (newStart < exEnd && exStart < newEnd) {
-      conflicts.push({
-        type: 'program',
-        conflicting_program: existing.program_nickname,
-        conflicting_id: existing.id,
-        days: overlappingDays,
-        time: `${existing.start_time} (${existing.class_length_minutes}m)`,
-      });
+    // Back-to-back at same location is NOT a conflict
+    const sameLocation = existing.location_id === newProg.location_id;
+    const backToBack = (newStart === exEnd || newEnd === exStart);
+    if (sameLocation && backToBack) continue;
+
+    // Check time overlap
+    if (newStart >= exEnd || exStart >= newEnd) continue;
+
+    // Check actual session date overlap
+    const exDates = sessionDateMap[existing.id] || new Set();
+    let hasDateOverlap = false;
+    for (const d of newDates) {
+      if (exDates.has(d)) { hasDateOverlap = true; break; }
     }
+    if (!hasDateOverlap) continue;
+
+    const overlappingDays = newDays.filter(d => getDays(existing).includes(d));
+    conflicts.push({
+      type: 'program',
+      conflicting_program: existing.program_nickname,
+      conflicting_id: existing.id,
+      days: overlappingDays,
+      time: `${existing.start_time} (${existing.class_length_minutes}m)`,
+    });
   }
 
   // Check observation conflicts on specific date if provided
@@ -106,30 +131,52 @@ async function checkCandidateScheduleConflicts(candidateId, programId) {
 
   const [existing] = await pool.query(
     `SELECT prog.id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
-            prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday
+            prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
+            prog.location_id
      FROM candidate_schedule cs
      JOIN program prog ON prog.id = cs.program_id AND prog.active = 1
      WHERE cs.candidate_id = ? AND cs.active = 1 AND cs.program_id != ?`,
     [candidateId, programId]
   );
 
+  // Load session dates
+  const candProgIds = [programId, ...existing.map(p => p.id)];
+  const [candSessionRows] = await pool.query(
+    `SELECT program_id, session_date FROM session WHERE program_id IN (?) AND active = 1`,
+    [candProgIds]
+  );
+  const candDateMap = {};
+  candSessionRows.forEach(s => {
+    if (!candDateMap[s.program_id]) candDateMap[s.program_id] = new Set();
+    candDateMap[s.program_id].add(s.session_date.toISOString().split('T')[0]);
+  });
+  const candNewDates = candDateMap[programId] || new Set();
+
   for (const ex of existing) {
     if (!ex.start_time) continue;
-    const exDays = getDays(ex);
-    const overlapping = newDays.filter(d => exDays.includes(d));
-    if (overlapping.length === 0) continue;
 
     const exStart = timeToMinutes(ex.start_time);
     const exEnd = exStart + (ex.class_length_minutes || 60);
 
-    if (newStart < exEnd && exStart < newEnd) {
-      conflicts.push({
-        type: 'schedule',
-        conflicting_program: ex.program_nickname,
-        conflicting_id: ex.id,
-        days: overlapping,
-      });
+    // Back-to-back at same location is not a conflict
+    if (ex.location_id === newProg.location_id && (newStart === exEnd || newEnd === exStart)) continue;
+
+    if (newStart >= exEnd || exStart >= newEnd) continue;
+
+    // Check actual date overlap
+    const exDates = candDateMap[ex.id] || new Set();
+    let hasOverlap = false;
+    for (const d of candNewDates) {
+      if (exDates.has(d)) { hasOverlap = true; break; }
     }
+    if (!hasOverlap) continue;
+
+    conflicts.push({
+      type: 'schedule',
+      conflicting_program: ex.program_nickname,
+      conflicting_id: ex.id,
+      days: newDays.filter(d => getDays(ex).includes(d)),
+    });
   }
 
   return conflicts;

@@ -30,7 +30,10 @@ router.get('/data', authenticate, async (req, res, next) => {
               lp.professor_nickname AS lead_professor_nickname,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_display,
               prog.lead_professor_pay,
-              loc.retained
+              prog.location_id,
+              loc.retained,
+              loc.contractor_id,
+              loc.livescan_required, loc.virtus_required, loc.tb_required
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
@@ -472,12 +475,40 @@ router.post('/auto-schedule', authenticate, async (req, res, next) => {
       return bHard - aHard;
     });
 
-    const assignedTimeSlots = {}; // prof_id -> [{ dayId, startMin, endMin }]
+    // Load actual session dates for all programs to check real date overlap
+    const allProgIds = [...new Set([...programs.map(p => p.id), ...toAssign.map(p => p.id)])];
+    let sessionDateMap = {}; // program_id -> [date strings]
+    if (allProgIds.length) {
+      const [sessionDates] = await pool.query(
+        `SELECT program_id, session_date FROM session WHERE program_id IN (?) AND active = 1 ORDER BY session_date`,
+        [allProgIds]
+      );
+      sessionDates.forEach(s => {
+        if (!sessionDateMap[s.program_id]) sessionDateMap[s.program_id] = [];
+        sessionDateMap[s.program_id].push(s.session_date.toISOString().split('T')[0]);
+      });
+    }
+
+    // Track assigned: prof_id -> [{ dates: Set<string>, startMin, endMin }]
+    const assignedSlots = {};
+    // Pre-populate with existing assignments
+    programs.forEach(p => {
+      if (p.lead_professor_id && sessionDateMap[p.id]) {
+        if (!assignedSlots[p.lead_professor_id]) assignedSlots[p.lead_professor_id] = [];
+        assignedSlots[p.lead_professor_id].push({
+          dates: new Set(sessionDateMap[p.id]),
+          startMin: timeToMin(p.start_time),
+          endMin: timeToMin(p.start_time) + (p.class_length_minutes || 60),
+          locationId: p.location_id,
+        });
+      }
+    });
 
     for (const prog of toAssign) {
       const progDayIds = getProgramDayIds(prog);
       const startMin = timeToMin(prog.start_time);
       const endMin = startMin + (prog.class_length_minutes || 60);
+      const progDates = new Set(sessionDateMap[prog.id] || []);
 
       let bestProf = null;
       let bestResult = null;
@@ -490,11 +521,20 @@ router.post('/auto-schedule', authenticate, async (req, res, next) => {
         // Hard: training
         if (!hasTraining(prof, prog.class_type_name)) continue;
 
-        // Hard: time conflict
-        const slots = assignedTimeSlots[prof.id] || [];
-        const hasConflict = progDayIds.some(dayId =>
-          slots.some(s => s.dayId === dayId && startMin < s.endMin && endMin > s.startMin)
-        );
+        // Hard: time conflict — check actual session date overlap, not just day-of-week
+        // Allow back-to-back at the same location (end time of one = start time of next)
+        const slots = assignedSlots[prof.id] || [];
+        const hasConflict = slots.some(s => {
+          // Do the time ranges truly overlap? (touching edges = not overlapping)
+          if (startMin >= s.endMin || endMin <= s.startMin) return false;
+          // Same location and merely adjacent (one ends exactly when other starts)? Not a conflict
+          if (s.locationId === prog.location_id && (startMin === s.endMin || endMin === s.startMin)) return false;
+          // Do any actual session dates overlap?
+          for (const d of progDates) {
+            if (s.dates.has(d)) return true;
+          }
+          return false;
+        });
         if (hasConflict) continue;
 
         // Score
@@ -525,10 +565,8 @@ router.post('/auto-schedule', authenticate, async (req, res, next) => {
         if (!currentAssignments[bestProf.id]) currentAssignments[bestProf.id] = [];
         currentAssignments[bestProf.id].push({ location_id: prog.location_id, class_type_id: prog.class_type_id });
 
-        if (!assignedTimeSlots[bestProf.id]) assignedTimeSlots[bestProf.id] = [];
-        progDayIds.forEach(dayId => {
-          assignedTimeSlots[bestProf.id].push({ dayId, startMin, endMin });
-        });
+        if (!assignedSlots[bestProf.id]) assignedSlots[bestProf.id] = [];
+        assignedSlots[bestProf.id].push({ dates: progDates, startMin, endMin, locationId: prog.location_id });
       } else {
         unassignable.push({
           program_id: prog.id,
