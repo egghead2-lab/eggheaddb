@@ -59,6 +59,7 @@ import PartyEmailTemplatesPage from './pages/PartyEmailTemplatesPage';
 import PartyCalendarPage from './pages/PartyCalendarPage';
 import PartyAssignPage from './pages/PartyAssignPage';
 import IncidentReportPage from './pages/IncidentReportPage';
+import NotificationsPage from './pages/NotificationsPage';
 import ClientTemplatesPage from './pages/ClientTemplatesPage';
 import StartingEmailsPage from './pages/client-management/StartingEmailsPage';
 import FirstDayParentPage from './pages/client-management/FirstDayParentPage';
@@ -178,6 +179,7 @@ export default function App() {
       <Route path="/party-calendar" element={<ProtectedRoute><PartyCalendarPage /></ProtectedRoute>} />
       <Route path="/parties/assign" element={<ProtectedRoute><PartyAssignPage /></ProtectedRoute>} />
       <Route path="/incident-report" element={<ProtectedRoute><IncidentReportPage /></ProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
       <Route path="/client-management/templates" element={<ProtectedRoute><ClientTemplatesPage /></ProtectedRoute>} />
       <Route path="/client-management/starting-emails" element={<ProtectedRoute><StartingEmailsPage /></ProtectedRoute>} />
       <Route path="/client-management/first-day-parent" element={<ProtectedRoute><FirstDayParentPage /></ProtectedRoute>} />
