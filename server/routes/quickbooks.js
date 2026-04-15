@@ -2,14 +2,24 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
-const OAuthClient = require('intuit-oauth');
 
-const oauthClient = new OAuthClient({
-  clientId: process.env.QB_CLIENT_ID,
-  clientSecret: process.env.QB_CLIENT_SECRET,
-  environment: process.env.QB_ENVIRONMENT || 'sandbox',
-  redirectUri: process.env.QB_REDIRECT_URI,
-});
+let OAuthClient, oauthClient;
+try {
+  OAuthClient = require('intuit-oauth');
+  if (process.env.QB_CLIENT_ID && process.env.QB_CLIENT_SECRET) {
+    oauthClient = new OAuthClient({
+      clientId: process.env.QB_CLIENT_ID,
+      clientSecret: process.env.QB_CLIENT_SECRET,
+      environment: process.env.QB_ENVIRONMENT || 'sandbox',
+      redirectUri: process.env.QB_REDIRECT_URI,
+    });
+    console.log('[QB] QuickBooks OAuth initialized');
+  } else {
+    console.warn('[QB] QB_CLIENT_ID or QB_CLIENT_SECRET not set — QuickBooks disabled');
+  }
+} catch (e) {
+  console.warn('[QB] intuit-oauth not installed — QuickBooks disabled');
+}
 
 // Helper: get stored tokens
 async function getTokens() {
