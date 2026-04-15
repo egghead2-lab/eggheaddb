@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
@@ -8,7 +8,6 @@ import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { useProfessorList } from '../hooks/useReferenceData';
-import { formatTimeRange } from '../lib/utils';
 
 const TABS = [
   { key: 'class', label: 'Classes' },
@@ -18,73 +17,94 @@ const TABS = [
 
 function today() { return new Date().toISOString().split('T')[0]; }
 
-function formatTime12(t) {
-  if (!t) return '';
-  const [h, m] = t.split(':');
-  const hour = parseInt(h);
-  return `${hour % 12 || 12}:${m} ${hour >= 12 ? 'PM' : 'AM'}`;
-}
-
-function ConfirmBadge({ confirmed, sent }) {
-  if (confirmed) return <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">Confirmed</span>;
-  if (sent) return <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">Sent</span>;
-  return <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Not Sent</span>;
-}
-
 export default function NotificationsPage() {
   const qc = useQueryClient();
   const [date, setDate] = useState(today());
   const [tab, setTab] = useState('class');
-  const [selected, setSelected] = useState(new Set());
-  const [expandedMsg, setExpandedMsg] = useState(null);
+  const [checked, setChecked] = useState(new Set());
+  const [previewRow, setPreviewRow] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
   const [coordFilter, setCoordFilter] = useState('');
 
-  // Custom message state
+  // Custom message
   const [customProfId, setCustomProfId] = useState('');
   const [customPhone, setCustomPhone] = useState('');
   const [customMsg, setCustomMsg] = useState('');
 
   const { data: profListData } = useProfessorList();
   const profList = (profListData?.data || []).map(p => ({
-    id: String(p.id),
-    label: p.professor_nickname || `${p.first_name} ${p.last_name}`,
-    phone_number: p.phone_number,
+    id: String(p.id), label: p.professor_nickname || `${p.first_name} ${p.last_name}`, phone_number: p.phone_number,
   }));
 
+  // Sessions
   const { data: sessionsData, isLoading } = useQuery({
     queryKey: ['notifications', date, tab],
     queryFn: () => api.get(`/notifications/sessions?date=${date}&type=${tab}`).then(r => r.data),
   });
-  const allSessions = sessionsData?.data || [];
+  const allRows = sessionsData?.data || [];
 
-  // Derive unique areas and coordinators for filters
-  const areas = [...new Set(allSessions.map(s => s.geographic_area_name).filter(Boolean))].sort();
-  const coordinators = [...new Set(allSessions.map(s => s.coordinator_name).filter(Boolean))].sort();
-
-  // Apply filters
-  const sessions = allSessions.filter(s => {
-    if (areaFilter && s.geographic_area_name !== areaFilter) return false;
-    if (coordFilter && s.coordinator_name !== coordFilter) return false;
-    return true;
+  // Templates
+  const { data: tplData } = useQuery({
+    queryKey: ['sms-templates'],
+    queryFn: () => api.get('/notifications/sms-templates').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
   });
+  const allTemplates = tplData?.data || [];
 
+  // Unconfirmed warner
   const { data: unconfirmedData } = useQuery({
     queryKey: ['notifications-unconfirmed', date],
     queryFn: () => api.get(`/notifications/unconfirmed?date=${date}`).then(r => r.data),
   });
   const unconfirmed = unconfirmedData?.data || [];
 
+  // Derived
+  const areas = useMemo(() => [...new Set(allRows.map(r => r.geographic_area_name).filter(Boolean))].sort(), [allRows]);
+  const coords = useMemo(() => [...new Set(allRows.map(r => r.coordinator_name).filter(Boolean))].sort(), [allRows]);
+  const rows = useMemo(() => allRows.filter(r => {
+    if (areaFilter && r.geographic_area_name !== areaFilter) return false;
+    if (coordFilter && r.coordinator_name !== coordFilter) return false;
+    return true;
+  }), [allRows, areaFilter, coordFilter]);
+
+  // Templates filtered by current categories in view
+  const categories = useMemo(() => [...new Set(rows.map(r => r.template_category).filter(Boolean))], [rows]);
+  const templates = allTemplates.filter(t => categories.includes(t.category));
+
+  // Counts
+  const sentCount = rows.filter(r => r.send_status === 'sent').length;
+  const confirmedCount = rows.filter(r => r.confirm_status === 'confirmed').length;
+  const unsentCount = rows.length - sentCount;
+  const allDone = rows.length > 0 && confirmedCount === rows.length;
+
+  // Selection
+  const toggleCheck = (key) => setChecked(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const allUnsent = rows.filter(r => r.send_status !== 'sent');
+  const allChecked = allUnsent.length > 0 && allUnsent.every(r => checked.has(r.row_key));
+  const toggleAll = () => {
+    if (allChecked) setChecked(new Set());
+    else setChecked(new Set(allUnsent.map(r => r.row_key)));
+  };
+
   // Mutations
   const sendMut = useMutation({
     mutationFn: (items) => api.post('/notifications/send', { items }).then(r => r.data),
-    onSuccess: () => { qc.invalidateQueries(['notifications']); setSelected(new Set()); },
+    onSuccess: (data) => {
+      qc.invalidateQueries(['notifications']);
+      setChecked(new Set());
+      const sent = data.data?.filter(d => d.status === 'sent').length || 0;
+      const failed = data.data?.filter(d => d.status === 'failed').length || 0;
+      alert(`${sent} sent${failed ? `, ${failed} failed` : ''}`);
+    },
     onError: (e) => alert('Send failed: ' + (e?.response?.data?.error || e.message)),
   });
 
   const confirmMut = useMutation({
-    mutationFn: ({ sessionId, confirmed, date: d, type: t, professor_id }) =>
-      api.post(`/notifications/confirm/${sessionId}`, { confirmed, date: d, type: t, professor_id }).then(r => r.data),
+    mutationFn: (params) => {
+      if (params.observation_id) return api.post(`/notifications/confirm-observation/${params.observation_id}`, params).then(r => r.data);
+      return api.post(`/notifications/confirm/${params.sessionId}`, params).then(r => r.data);
+    },
     onSuccess: () => qc.invalidateQueries(['notifications']),
   });
 
@@ -92,8 +112,8 @@ export default function NotificationsPage() {
     mutationFn: () => api.post('/notifications/process-responses').then(r => r.data),
     onSuccess: (data) => {
       qc.invalidateQueries(['notifications']);
-      const count = data.data?.filter(d => d.status === 'confirmed').length || 0;
-      alert(count > 0 ? `${count} professor(s) auto-confirmed from replies` : 'No new confirmations found');
+      const count = data.data?.filter(d => d.status === 'confirmed').reduce((s, d) => s + (d.count || 0), 0) || 0;
+      alert(count > 0 ? `${count} notification(s) auto-confirmed` : 'No new confirmations');
     },
     onError: (e) => alert('Error: ' + (e?.response?.data?.error || e.message)),
   });
@@ -104,234 +124,231 @@ export default function NotificationsPage() {
     onError: (e) => alert('Send failed: ' + (e?.response?.data?.error || e.message)),
   });
 
-  const toggleSelect = (id) => {
-    const next = new Set(selected);
-    next.has(id) ? next.delete(id) : next.add(id);
-    setSelected(next);
+  // Build message from template + row merge vars
+  const buildMessage = (row) => {
+    // Find template: use selected, or default for this row's category
+    const tpl = selectedTemplateId
+      ? allTemplates.find(t => t.id === Number(selectedTemplateId))
+      : allTemplates.find(t => t.category === row.template_category && t.is_default);
+    if (!tpl) return `[No template for ${row.template_category}]`;
+    // The server already computed merge vars in the row — we do template fill client-side for preview
+    return fillTemplate(tpl.body, row);
   };
 
-  const selectAll = () => {
-    if (selected.size === sessions.length) setSelected(new Set());
-    else setSelected(new Set(sessions.map(s => s.session_id || s.observation_id)));
+  const fillTemplate = (body, row) => {
+    const d = row.session_date ? row.session_date.split('T')[0] : '';
+    const vars = {
+      program_nickname: row.program_nickname || '',
+      day_name: d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : '',
+      short_date: d ? `${new Date(d + 'T12:00:00').getMonth() + 1}/${new Date(d + 'T12:00:00').getDate()}` : '',
+      start_time: fmt12(row.start_time || row.session_time),
+      end_time: fmtEnd(row.start_time || row.session_time, row.class_length_minutes),
+      arrival_time: fmtArrival(row.start_time || row.session_time),
+      address: row.address || '',
+      contact_name: row.point_of_contact || row.contact_name || '',
+      contact_phone: (row.poc_phone || row.contact_phone) ? ` - ${row.poc_phone || row.contact_phone}` : '',
+      class_type: row.class_type_name || '',
+      lesson_name: row.lesson_name || '',
+      num_enrolled: row.number_enrolled || '',
+      lead_professor_name: row.lead_professor_name || '',
+      lead_phone: row.lead_phone || '',
+      party_format: row.party_format_name || '',
+      child_info: [row.child_name, row.child_age ? `turning ${row.child_age}` : ''].filter(Boolean).join(' ') || '',
+      notes: row.specific_notes ? `\nNotes: ${row.specific_notes}` : '',
+      reminder_number: row._reminder_number || '1',
+      total_reminders: row._total_reminders || '1',
+    };
+    let result = body;
+    for (const [k, v] of Object.entries(vars)) result = result.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
+    result = result.replace(/\{\{[^}]+\}\}/g, '');
+    return result.replace(/\\n/g, '\n');
   };
 
-  // Select only unsent
-  const selectUnsent = () => {
-    setSelected(new Set(sessions.filter(s => !s.notification_sent && s.send_status !== 'sent').map(s => s.session_id || s.observation_id)));
-  };
-
-  // Select only unconfirmed
-  const selectUnconfirmed = () => {
-    setSelected(new Set(sessions.filter(s => s.notif_confirm_status !== 'confirmed').map(s => s.session_id || s.observation_id)));
-  };
-
-  const handleSendSelected = () => {
-    const items = sessions
-      .filter(s => selected.has(s.session_id || s.observation_id))
-      .map(s => ({
-        session_id: s.session_id || null,
-        professor_id: s.professor_id,
-        phone: s.phone_formatted || s.phone_number,
-        message: s.generated_message,
-        type: tab,
+  const bulkSend = () => {
+    const items = rows
+      .filter(r => checked.has(r.row_key))
+      .map(r => ({
+        session_id: r.session_id || null,
+        professor_id: r.professor_id,
+        phone: r.phone_formatted || r.phone_number,
+        message: buildMessage(r),
+        type: r.template_category || tab,
         notification_date: date,
       }));
-    if (items.length === 0) return;
+    if (!items.length) return;
     if (!confirm(`Send ${items.length} notification(s)?`)) return;
     sendMut.mutate(items);
   };
 
-  const handleSendOne = (s) => {
-    if (!confirm(`Send notification to ${s.professor_nickname}?`)) return;
-    sendMut.mutate([{
-      session_id: s.session_id || null,
-      professor_id: s.professor_id,
-      phone: s.phone_formatted || s.phone_number,
-      message: s.generated_message,
-      type: tab,
-      notification_date: date,
-    }]);
-  };
-
-  const handleCustomProfSelect = (id) => {
-    setCustomProfId(id);
-    if (id) {
-      const match = profList.find(p => p.id === id);
-      if (match?.phone_number) setCustomPhone(match.phone_number);
-    }
-  };
-
-  // Summary counts
-  const totalCount = sessions.length;
-  const confirmedCount = sessions.filter(s => s.notif_confirm_status === 'confirmed').length;
-  const sentCount = sessions.filter(s => s.notification_sent || s.send_status === 'sent').length;
-  const unsentCount = totalCount - sentCount;
-
   return (
     <AppShell>
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Twilio Notifications</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Send notifications, track confirmations</p>
+          <div className="flex gap-3 mt-1 text-xs">
+            {allDone
+              ? <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">ALL CONFIRMED</span>
+              : <>
+                  <span className="text-gray-500">{rows.length} total</span>
+                  <span className="text-green-600 font-medium">{confirmedCount} confirmed</span>
+                  <span className="text-amber-600">{sentCount - confirmedCount} awaiting</span>
+                  <span className="text-gray-400">{unsentCount} unsent</span>
+                </>}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => processMut.mutate()} disabled={processMut.isPending} size="sm" variant="secondary">
-            {processMut.isPending ? 'Checking...' : 'Check Twilio Responses'}
-          </Button>
-        </div>
+        <Button onClick={() => processMut.mutate()} disabled={processMut.isPending} size="sm" variant="secondary">
+          {processMut.isPending ? 'Checking...' : 'Check Twilio Responses'}
+        </Button>
       </div>
 
       <div className="p-6 space-y-4 pb-32">
-        {/* Controls row */}
+        {/* Controls */}
         <div className="flex items-end gap-3 flex-wrap">
-          <Input label="Date" type="date" value={date} onChange={e => { setDate(e.target.value); setSelected(new Set()); setAreaFilter(''); setCoordFilter(''); }} className="w-40" />
+          <Input label="Date" type="date" value={date} onChange={e => { setDate(e.target.value); setChecked(new Set()); setAreaFilter(''); setCoordFilter(''); }} className="w-40" />
           <div className="flex gap-1">
             {TABS.map(t => (
-              <button key={t.key} onClick={() => { setTab(t.key); setSelected(new Set()); }}
-                className={`px-3 py-1.5 text-sm rounded font-medium transition-colors ${tab === t.key ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              <button key={t.key} onClick={() => { setTab(t.key); setChecked(new Set()); setSelectedTemplateId(''); }}
+                className={`px-3 py-1.5 text-sm rounded font-medium ${tab === t.key ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 {t.label}
               </button>
             ))}
           </div>
           {areas.length > 1 && (
-            <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1.5 text-sm">
+            <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm">
               <option value="">All Areas</option>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
-          {coordinators.length > 1 && (
-            <select value={coordFilter} onChange={e => setCoordFilter(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          {coords.length > 1 && (
+            <select value={coordFilter} onChange={e => setCoordFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm">
               <option value="">All Coordinators</option>
-              {coordinators.map(c => <option key={c} value={c}>{c}</option>)}
+              {coords.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
         </div>
 
-        {/* Summary bar */}
-        <div className="flex gap-4 text-sm">
-          <span className="text-gray-600">{totalCount} session{totalCount !== 1 ? 's' : ''}</span>
-          <span className="text-green-600 font-medium">{confirmedCount} confirmed</span>
-          <span className="text-amber-600">{sentCount - confirmedCount} sent / awaiting</span>
-          <span className="text-gray-400">{unsentCount} not sent</span>
-          {selected.size > 0 && <span className="text-[#1e3a5f] font-medium">{selected.size} selected</span>}
-        </div>
-
-        {/* Action bar */}
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={selectAll} className="text-xs text-gray-500 hover:text-[#1e3a5f] underline">
-            {selected.size === sessions.length && sessions.length > 0 ? 'Deselect All' : 'Select All'}
-          </button>
-          <button onClick={selectUnsent} className="text-xs text-gray-500 hover:text-[#1e3a5f] underline">Select Unsent</button>
-          <button onClick={selectUnconfirmed} className="text-xs text-gray-500 hover:text-[#1e3a5f] underline">Select Unconfirmed</button>
-          {selected.size > 0 && (
-            <>
-              <Button onClick={handleSendSelected} disabled={sendMut.isPending} size="sm">
-                {sendMut.isPending ? 'Sending...' : `Send ${selected.size} Notification${selected.size > 1 ? 's' : ''}`}
-              </Button>
-              <Button onClick={() => {
-                const items = sessions.filter(s => selected.has(s.session_id || s.observation_id) && s.session_id);
-                if (!items.length) return;
-                if (!confirm(`Mark ${items.length} as confirmed?`)) return;
-                items.forEach(s => confirmMut.mutate({ sessionId: s.session_id, confirmed: true, date, type: tab, professor_id: s.professor_id }));
-              }} size="sm" variant="secondary">Confirm Selected</Button>
-            </>
-          )}
-        </div>
-
-        {/* Unconfirmed Warner */}
-        {unconfirmed.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <div className="text-sm font-medium text-red-800 mb-1">
-              {unconfirmed.length} Unconfirmed Session{unconfirmed.length > 1 ? 's' : ''} for {date}
-            </div>
-            <div className="space-y-0.5 max-h-32 overflow-y-auto">
-              {unconfirmed.map(u => (
-                <div key={u.session_id} className="text-xs text-red-700 flex gap-3">
-                  <span className="font-medium w-24 shrink-0">{u.professor_nickname}</span>
-                  <span className="flex-1">{u.program_nickname}</span>
-                  <span className="text-red-500 shrink-0">{u.notification_sent ? 'No reply' : 'Not notified'}</span>
-                  <span className="text-gray-400 shrink-0">{u.coordinator_name}</span>
-                </div>
-              ))}
-            </div>
+        {/* Bulk action bar */}
+        {checked.size > 0 && (
+          <div className="flex items-center gap-3 bg-[#1e3a5f]/5 border border-[#1e3a5f]/20 rounded-lg px-4 py-2">
+            <span className="text-sm font-medium text-[#1e3a5f]">{checked.size} selected</span>
+            {templates.length > 0 && (
+              <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1 text-sm">
+                <option value="">Default template</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
+            <Button onClick={bulkSend} disabled={sendMut.isPending} size="sm">
+              {sendMut.isPending ? 'Sending...' : `Send ${checked.size}`}
+            </Button>
+            <Button onClick={() => {
+              const items = rows.filter(r => checked.has(r.row_key));
+              if (!confirm(`Mark ${items.length} as confirmed?`)) return;
+              items.forEach(r => confirmMut.mutate({
+                sessionId: r.session_id, observation_id: r.observation_id,
+                confirmed: true, date, type: r.template_category || tab, professor_id: r.professor_id,
+              }));
+            }} size="sm" variant="secondary">Confirm {checked.size}</Button>
+            <button onClick={() => setChecked(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">Clear</button>
           </div>
         )}
 
-        {/* Main Table */}
+        {/* Unconfirmed warner */}
+        {unconfirmed.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+            <span className="text-sm font-medium text-red-800">{unconfirmed.length} unconfirmed</span>
+            <span className="text-xs text-red-600 ml-2">
+              {unconfirmed.slice(0, 5).map(u => u.professor_nickname).join(', ')}
+              {unconfirmed.length > 5 ? ` +${unconfirmed.length - 5} more` : ''}
+            </span>
+          </div>
+        )}
+
+        {/* Table */}
         {isLoading ? (
           <div className="flex justify-center py-12"><Spinner className="w-8 h-8" /></div>
-        ) : sessions.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="text-center text-gray-400 py-12">No {tab} sessions for {date}</div>
         ) : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+            <table className="w-full text-sm table-fixed">
+              <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="w-8 px-2 py-2.5">
-                    <input type="checkbox" checked={selected.size === sessions.length && sessions.length > 0}
-                      onChange={selectAll} className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+                  <th className="w-10 px-2 py-2.5 text-center">
+                    <input type="checkbox" checked={allChecked} onChange={toggleAll}
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
                   </th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Program</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Lead Prof</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Assist Prof</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Time</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Area</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Coordinator</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Confirm</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Notification</th>
-                  <th className="text-left px-2 py-2.5 font-medium text-gray-600 text-xs">Actions</th>
+                  <th className="w-[22%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Program</th>
+                  <th className="w-[10%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Professor</th>
+                  <th className="w-[7%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Role</th>
+                  <th className="w-[10%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Time</th>
+                  <th className="w-[9%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Area</th>
+                  <th className="w-[9%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Coordinator</th>
+                  <th className="w-[8%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Sent</th>
+                  <th className="w-[8%] text-left px-2 py-2.5 text-xs font-medium text-gray-600">Confirmed</th>
+                  <th className="w-[7%] text-left px-2 py-2.5 text-xs font-medium text-gray-600"></th>
                 </tr>
               </thead>
               <tbody>
-                {sessions.map((s, i) => {
-                  const id = s.session_id || s.observation_id;
-                  const isConfirmed = s.notif_confirm_status === 'confirmed';
-                  const isSent = !!s.notification_sent || s.send_status === 'sent';
-                  const time = s.start_time || s.session_time;
-                  const timeStr = time ? `${formatTime12(time)}–${formatTime12(endTime(time, s.class_length_minutes))}` : '—';
+                {rows.map((r, i) => {
+                  const isSent = r.send_status === 'sent';
+                  const isConfirmed = r.confirm_status === 'confirmed';
+                  const time = r.start_time || r.session_time;
                   return (
-                    <tr key={`${id}-${i}`} className={`border-b border-gray-100 hover:bg-gray-50/50 ${isConfirmed ? 'bg-green-50/40' : !isSent ? '' : 'bg-amber-50/30'}`}>
-                      <td className="px-2 py-2">
-                        <input type="checkbox" checked={selected.has(id)} onChange={() => toggleSelect(id)}
-                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+                    <tr key={r.row_key} className={`border-b border-gray-100 ${i % 2 ? 'bg-gray-50/50' : 'bg-white'} ${checked.has(r.row_key) ? '!bg-[#1e3a5f]/5' : ''}`}>
+                      <td className="px-2 py-2 text-center">
+                        <input type="checkbox" checked={checked.has(r.row_key)} onChange={() => toggleCheck(r.row_key)}
+                          disabled={isSent}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f] disabled:opacity-30" />
                       </td>
-                      <td className="px-2 py-2 font-medium text-gray-900 max-w-[220px] truncate">{s.program_nickname}</td>
-                      <td className="px-2 py-2 text-gray-700">{s.lead_professor_name || s.professor_nickname || '—'}</td>
-                      <td className="px-2 py-2 text-gray-500">{s.assistant_professor_name || '—'}</td>
-                      <td className="px-2 py-2 text-gray-600 whitespace-nowrap">{timeStr}</td>
-                      <td className="px-2 py-2 text-gray-500 text-xs">{s.geographic_area_name || '—'}</td>
-                      <td className="px-2 py-2 text-gray-500 text-xs">{s.coordinator_name || '—'}</td>
+                      <td className="px-2 py-2 truncate font-medium text-gray-900" title={r.program_nickname}>
+                        {r.program_nickname}
+                      </td>
+                      <td className="px-2 py-2 text-gray-700 truncate">{r.professor_nickname}</td>
                       <td className="px-2 py-2">
-                        {s.session_id ? (
-                          <button type="button" onClick={() => confirmMut.mutate({
-                            sessionId: s.session_id, confirmed: !isConfirmed,
-                            date, type: tab, professor_id: s.professor_id,
-                          })} className="cursor-pointer">
-                            {isConfirmed
-                              ? <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium hover:bg-green-200">Confirmed</span>
-                              : <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200">Unconfirmed</span>}
-                          </button>
-                        ) : '—'}
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${r.role === 'lead' ? 'bg-blue-50 text-blue-600' : r.role === 'assistant' ? 'bg-purple-50 text-purple-600' : 'bg-gray-50 text-gray-500'}`}>
+                          {r.role === 'lead' ? 'Lead' : r.role === 'assistant' ? 'Assist' : r.role === 'observer' ? 'Obs' : r.role}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-gray-600 text-xs whitespace-nowrap">
+                        {time ? `${fmt12(time)}–${fmtEnd(time, r.class_length_minutes)}` : '—'}
+                      </td>
+                      <td className="px-2 py-2 text-gray-500 text-xs truncate">{r.geographic_area_name || '—'}</td>
+                      <td className="px-2 py-2 text-gray-500 text-xs truncate">{r.coordinator_name || '—'}</td>
+                      <td className="px-2 py-2">
+                        {isSent
+                          ? <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">Sent</span>
+                          : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-2 py-2">
-                        <ConfirmBadge confirmed={false} sent={isSent} />
+                        <button type="button" onClick={() => confirmMut.mutate({
+                          sessionId: r.session_id, observation_id: r.observation_id,
+                          confirmed: !isConfirmed, date, type: r.template_category || tab, professor_id: r.professor_id,
+                        })}>
+                          {isConfirmed
+                            ? <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium hover:bg-green-200 cursor-pointer">Confirmed</span>
+                            : <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100 cursor-pointer">Unconfirmed</span>}
+                        </button>
                       </td>
                       <td className="px-2 py-2">
-                        <div className="flex gap-1.5 items-center">
-                          <button type="button" onClick={() => handleSendOne(s)}
-                            className="text-xs text-[#1e3a5f] hover:underline font-medium">
-                            {isSent ? 'Resend' : 'Send'}
-                          </button>
-                          <button type="button" onClick={() => setExpandedMsg(expandedMsg === id ? null : id)}
-                            className="text-xs text-gray-400 hover:text-gray-600">
-                            {expandedMsg === id ? 'Hide' : 'Msg'}
-                          </button>
+                        <div className="flex gap-1">
+                          {!isSent && (
+                            <button onClick={() => {
+                              if (!confirm(`Send to ${r.professor_nickname}?`)) return;
+                              sendMut.mutate([{
+                                session_id: r.session_id || null, professor_id: r.professor_id,
+                                phone: r.phone_formatted || r.phone_number, message: buildMessage(r),
+                                type: r.template_category || tab, notification_date: date,
+                              }]);
+                            }} className="text-xs text-[#1e3a5f] hover:underline font-medium">Send</button>
+                          )}
+                          <button onClick={() => setPreviewRow(previewRow === r.row_key ? null : r.row_key)}
+                            className="text-xs text-gray-400 hover:text-gray-600">{previewRow === r.row_key ? 'Hide' : 'Msg'}</button>
                         </div>
-                        {expandedMsg === id && (
-                          <pre className="mt-1.5 text-xs text-gray-600 bg-gray-50 p-2 rounded whitespace-pre-wrap max-w-md border">
-                            {s.generated_message}
+                        {previewRow === r.row_key && (
+                          <pre className="mt-1 text-xs text-gray-600 bg-gray-50 p-2 rounded whitespace-pre-wrap border max-w-sm">
+                            {buildMessage(r)}
                           </pre>
                         )}
                       </td>
@@ -343,29 +360,27 @@ export default function NotificationsPage() {
           </div>
         )}
 
-        {/* Custom Twilio Message */}
+        {/* SMS Templates */}
+        <Section title="SMS Templates" defaultOpen={false}>
+          <SmsTemplateManager templates={allTemplates} onRefresh={() => qc.invalidateQueries(['sms-templates'])} />
+        </Section>
+
+        {/* Custom Message */}
         <Section title="Custom Twilio Message" defaultOpen={false}>
           <div className="grid grid-cols-2 gap-4 max-w-2xl">
-            <SearchSelect
-              label="Professor"
-              options={profList}
-              displayKey="label" valueKey="id"
-              value={customProfId}
-              onChange={handleCustomProfSelect}
-              placeholder="Search professor..."
-            />
-            <Input label="Phone Number" value={customPhone} onChange={e => setCustomPhone(e.target.value)}
-              placeholder="+18181234567" />
+            <SearchSelect label="Professor" options={profList} displayKey="label" valueKey="id"
+              value={customProfId} onChange={id => { setCustomProfId(id); const m = profList.find(p => p.id === id); if (m?.phone_number) setCustomPhone(m.phone_number); }}
+              placeholder="Search professor..." />
+            <Input label="Phone Number" value={customPhone} onChange={e => setCustomPhone(e.target.value)} placeholder="+18181234567" />
             <div className="col-span-2">
               <label className="text-xs font-medium text-gray-700 mb-1 block">Message</label>
-              <textarea value={customMsg} onChange={e => setCustomMsg(e.target.value)}
-                rows={5} placeholder="Type your message..."
+              <textarea value={customMsg} onChange={e => setCustomMsg(e.target.value)} rows={5} placeholder="Type your message..."
                 className="block w-full rounded border border-gray-300 text-sm px-3 py-2 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
             </div>
             <div className="col-span-2 flex justify-end">
               <Button onClick={() => {
                 if (!customPhone || !customMsg) return alert('Phone and message required');
-                if (!confirm(`Send message to ${customPhone}?`)) return;
+                if (!confirm(`Send to ${customPhone}?`)) return;
                 customSendMut.mutate({ professor_id: customProfId || null, phone: customPhone, message: customMsg });
               }} disabled={customSendMut.isPending}>
                 {customSendMut.isPending ? 'Sending...' : 'Send Custom Message'}
@@ -378,12 +393,86 @@ export default function NotificationsPage() {
   );
 }
 
-// Helper to calculate end time string
-function endTime(startTime, lengthMinutes) {
-  if (!startTime || !lengthMinutes) return '';
-  const [h, m] = startTime.split(':').map(Number);
-  const total = h * 60 + m + lengthMinutes;
-  const eh = Math.floor(total / 60) % 24;
-  const em = total % 60;
-  return `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+// ── SMS Template Manager ──────────────────────────────────────
+function SmsTemplateManager({ templates, onRefresh }) {
+  const [selected, setSelected] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editBody, setEditBody] = useState('');
+
+  const saveMut = useMutation({
+    mutationFn: ({ id, name, body }) => api.put(`/notifications/sms-templates/${id}`, { name, body }).then(r => r.data),
+    onSuccess: () => { onRefresh(); alert('Template saved'); },
+  });
+
+  const categories = {
+    class_lead: 'Class Lead', class_assistant: 'Class Assistant',
+    party_lead: 'Party Lead', party_observe: 'Party Observe', observation: 'Observation',
+  };
+
+  const mergeFields = [
+    'program_nickname', 'day_name', 'short_date', 'start_time', 'end_time', 'arrival_time',
+    'address', 'contact_name', 'contact_phone', 'class_type', 'lesson_name', 'num_enrolled',
+    'lead_professor_name', 'lead_phone', 'party_format', 'child_info', 'notes',
+    'reminder_number', 'total_reminders',
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      <div className="space-y-1">
+        {templates.map(t => (
+          <button key={t.id} onClick={() => { setSelected(t); setEditName(t.name); setEditBody(t.body); }}
+            className={`w-full text-left px-3 py-2 rounded text-sm ${selected?.id === t.id ? 'bg-[#1e3a5f] text-white' : 'hover:bg-gray-50'}`}>
+            <div className="font-medium truncate">{t.name}</div>
+            <div className={`text-xs ${selected?.id === t.id ? 'text-white/70' : 'text-gray-400'}`}>{categories[t.category] || t.category}</div>
+          </button>
+        ))}
+      </div>
+      {selected && (
+        <div className="col-span-2 space-y-3">
+          <Input label="Template Name" value={editName} onChange={e => setEditName(e.target.value)} />
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1 block">Body</label>
+            <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={12}
+              className="block w-full rounded border border-gray-300 text-xs font-mono px-3 py-2 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+          </div>
+          <div className="flex items-start justify-between">
+            <div className="text-xs text-gray-400">
+              <span className="font-medium">Merge fields:</span>{' '}
+              {mergeFields.map(f => <code key={f} className="bg-gray-100 px-1 rounded mr-1">{`{{${f}}}`}</code>)}
+            </div>
+            <Button onClick={() => saveMut.mutate({ id: selected.id, name: editName, body: editBody })}
+              disabled={saveMut.isPending} size="sm">
+              {saveMut.isPending ? 'Saving...' : 'Save Template'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Time helpers ──────────────────────────────────────────────
+function fmt12(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':');
+  const hr = parseInt(h);
+  return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`;
+}
+
+function fmtEnd(start, mins) {
+  if (!start || !mins) return '';
+  const [h, m] = start.split(':').map(Number);
+  const tot = h * 60 + m + mins;
+  const eh = Math.floor(tot / 60) % 24;
+  const em = tot % 60;
+  return `${eh % 12 || 12}:${String(em).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+}
+
+function fmtArrival(start, before = 10) {
+  if (!start) return '';
+  const [h, m] = start.split(':').map(Number);
+  const tot = h * 60 + m - before;
+  const ah = Math.floor(tot / 60) % 24;
+  const am = tot % 60;
+  return `${ah % 12 || 12}:${String(am).padStart(2, '0')} ${ah >= 12 ? 'PM' : 'AM'}`;
 }
