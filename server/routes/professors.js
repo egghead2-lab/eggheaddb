@@ -342,36 +342,45 @@ router.put('/:id', authenticate, async (req, res, next) => {
     const fields = [
       'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email',
       'phone_number', 'address', 'city_id', 'general_notes', 'availability_notes',
+      'emergency_contact', 'emergency_contact_number',
       'birthday', 'hire_date',
-      'termination_date', 'termination_rason', 'base_pay', 'assist_pay',
+      'termination_date', 'termination_rason', 'schedule_link', 'base_pay', 'assist_pay',
       'pickup_pay', 'party_pay', 'camp_pay', 'science_trained_id', 'engineering_trained_id',
       'show_party_trained_id', 'robotics_trained_id',
       'scheduling_coordinator_owner_id', 'studysmart_trained_id', 'camp_trained_id',
       'virtus', 'virtus_date', 'tb_test', 'tb_date', 'rating', 'onboard_status_id',
-      'geographic_area_id', 'active',
+      'geographic_area_id', 'geographic_area', 'user_id', 'active',
     ];
 
     // Handle city/state/zip → city_id resolution
     if (data._zip_code && data._city_name) {
-      const zip = data._zip_code.trim();
-      const cityName = data._city_name.trim();
-      const stateCode = (data._state_code || 'CA').trim().toUpperCase();
+      try {
+        const zip = String(data._zip_code).trim().substring(0, 16);
+        const cityName = String(data._city_name).trim();
+        const stateCode = (data._state_code || 'CA').trim().toUpperCase();
 
-      // Find existing city by zip
-      const [existingCity] = await pool.query('SELECT id FROM city WHERE zip_code = ?', [zip]);
-      if (existingCity.length > 0) {
-        data.city_id = existingCity[0].id;
-      } else {
-        // Find state
-        const [stateRow] = await pool.query('SELECT id FROM state WHERE state_code = ?', [stateCode]);
-        const stateId = stateRow.length > 0 ? stateRow[0].id : 5; // default CA
-        // Find area from professor's current geographic area or default
-        const [[profArea]] = await pool.query('SELECT geographic_area_id FROM city WHERE id = (SELECT city_id FROM professor WHERE id = ?)', [id]);
-        const areaId = profArea?.geographic_area_id || 9;
-        // Create city
-        const [newCity] = await pool.query('INSERT INTO city (city_name, zip_code, state_id, geographic_area_id) VALUES (?, ?, ?, ?)',
-          [cityName, zip, stateId, areaId]);
-        data.city_id = newCity.insertId;
+        const [existingCity] = await pool.query('SELECT id FROM city WHERE zip_code = ?', [zip]);
+        if (existingCity.length > 0) {
+          data.city_id = existingCity[0].id;
+        } else {
+          const [stateRow] = await pool.query('SELECT id FROM state WHERE state_code = ?', [stateCode]);
+          const stateId = stateRow.length > 0 ? stateRow[0].id : 5;
+          const [[profArea]] = await pool.query('SELECT geographic_area_id FROM city WHERE id = (SELECT city_id FROM professor WHERE id = ?)', [id]);
+          const areaId = profArea?.geographic_area_id || 9;
+          try {
+            const [newCity] = await pool.query('INSERT INTO city (city_name, zip_code, state_id, geographic_area_id) VALUES (?, ?, ?, ?)',
+              [cityName.substring(0, 64), zip, stateId, areaId]);
+            data.city_id = newCity.insertId;
+          } catch (dupErr) {
+            if (dupErr.code === 'ER_DUP_ENTRY') {
+              const [found] = await pool.query('SELECT id FROM city WHERE zip_code = ?', [zip]);
+              if (found.length) data.city_id = found[0].id;
+            }
+          }
+        }
+      } catch (cityErr) {
+        console.warn('City resolution failed:', cityErr.message);
+        // Continue without city_id update
       }
     }
 

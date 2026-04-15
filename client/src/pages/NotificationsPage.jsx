@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
@@ -26,11 +26,19 @@ export default function NotificationsPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
   const [coordFilter, setCoordFilter] = useState('');
+  const [confirmFilter, setConfirmFilter] = useState('');
 
   // Custom message
   const [customProfId, setCustomProfId] = useState('');
   const [customPhone, setCustomPhone] = useState('');
   const [customMsg, setCustomMsg] = useState('');
+
+  // Inline status toast (replaces alert dialogs)
+  const [statusMsg, setStatusMsg] = useState(null);
+  const showStatus = (msg, type = 'success') => {
+    setStatusMsg({ msg, type });
+    setTimeout(() => setStatusMsg(null), 4000);
+  };
 
   const { data: profListData } = useProfessorList();
   const profList = (profListData?.data || []).map(p => ({
@@ -65,8 +73,30 @@ export default function NotificationsPage() {
   const rows = useMemo(() => allRows.filter(r => {
     if (areaFilter && r.geographic_area_name !== areaFilter) return false;
     if (coordFilter && r.coordinator_name !== coordFilter) return false;
+    if (confirmFilter === 'confirmed' && r.confirm_status !== 'confirmed') return false;
+    if (confirmFilter === 'unconfirmed' && r.confirm_status === 'confirmed') return false;
+    if (confirmFilter === 'sent' && r.send_status !== 'sent') return false;
+    if (confirmFilter === 'not_sent' && r.send_status === 'sent') return false;
     return true;
-  }), [allRows, areaFilter, coordFilter]);
+  }), [allRows, areaFilter, coordFilter, confirmFilter]);
+
+  // Urgent: classes starting within 2 hours that are unconfirmed
+  const urgentUnconfirmed = useMemo(() => {
+    const now = new Date();
+    const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    return allRows.filter(r => {
+      if (r.confirm_status === 'confirmed') return false;
+      if (!r.session_time && !r.start_time) return false;
+      const timeStr = r.session_time || r.start_time;
+      const dateStr = (r.session_date || '').toString().split('T')[0];
+      if (dateStr !== today()) return false;
+      try {
+        const [h, m] = timeStr.split(':').map(Number);
+        const classTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+        return classTime > now && classTime <= twoHoursFromNow;
+      } catch { return false; }
+    });
+  }, [allRows]);
 
   // Templates filtered by current categories in view
   const categories = useMemo(() => [...new Set(rows.map(r => r.template_category).filter(Boolean))], [rows]);
@@ -95,9 +125,11 @@ export default function NotificationsPage() {
       setChecked(new Set());
       const sent = data.data?.filter(d => d.status === 'sent').length || 0;
       const failed = data.data?.filter(d => d.status === 'failed').length || 0;
-      alert(`${sent} sent${failed ? `, ${failed} failed` : ''}`);
+      if (failed > 0 && sent === 0) showStatus(`All ${failed} failed to send`, 'error');
+      else if (failed > 0) showStatus(`${sent} sent, ${failed} failed`, 'error');
+      else showStatus(`${sent} sent successfully`);
     },
-    onError: (e) => alert('Send failed: ' + (e?.response?.data?.error || e.message)),
+    onError: (e) => showStatus('Send failed: ' + (e?.response?.data?.error || e.message), 'error'),
   });
 
   const confirmMut = useMutation({
@@ -105,23 +137,43 @@ export default function NotificationsPage() {
       if (params.observation_id) return api.post(`/notifications/confirm-observation/${params.observation_id}`, params).then(r => r.data);
       return api.post(`/notifications/confirm/${params.sessionId}`, params).then(r => r.data);
     },
-    onSuccess: () => qc.invalidateQueries(['notifications']),
+    onSuccess: () => { qc.invalidateQueries(['notifications']); qc.invalidateQueries(['notifications-unconfirmed']); },
   });
+
+  const [showResponses, setShowResponses] = useState(false);
+  const [processResults, setProcessResults] = useState(null);
 
   const processMut = useMutation({
     mutationFn: () => api.post('/notifications/process-responses').then(r => r.data),
     onSuccess: (data) => {
       qc.invalidateQueries(['notifications']);
-      const count = data.data?.filter(d => d.status === 'confirmed').reduce((s, d) => s + (d.count || 0), 0) || 0;
-      alert(count > 0 ? `${count} notification(s) auto-confirmed` : 'No new confirmations');
+      qc.invalidateQueries(['notifications-unconfirmed']);
+      const results = data.data || [];
+      const confirmed = results.filter(d => d.status === 'confirmed').reduce((s, d) => s + (d.count || 0), 0);
+      const unrecognized = results.filter(d => d.status === 'unrecognized_response');
+      const noOutstanding = results.filter(d => d.status === 'no_outstanding');
+
+      setProcessResults(results);
+      if (results.length === 0) showStatus('No new responses from Twilio');
+      else if (confirmed > 0 && unrecognized.length === 0) showStatus(`${confirmed} auto-confirmed`);
+      else if (unrecognized.length > 0) showStatus(`${confirmed} confirmed, ${unrecognized.length} unrecognized response(s) — check below`, 'error');
+      else showStatus(`${results.length} response(s) processed`);
+
+      if (unrecognized.length > 0 || noOutstanding.length > 0) setShowResponses(true);
     },
-    onError: (e) => alert('Error: ' + (e?.response?.data?.error || e.message)),
+    onError: (e) => showStatus('Error: ' + (e?.response?.data?.error || e.message), 'error'),
+  });
+
+  const { data: responsesData } = useQuery({
+    queryKey: ['twilio-responses'],
+    queryFn: () => api.get('/notifications/responses').then(r => r.data),
+    enabled: showResponses,
   });
 
   const customSendMut = useMutation({
     mutationFn: (data) => api.post('/notifications/send-custom', data).then(r => r.data),
-    onSuccess: () => { alert('Custom message sent'); setCustomMsg(''); },
-    onError: (e) => alert('Send failed: ' + (e?.response?.data?.error || e.message)),
+    onSuccess: () => { showStatus('Custom message sent'); setCustomMsg(''); },
+    onError: (e) => showStatus('Send failed: ' + (e?.response?.data?.error || e.message), 'error'),
   });
 
   // Build message from template + row merge vars
@@ -176,7 +228,7 @@ export default function NotificationsPage() {
         notification_date: date,
       }));
     if (!items.length) return;
-    if (!confirm(`Send ${items.length} notification(s)?`)) return;
+    // No confirmation dialog — send directly
     sendMut.mutate(items);
   };
 
@@ -200,6 +252,10 @@ export default function NotificationsPage() {
         <Button onClick={() => processMut.mutate()} disabled={processMut.isPending} size="sm" variant="secondary">
           {processMut.isPending ? 'Checking...' : 'Check Twilio Responses'}
         </Button>
+        <button onClick={() => setShowResponses(v => !v)}
+          className={`text-xs px-2 py-1.5 rounded font-medium ${showResponses ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+          {showResponses ? 'Hide Responses' : 'View Responses'}
+        </button>
       </div>
 
       <div className="p-6 space-y-4 pb-32">
@@ -226,33 +282,29 @@ export default function NotificationsPage() {
               {coords.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
+          <select value={confirmFilter} onChange={e => setConfirmFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm">
+            <option value="">All Status</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="unconfirmed">Unconfirmed</option>
+            <option value="sent">Sent (awaiting)</option>
+            <option value="not_sent">Not Sent</option>
+          </select>
         </div>
 
-        {/* Bulk action bar */}
-        {checked.size > 0 && (
-          <div className="flex items-center gap-3 bg-[#1e3a5f]/5 border border-[#1e3a5f]/20 rounded-lg px-4 py-2">
-            <span className="text-sm font-medium text-[#1e3a5f]">{checked.size} selected</span>
-            {templates.length > 0 && (
-              <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)}
-                className="rounded border border-gray-300 px-2 py-1 text-sm">
-                <option value="">Default template</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            )}
-            <Button onClick={bulkSend} disabled={sendMut.isPending} size="sm">
-              {sendMut.isPending ? 'Sending...' : `Send ${checked.size}`}
-            </Button>
-            <Button onClick={() => {
-              const items = rows.filter(r => checked.has(r.row_key));
-              if (!confirm(`Mark ${items.length} as confirmed?`)) return;
-              items.forEach(r => confirmMut.mutate({
-                sessionId: r.session_id, observation_id: r.observation_id,
-                confirmed: true, date, type: r.template_category || tab, professor_id: r.professor_id,
-              }));
-            }} size="sm" variant="secondary">Confirm {checked.size}</Button>
-            <button onClick={() => setChecked(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">Clear</button>
+        {/* Urgent warning */}
+        {urgentUnconfirmed.length > 0 && (
+          <div className="bg-red-50 border-2 border-red-300 rounded-lg px-4 py-3 flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <div className="text-sm font-bold text-red-800">{urgentUnconfirmed.length} unconfirmed class{urgentUnconfirmed.length !== 1 ? 'es' : ''} starting within 2 hours!</div>
+              <div className="text-xs text-red-600 mt-0.5">
+                {urgentUnconfirmed.map(r => `${r.professor_nickname} - ${r.program_nickname} (${r.session_time || r.start_time})`).join(' | ')}
+              </div>
+            </div>
           </div>
         )}
+
+        {/* Bulk actions are in the fixed bottom bar */}
 
         {/* Unconfirmed warner */}
         {unconfirmed.length > 0 && (
@@ -295,8 +347,8 @@ export default function NotificationsPage() {
                   const isSent = r.send_status === 'sent';
                   const isConfirmed = r.confirm_status === 'confirmed';
                   const time = r.start_time || r.session_time;
-                  return (
-                    <tr key={r.row_key} className={`border-b border-gray-100 ${i % 2 ? 'bg-gray-50/50' : 'bg-white'} ${checked.has(r.row_key) ? '!bg-[#1e3a5f]/5' : ''}`}>
+                  return (<React.Fragment key={r.row_key}>
+                    <tr className={`border-b border-gray-100 ${i % 2 ? 'bg-gray-50/50' : 'bg-white'} ${checked.has(r.row_key) ? '!bg-[#1e3a5f]/5' : ''}`}>
                       <td className="px-2 py-2 text-center">
                         <input type="checkbox" checked={checked.has(r.row_key)} onChange={() => toggleCheck(r.row_key)}
                           disabled={isSent}
@@ -332,33 +384,37 @@ export default function NotificationsPage() {
                         </button>
                       </td>
                       <td className="px-2 py-2">
-                        <div className="flex gap-1">
-                          {!isSent && (
-                            <button onClick={() => {
-                              if (!confirm(`Send to ${r.professor_nickname}?`)) return;
-                              sendMut.mutate([{
-                                session_id: r.session_id || null, professor_id: r.professor_id,
-                                phone: r.phone_formatted || r.phone_number, message: buildMessage(r),
-                                type: r.template_category || tab, notification_date: date,
-                              }]);
-                            }} className="text-xs text-[#1e3a5f] hover:underline font-medium">Send</button>
-                          )}
-                          <button onClick={() => setPreviewRow(previewRow === r.row_key ? null : r.row_key)}
-                            className="text-xs text-gray-400 hover:text-gray-600">{previewRow === r.row_key ? 'Hide' : 'Msg'}</button>
-                        </div>
-                        {previewRow === r.row_key && (
-                          <pre className="mt-1 text-xs text-gray-600 bg-gray-50 p-2 rounded whitespace-pre-wrap border max-w-sm">
-                            {buildMessage(r)}
-                          </pre>
-                        )}
+                        <button onClick={() => setPreviewRow(previewRow === r.row_key ? null : r.row_key)}
+                          className={`text-xs px-1.5 py-0.5 rounded font-medium ${previewRow === r.row_key ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                          {previewRow === r.row_key ? 'Hide' : 'View Msg'}
+                        </button>
                       </td>
                     </tr>
-                  );
+                    {previewRow === r.row_key && (
+                      <tr>
+                        <td colSpan={20} className="px-4 py-2 bg-gray-50/50">
+                          <pre className="text-xs text-gray-600 bg-white p-3 rounded border whitespace-pre-wrap">{buildMessage(r)}</pre>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>);
                 })}
               </tbody>
             </table>
           </div>
         )}
+
+        {/* Twilio Responses */}
+        {showResponses && (
+          <Section title="Twilio Responses (Last 24h)" defaultOpen={true}>
+            <ResponsesPanel responses={responsesData?.data || []} processResults={processResults} />
+          </Section>
+        )}
+
+        {/* Confirm Phrases */}
+        <Section title="Confirm Phrases" defaultOpen={false}>
+          <ConfirmPhrasesManager />
+        </Section>
 
         {/* SMS Templates */}
         <Section title="SMS Templates" defaultOpen={false}>
@@ -379,8 +435,8 @@ export default function NotificationsPage() {
             </div>
             <div className="col-span-2 flex justify-end">
               <Button onClick={() => {
-                if (!customPhone || !customMsg) return alert('Phone and message required');
-                if (!confirm(`Send to ${customPhone}?`)) return;
+                if (!customPhone || !customMsg) return showStatus('Phone and message required', 'error');
+                // Direct send — no popup
                 customSendMut.mutate({ professor_id: customProfId || null, phone: customPhone, message: customMsg });
               }} disabled={customSendMut.isPending}>
                 {customSendMut.isPending ? 'Sending...' : 'Send Custom Message'}
@@ -389,11 +445,179 @@ export default function NotificationsPage() {
           </div>
         </Section>
       </div>
+      {/* Fixed bottom bar when items selected */}
+      {checked.size > 0 && (
+        <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.1)] px-6 py-3 z-30 flex items-center gap-3">
+          <span className="text-sm font-medium text-[#1e3a5f]">{checked.size} selected</span>
+          {templates.length > 0 && (
+            <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1 text-sm">
+              <option value="">Default template</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          <SendConfirmButton count={checked.size} onConfirm={bulkSend} isPending={sendMut.isPending} />
+          <Button onClick={() => {
+            const items = rows.filter(r => checked.has(r.row_key));
+            items.forEach(r => confirmMut.mutate({
+              sessionId: r.session_id, observation_id: r.observation_id,
+              confirmed: true, date, type: r.template_category || tab, professor_id: r.professor_id,
+            }));
+          }} size="sm" variant="secondary">Confirm {checked.size}</Button>
+          <button onClick={() => setChecked(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">Clear</button>
+        </div>
+      )}
+
+      {statusMsg && (
+        <div className={`fixed bottom-${checked.size > 0 ? '16' : '4'} right-4 px-4 py-2 rounded-lg text-sm shadow-lg z-50 ${
+          statusMsg.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+        }`}>{statusMsg.msg}</div>
+      )}
     </AppShell>
   );
 }
 
+// ── Send Confirm Button (inline two-step) ────────────────────
+function SendConfirmButton({ count, onConfirm, isPending }) {
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (confirming) {
+      const timer = setTimeout(() => setConfirming(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [confirming]);
+
+  if (isPending) return <Button size="sm" disabled>Sending...</Button>;
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-amber-700 font-medium">Send {count} SMS?</span>
+        <button onClick={() => { setConfirming(false); onConfirm(); }}
+          className="px-2.5 py-1 rounded bg-red-500 hover:bg-red-600 text-white text-xs font-medium">
+          Yes, Send
+        </button>
+        <button onClick={() => setConfirming(false)}
+          className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-medium">
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return <Button onClick={() => setConfirming(true)} size="sm">Send {count}</Button>;
+}
+
 // ── SMS Template Manager ──────────────────────────────────────
+// ── Twilio Responses Panel ────────────────────────────────────
+const STATUS_COLORS = {
+  confirmed: 'bg-green-100 text-green-700',
+  no_outstanding: 'bg-amber-100 text-amber-700',
+  unrecognized_response: 'bg-red-100 text-red-700',
+  unknown_sender: 'bg-gray-100 text-gray-500',
+  ignored: 'bg-gray-100 text-gray-400',
+};
+const STATUS_LABELS = {
+  confirmed: 'Auto-Confirmed',
+  no_outstanding: 'No Outstanding Classes',
+  unrecognized_response: 'Unrecognized',
+  unknown_sender: 'Unknown Number',
+  ignored: 'Ignored',
+};
+
+function ResponsesPanel({ responses, processResults }) {
+  const items = responses.length > 0 ? responses : (processResults || []);
+
+  if (items.length === 0) return <p className="text-sm text-gray-400">No responses in the last 24 hours. Click "Check Twilio Responses" to fetch.</p>;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">From</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Professor</th>
+            <th className="text-left px-3 py-2 font-medium text-gray-600">Message</th>
+            <th className="text-center px-3 py-2 font-medium text-gray-600">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {items.map((r, i) => {
+            const status = r.match_status || r.status || 'unknown_sender';
+            const isAlert = status === 'unrecognized_response' || status === 'no_outstanding';
+            return (
+              <tr key={r.id || r.sid || i} className={isAlert ? 'bg-red-50/30' : ''}>
+                <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.received_at ? new Date(r.received_at).toLocaleTimeString() : '—'}</td>
+                <td className="px-3 py-2 text-gray-500">{r.from_phone || r.from || '—'}</td>
+                <td className="px-3 py-2 font-medium text-gray-800">{r.professor_name || r.professor || <span className="text-gray-400">Unknown</span>}</td>
+                <td className="px-3 py-2">
+                  <span className={`font-medium ${isAlert ? 'text-red-700' : 'text-gray-700'}`}>{r.body || '—'}</span>
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-500'}`}>
+                    {STATUS_LABELS[status] || status}
+                  </span>
+                  {r.matched_count > 0 && <span className="text-[9px] text-gray-400 ml-1">({r.matched_count})</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Confirm Phrases Manager ──────────────────────────────────
+function ConfirmPhrasesManager() {
+  const qc = useQueryClient();
+  const [newPhrase, setNewPhrase] = useState('');
+
+  const { data } = useQuery({
+    queryKey: ['confirm-phrases'],
+    queryFn: () => api.get('/notifications/confirm-phrases').then(r => r.data),
+  });
+  const phrases = data?.data || [];
+
+  const saveMut = useMutation({
+    mutationFn: (phrases) => api.put('/notifications/confirm-phrases', { phrases }),
+    onSuccess: () => qc.invalidateQueries(['confirm-phrases']),
+  });
+
+  const addPhrase = () => {
+    if (!newPhrase.trim() || phrases.includes(newPhrase.trim().toLowerCase())) return;
+    saveMut.mutate([...phrases, newPhrase.trim().toLowerCase()]);
+    setNewPhrase('');
+  };
+
+  const removePhrase = (p) => {
+    saveMut.mutate(phrases.filter(x => x !== p));
+  };
+
+  return (
+    <div>
+      <p className="text-xs text-gray-500 mb-2">Responses matching these phrases (case-insensitive) will auto-confirm outstanding notifications.</p>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {phrases.map(p => (
+          <span key={p} className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200">
+            {p}
+            <button onClick={() => removePhrase(p)} className="text-green-400 hover:text-red-500">&times;</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input type="text" value={newPhrase} onChange={e => setNewPhrase(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') addPhrase(); }}
+          placeholder="Add phrase..." className="rounded border border-gray-300 px-2 py-1 text-xs w-40" />
+        <button onClick={addPhrase} disabled={!newPhrase.trim()}
+          className="text-xs px-2 py-1 rounded bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50">Add</button>
+      </div>
+    </div>
+  );
+}
+
 function SmsTemplateManager({ templates, onRefresh }) {
   const [selected, setSelected] = useState(null);
   const [editName, setEditName] = useState('');

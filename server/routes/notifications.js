@@ -355,10 +355,13 @@ router.post('/send', authenticate, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'No items to send' });
     }
 
+    const validTypes = new Set(['class', 'party', 'observation', 'party_observation', 'custom']);
+    const typeMap = { class_lead: 'class', class_assistant: 'class', party_lead: 'party', party_assistant: 'party' };
     const results = [];
     for (const item of items) {
       const phone = normalizePhone(item.phone);
       if (!phone) { results.push({ ...item, status: 'failed', error: 'Invalid phone' }); continue; }
+      const dbType = validTypes.has(item.type) ? item.type : (typeMap[item.type] || 'class');
 
       try {
         const { sid } = await sendSms(phone, item.message);
@@ -367,7 +370,7 @@ router.post('/send', authenticate, async (req, res, next) => {
            (notification_type, professor_id, session_id, phone_number, message_body,
             twilio_sid, send_status, notification_date, sent_at, sent_by)
            VALUES (?, ?, ?, ?, ?, ?, 'sent', ?, NOW(), ?)`,
-          [item.type || 'class', item.professor_id, item.session_id || null,
+          [dbType, item.professor_id, item.session_id || null,
            phone, item.message, sid, item.notification_date || new Date().toISOString().split('T')[0],
            req.user.userId]
         );
@@ -381,7 +384,7 @@ router.post('/send', authenticate, async (req, res, next) => {
            (notification_type, professor_id, session_id, phone_number, message_body,
             send_status, notification_date, sent_by)
            VALUES (?, ?, ?, ?, ?, 'failed', ?, ?)`,
-          [item.type || 'class', item.professor_id, item.session_id || null,
+          [dbType, item.professor_id, item.session_id || null,
            phone, item.message, item.notification_date || new Date().toISOString().split('T')[0],
            req.user.userId]
         );
@@ -419,6 +422,11 @@ router.post('/confirm/:sessionId', authenticate, async (req, res, next) => {
     const { sessionId } = req.params;
     const { confirmed, date, type = 'class', professor_id } = req.body;
     const targetDate = date || new Date().toISOString().split('T')[0];
+    // Normalize type to valid enum values
+    const validTypes = new Set(['class', 'party', 'observation', 'party_observation', 'custom']);
+    const typeMap = { class_lead: 'class', class_assistant: 'class', party_lead: 'party', party_assistant: 'party' };
+    const dbType = validTypes.has(type) ? type : (typeMap[type] || 'class');
+
     const [[existing]] = await pool.query(
       `SELECT id FROM notification_log WHERE session_id = ? AND professor_id = ? AND notification_date = ? AND active = 1 ORDER BY id DESC LIMIT 1`,
       [sessionId, professor_id, targetDate]
@@ -432,7 +440,7 @@ router.post('/confirm/:sessionId', authenticate, async (req, res, next) => {
       await pool.query(
         `INSERT INTO notification_log (notification_type, professor_id, session_id, phone_number, message_body, send_status, confirm_status, confirmed_at, notification_date, sent_by)
          VALUES (?, ?, ?, '', 'Manual confirmation', 'pending', ?, ${confirmed ? 'NOW()' : 'NULL'}, ?, ?)`,
-        [type, professor_id, sessionId, confirmed ? 'confirmed' : 'unconfirmed', targetDate, req.user.userId]
+        [dbType, professor_id, sessionId, confirmed ? 'confirmed' : 'unconfirmed', targetDate, req.user.userId]
       );
     }
     res.json({ success: true });
@@ -466,48 +474,121 @@ router.post('/confirm-observation/:observationId', authenticate, async (req, res
 });
 
 // ═══════════════════════════════════════════════════════════════
-// POST /api/notifications/process-responses
+// POST /api/notifications/process-responses — check Twilio inbound and auto-match
 // ═══════════════════════════════════════════════════════════════
 router.post('/process-responses', authenticate, async (req, res, next) => {
   try {
     const messages = await getInboundMessages(200);
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000); // last 24 hours
+
+    // Load confirm phrases from DB (or use defaults)
+    const [phraseRows] = await pool.query("SELECT setting_value FROM app_setting WHERE setting_key = 'confirm_phrases'");
+    let confirmPhrases = ['yes', 'yes!', 'yes.', 'yep', 'yeah', 'yea', 'confirmed', 'confirm', 'y', 'yes to all', 'yes to both', 'yup', 'si', 'ok', 'okay'];
+    if (phraseRows.length > 0 && phraseRows[0].setting_value) {
+      try { confirmPhrases = JSON.parse(phraseRows[0].setting_value); } catch (e) {}
+    }
+    const confirmSet = new Set(confirmPhrases.map(p => p.toLowerCase().trim()));
+
+    // Build phone → professor map
     const [professors] = await pool.query(
       'SELECT id, phone_number, professor_nickname FROM professor WHERE active = 1 AND phone_number IS NOT NULL'
     );
     const phoneMap = {};
     professors.forEach(p => { const n = normalizePhone(p.phone_number); if (n) phoneMap[n] = p; });
 
-    const processed = [];
-    for (const msg of messages) {
-      if (!msg.dateSent) continue;
-      const msgDate = new Date(msg.dateSent).toISOString().split('T')[0];
-      if (msgDate !== today) continue;
-      const professor = phoneMap[msg.from];
-      if (!professor) continue;
-      const [[already]] = await pool.query(
-        "SELECT id FROM notification_log WHERE response_message = ? AND professor_id = ? AND notification_date = ?",
-        [msg.sid, professor.id, today]
-      );
-      if (already) continue;
+    // Already-processed SIDs (avoid duplicates)
+    const [existingSids] = await pool.query(
+      "SELECT DISTINCT response_sid FROM twilio_response WHERE created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+    );
+    const processedSids = new Set(existingSids.map(r => r.response_sid));
 
-      if (isConfirmResponse(msg.body)) {
-        const [logs] = await pool.query(
-          `SELECT id FROM notification_log WHERE professor_id = ? AND notification_date = ? AND active = 1 AND confirm_status = 'unconfirmed'`,
-          [professor.id, today]
-        );
-        for (const log of logs) {
-          await pool.query(
-            `UPDATE notification_log SET confirm_status = 'confirmed', confirmed_at = NOW(), response_message = ? WHERE id = ?`,
-            [msg.sid, log.id]
+    const results = [];
+    for (const msg of messages) {
+      if (!msg.dateSent || new Date(msg.dateSent) < cutoff) continue;
+      if (processedSids.has(msg.sid)) continue;
+
+      const professor = phoneMap[msg.from];
+      const bodyNorm = (msg.body || '').trim().toLowerCase();
+      const isConfirm = confirmSet.has(bodyNorm);
+      const profName = professor?.professor_nickname || null;
+      const profId = professor?.id || null;
+
+      let matchStatus = 'unknown_sender';
+      let matchedCount = 0;
+
+      if (professor) {
+        if (isConfirm) {
+          // Find outstanding unconfirmed notifications for this professor (today or upcoming)
+          const [logs] = await pool.query(
+            `SELECT id, notification_date FROM notification_log
+             WHERE professor_id = ? AND active = 1
+             AND (confirm_status IS NULL OR confirm_status = 'unconfirmed')
+             AND send_status = 'sent'
+             AND notification_date >= CURDATE()
+             ORDER BY notification_date ASC`,
+            [profId]
           );
+          if (logs.length > 0) {
+            for (const log of logs) {
+              await pool.query(
+                "UPDATE notification_log SET confirm_status = 'confirmed', confirmed_at = NOW(), response_message = ? WHERE id = ?",
+                [msg.body, log.id]
+              );
+            }
+            matchStatus = 'confirmed';
+            matchedCount = logs.length;
+          } else {
+            matchStatus = 'no_outstanding';
+          }
+        } else {
+          matchStatus = 'unrecognized_response';
         }
-        processed.push({ professor: professor.professor_nickname, from: msg.from, body: msg.body, status: 'confirmed', count: logs.length });
-      } else {
-        processed.push({ professor: professor.professor_nickname, from: msg.from, body: msg.body, status: 'unrecognized' });
       }
+
+      // Store all responses
+      await pool.query(
+        `INSERT INTO twilio_response (twilio_sid, response_sid, from_phone, professor_id, professor_name, body, match_status, matched_count, received_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [msg.sid, msg.sid, msg.from, profId, profName, msg.body, matchStatus, matchedCount, msg.dateSent]
+      );
+
+      results.push({ sid: msg.sid, professor: profName, from: msg.from, body: msg.body, status: matchStatus, count: matchedCount });
     }
-    res.json({ success: true, data: processed });
+
+    res.json({ success: true, data: results });
+  } catch (err) { next(err); }
+});
+
+// GET /api/notifications/responses — recent Twilio responses (last 24h)
+router.get('/responses', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT * FROM twilio_response WHERE created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR) ORDER BY received_at DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/notifications/confirm-phrases — get custom confirm phrases
+router.get('/confirm-phrases', authenticate, async (req, res, next) => {
+  try {
+    const [[row]] = await pool.query("SELECT setting_value FROM app_setting WHERE setting_key = 'confirm_phrases'");
+    const phrases = row?.setting_value ? JSON.parse(row.setting_value) : ['yes', 'yes!', 'yep', 'yeah', 'yea', 'confirmed', 'confirm', 'y', 'yes to all', 'yes to both', 'yup', 'ok', 'okay'];
+    res.json({ success: true, data: phrases });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/notifications/confirm-phrases — update confirm phrases
+router.put('/confirm-phrases', authenticate, async (req, res, next) => {
+  try {
+    const { phrases } = req.body;
+    if (!Array.isArray(phrases)) return res.status(400).json({ success: false, error: 'phrases array required' });
+    await pool.query(
+      "INSERT INTO app_setting (setting_key, setting_value) VALUES ('confirm_phrases', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+      [JSON.stringify(phrases), JSON.stringify(phrases)]
+    );
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

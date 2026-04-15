@@ -1026,11 +1026,19 @@ export default function ProfessorDetailPage() {
     if (profData?.data) reset(toFormData(profData.data));
   }, [profData]);
 
+  const [saveStatus, setSaveStatus] = useState(null);
   const mutation = useMutation({
     mutationFn: (data) => isNew ? createProfessor(data) : updateProfessor(id, data),
     onSuccess: (res) => {
       qc.invalidateQueries(['professors']);
+      qc.invalidateQueries(['professors', id]);
+      setSaveStatus({ type: 'success', msg: 'Saved!' });
+      setTimeout(() => setSaveStatus(null), 3000);
       if (isNew && res?.id) navigate(`/professors/${res.id}`);
+    },
+    onError: (e) => {
+      setSaveStatus({ type: 'error', msg: e?.response?.data?.error || e.message || 'Save failed' });
+      setTimeout(() => setSaveStatus(null), 5000);
     },
   });
 
@@ -1442,6 +1450,11 @@ export default function ProfessorDetailPage() {
           </div>
         </div>
       </form>
+      {saveStatus && (
+        <div className={`fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm shadow-lg z-50 ${
+          saveStatus.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+        }`}>{saveStatus.msg}</div>
+      )}
     </AppShell>
   );
 }
