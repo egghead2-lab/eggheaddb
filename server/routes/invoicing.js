@@ -53,7 +53,11 @@ router.get('/queue', authenticate, async (req, res, next) => {
               loc.class_pricing_type_id, prog.payment_through_us,
               loc.id AS location_id, loc.nickname AS location_nickname, loc.school_name,
               loc.contractor_id, loc.invoice_type AS loc_invoice_type,
+              loc.invoicing_notes AS loc_invoicing_notes,
+              loc.invoice_contact_name AS loc_contact_name, loc.invoice_contact_email AS loc_contact_email, loc.invoice_contact_phone AS loc_contact_phone,
               con.contractor_name, con.invoice_type AS con_invoice_type, con.invoice_per_location,
+              con.invoice_notes AS con_invoice_notes,
+              con.invoice_contact_name AS con_contact_name, con.invoice_contact_email AS con_contact_email, con.invoice_contact_phone AS con_contact_phone,
               cs.class_status_name,
               cpt.class_pricing_type_name,
               pt.program_type_name,
@@ -158,7 +162,7 @@ router.get('/queue', authenticate, async (req, res, next) => {
     let filtered = data;
     if (invoice_type) filtered = filtered.filter(r => r.effective_invoice_type === invoice_type);
     if (status === 'Ready') filtered = filtered.filter(r => r.status === 'Ready');
-    else if (status === 'Pending') filtered = filtered.filter(r => r.status === 'Pending' || r.status === 'Ready');
+    else if (status === 'Pending') filtered = filtered.filter(r => r.status === 'Pending');
     else if (status !== 'All') filtered = filtered.filter(r => r.status !== 'Invoiced');
 
     const lastQb = await getLastQbInvoiceNumber();

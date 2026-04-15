@@ -75,7 +75,7 @@ export default function PastProgramsPanel({ locationId }) {
                   <tr key={p.id} className={`${cancelled ? 'opacity-40' : ''} ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1">
-                        <span className="font-medium text-gray-900 truncate max-w-[200px]">{p.program_nickname}</span>
+                        <span className="font-medium text-gray-900 whitespace-nowrap">{p.program_nickname}</span>
                         <CopyButton text={p.program_nickname} label="copy" />
                       </div>
                     </td>

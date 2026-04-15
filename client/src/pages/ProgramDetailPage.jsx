@@ -209,9 +209,11 @@ export default function ProgramDetailPage() {
           <Section title={(() => {
             const paid = watch('invoice_paid');
             const sent = watch('invoice_date_sent');
-            const status = paid ? 'Paid' : sent ? 'Sent' : 'Not Sent';
-            const color = paid ? 'text-green-600' : sent ? 'text-amber-600' : 'text-red-500';
-            return <span>Invoicing <span className={`text-xs font-medium ${color}`}>({status})</span></span>;
+            const qbNum = prog.qb_invoice_number;
+            const qbStatus = prog.qb_invoice_status;
+            const status = paid ? 'Paid' : qbStatus === 'Paid' ? 'Paid (QB)' : sent ? 'Sent' : 'Not Sent';
+            const color = paid || qbStatus === 'Paid' ? 'text-green-600' : sent ? 'text-amber-600' : 'text-red-500';
+            return <span>Invoicing <span className={`text-xs font-medium ${color}`}>({status})</span>{qbNum ? <span className="text-xs text-gray-400 ml-2">#{qbNum}</span> : ''}</span>;
           })()} defaultOpen={false}>
             <div className="grid grid-cols-4 gap-4">
               <Toggle label="Invoice Needed" checked={!!watch('invoice_needed')} onChange={v => setValue('invoice_needed', v ? 1 : 0, { shouldDirty: true })} />
@@ -223,7 +225,20 @@ export default function ProgramDetailPage() {
                   className="text-xs text-[#1e3a5f] hover:underline text-left py-1.5">Mark Sent Today</button>
               </div>
             </div>
-            <div className="mt-4">
+            {prog.qb_invoice_number && (
+              <div className="mt-3 flex items-center gap-4 text-xs">
+                <span className="text-gray-500">QB Invoice: <span className="font-medium text-gray-800">#{prog.qb_invoice_number}</span></span>
+                {prog.qb_invoice_status && (
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    prog.qb_invoice_status === 'Paid' ? 'bg-green-100 text-green-700' :
+                    prog.qb_invoice_status === 'Overdue' ? 'bg-red-100 text-red-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>{prog.qb_invoice_status}</span>
+                )}
+                {prog.qb_invoice_balance > 0 && <span className="text-gray-400">Balance: {formatCurrency(prog.qb_invoice_balance)}</span>}
+              </div>
+            )}
+            <div className="mt-3">
               <Input label="Invoice Notes" {...register('invoice_notes')} />
             </div>
           </Section>

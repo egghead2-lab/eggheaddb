@@ -25,8 +25,9 @@ export default function InvoiceQueuePage() {
   const qc = useQueryClient();
   const [contractor, setContractor] = useState('');
   const [invType, setInvType] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Ready');
   const [checked, setChecked] = useState(new Set());
+  const [expandedId, setExpandedId] = useState(null);
   const [showGenerate, setShowGenerate] = useState(false);
 
   // Generate form
@@ -164,10 +165,11 @@ export default function InvoiceQueuePage() {
           <option value="2nd Week">2nd Week</option>
           <option value="After Last Class">After Last Class</option>
         </Select>
-        <Select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setDisplayLimit(50); }} className="w-32">
-          <option value="">Not Invoiced</option>
-          <option value="Ready">Ready</option>
-          <option value="All">All</option>
+        <Select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setDisplayLimit(50); }} className="w-40">
+          <option value="Ready">Ready to Invoice</option>
+          <option value="Pending">Pending (Not Yet Due)</option>
+          <option value="">All Uninvoiced</option>
+          <option value="All">All (incl. Invoiced)</option>
         </Select>
         <span className="text-xs text-gray-400">
           Showing {rows.length} of {allRows.length}
@@ -201,15 +203,28 @@ export default function InvoiceQueuePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {rows.map((r, i) => (
-                    <tr key={r.id} className={`${checked.has(r.id) ? 'bg-blue-50/50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                      <td className="px-2 py-2 text-center">
+                  {rows.map((r, i) => {
+                    const isExpanded = expandedId === r.id;
+                    const colCount = qbConnected ? 13 : 12;
+                    // Smart notes: show program notes always, then contractor notes if contractor-driven, else location notes
+                    const hasContractor = !!r.contractor_id;
+                    const invoiceNotes = hasContractor ? r.con_invoice_notes : r.loc_invoicing_notes;
+                    const contactName = hasContractor && !r.invoice_per_location ? r.con_contact_name : r.loc_contact_name;
+                    const contactEmail = hasContractor && !r.invoice_per_location ? r.con_contact_email : r.loc_contact_email;
+                    const contactPhone = hasContractor && !r.invoice_per_location ? r.con_contact_phone : r.loc_contact_phone;
+
+                    return (<>
+                    <tr key={r.id} className={`cursor-pointer hover:bg-blue-50/30 ${checked.has(r.id) ? 'bg-blue-50/50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                      onClick={() => setExpandedId(isExpanded ? null : r.id)}>
+                      <td className="px-2 py-2 text-center" onClick={e => e.stopPropagation()}>
                         <input type="checkbox" checked={checked.has(r.id)} onChange={() => toggleCheck(r.id)} disabled={r.status === 'Invoiced'} className="w-3.5 h-3.5" />
                       </td>
-                      <td className="px-2 py-2"><Link to={`/programs/${r.id}`} className="font-medium text-[#1e3a5f] hover:underline">{r.program_nickname}</Link></td>
+                      <td className="px-2 py-2">
+                        <Link to={`/programs/${r.id}`} className="font-medium text-[#1e3a5f] hover:underline" onClick={e => e.stopPropagation()}>{r.program_nickname}</Link>
+                      </td>
                       <td className="px-2 py-2 text-gray-600">{r.location_nickname || '—'}</td>
                       <td className="px-2 py-2 text-gray-600">{r.contractor_name || '—'}</td>
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
                         {r.missing_invoice_type ? (
                           <InvoiceTypeSelector row={r} />
                         ) : (
@@ -235,7 +250,38 @@ export default function InvoiceQueuePage() {
                         </td>
                       )}
                     </tr>
-                  ))}
+                    {isExpanded && (
+                      <tr key={`${r.id}-detail`} className="bg-blue-50/20">
+                        <td colSpan={colCount} className="px-4 py-3">
+                          <div className="grid grid-cols-3 gap-4 text-xs">
+                            <div>
+                              <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Invoice Contact</div>
+                              <div className="text-gray-700 font-medium">{contactName || <span className="text-gray-300">No contact set</span>}</div>
+                              {contactEmail && <div className="text-gray-500">{contactEmail}</div>}
+                              {contactPhone && <div className="text-gray-500">{contactPhone}</div>}
+                              {r.invoice_per_location && <div className="text-[10px] text-amber-600 mt-1 font-medium">Each location gets own invoice</div>}
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">
+                                {hasContractor ? 'Contractor' : 'Location'} Invoice Notes
+                              </div>
+                              <div className="text-gray-600">{invoiceNotes || <span className="text-gray-300">None</span>}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Program Invoice Notes</div>
+                              <div className="text-gray-600">{r.invoice_notes || <span className="text-gray-300">None</span>}</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[10px] text-gray-400">
+                            {r.billable_date_list && <span>Dates: {r.billable_date_list}</span>}
+                            {r.billable_sessions > 0 && <span className="ml-2">({r.billable_sessions} billable sessions)</span>}
+                            {r.days && <span className="ml-2">Day: {r.days}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </>);
+                  })}
                 </tbody>
               </table>
             </CopyableTable>
@@ -261,14 +307,18 @@ export default function InvoiceQueuePage() {
               </div>
               <div className="p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] text-gray-500 block mb-0.5">Invoice #</label>
-                    <input type="number" value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-sm" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 block mb-0.5">Customer</label>
-                    <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-sm" />
-                  </div>
+                  {!qbConnected && (
+                    <>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Invoice #</label>
+                        <input type="number" value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Customer</label>
+                        <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-sm" />
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label className="text-[10px] text-gray-500 block mb-0.5">Invoice Date</label>
                     <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-sm" />
@@ -307,28 +357,33 @@ export default function InvoiceQueuePage() {
                   <div className="border-t border-gray-100 pt-3">
                     <div className="text-xs font-semibold text-gray-500 mb-1">Push to QuickBooks</div>
                     <select value={qbCustomerId} onChange={e => setQbCustomerId(e.target.value)}
-                      className="w-full rounded border border-gray-300 px-2 py-1 text-sm mb-2">
+                      className="w-full rounded border border-gray-300 px-2 py-1 text-sm mb-1">
                       <option value="">Select QB Customer...</option>
                       {qbCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
+                    <NewQbCustomer onCreated={(c) => { qc.invalidateQueries(['qb-customers']); setQbCustomerId(c.id); }} />
                     <Button onClick={() => {
                       if (!qbCustomerId) return alert('Select a QB customer first');
                       const cust = qbCustomers.find(c => c.id === qbCustomerId);
                       qbInvoiceMutation.mutate({
                         customer_id: qbCustomerId,
                         customer_name: cust?.name || '',
+                        invoice_date: invoiceDate,
                         due_date: dueDate,
                         memo,
+                        charge_lab_fees: chargeLabFees,
                         program_ids: checkedRows.map(r => r.id),
+                        programs_data: checkedRows.map(r => ({ line_amount: r.line_amount, lab_fee_total: r.lab_fee_total })),
                         line_items: checkedRows.flatMap(r => {
                           const items = [{
                             description: r.text_for_invoice || r.program_nickname,
                             qty: r.class_pricing_type_name === 'Flat Fee' ? (r.billable_sessions || 1) : (r.number_enrolled || 1),
                             rate: r.weekly_rate || 0,
                             amount: r.line_amount,
+                            qb_item_name: r.qb_item_name || '',
                           }];
                           if (chargeLabFees && r.lab_fee_total > 0) {
-                            items.push({ description: `Lab fee - ${r.program_nickname}`, qty: 1, rate: r.lab_fee_total, amount: r.lab_fee_total });
+                            items.push({ description: `Lab fee - ${r.program_nickname}`, qty: 1, rate: r.lab_fee_total, amount: r.lab_fee_total, qb_item_name: 'Lab Fee' });
                           }
                           return items;
                         }),
@@ -342,9 +397,9 @@ export default function InvoiceQueuePage() {
                 )}
 
                 <div className="flex gap-2 border-t border-gray-100 pt-3">
-                  <Button onClick={downloadCsv}>Download CSV</Button>
-                  <Button onClick={handleGenerate} disabled={generateMutation.isPending}>
-                    {generateMutation.isPending ? 'Saving...' : 'Mark as Invoiced'}
+                  {!qbConnected && <Button onClick={downloadCsv}>Download CSV</Button>}
+                  <Button onClick={handleGenerate} disabled={generateMutation.isPending} variant={qbConnected ? 'secondary' : undefined}>
+                    {generateMutation.isPending ? 'Saving...' : qbConnected ? 'Mark Invoiced (no QB)' : 'Mark as Invoiced'}
                   </Button>
                 </div>
                 {generateMutation.isError && <p className="text-xs text-red-600">{generateMutation.error?.response?.data?.error || 'Failed'}</p>}
@@ -377,5 +432,39 @@ function InvoiceTypeSelector({ row }) {
       <option value="After Last Class">After Last Class</option>
       <option value="Monthly">Monthly</option>
     </select>
+  );
+}
+
+function NewQbCustomer({ onCreated }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/quickbooks/customers', { name, email: email || undefined }),
+    onSuccess: (res) => { onCreated(res.data.data); setOpen(false); setName(''); setEmail(''); },
+  });
+
+  if (!open) return (
+    <button type="button" onClick={() => setOpen(true)} className="text-[10px] text-[#1e3a5f] hover:underline mb-2">
+      + New Customer
+    </button>
+  );
+
+  return (
+    <div className="mb-2 p-2 bg-gray-50 rounded border border-gray-200 space-y-1.5">
+      <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Customer name *"
+        className="w-full rounded border border-gray-300 px-2 py-1 text-xs" />
+      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email (optional)"
+        className="w-full rounded border border-gray-300 px-2 py-1 text-xs" />
+      <div className="flex gap-1.5">
+        <button type="button" onClick={() => mutation.mutate()} disabled={!name.trim() || mutation.isPending}
+          className="text-[10px] px-2 py-1 rounded bg-[#1e3a5f] text-white font-medium disabled:opacity-50">
+          {mutation.isPending ? 'Creating...' : 'Create in QB'}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="text-[10px] text-gray-400">Cancel</button>
+      </div>
+      {mutation.isError && <p className="text-[10px] text-red-600">{mutation.error?.response?.data?.error || 'Failed'}</p>}
+    </div>
   );
 }

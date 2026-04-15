@@ -173,6 +173,11 @@ export default function ContractorDetailPage() {
                   Each location gets its own invoice
                 </label>
               </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="Invoice Contact Name" {...register('invoice_contact_name')} />
+                <Input label="Invoice Contact Email" {...register('invoice_contact_email')} />
+                <Input label="Invoice Contact Phone" {...register('invoice_contact_phone')} />
+              </div>
               <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Notes</label>
                 <textarea {...register('invoice_notes')} rows={2}

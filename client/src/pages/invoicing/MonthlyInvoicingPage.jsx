@@ -31,10 +31,28 @@ export default function MonthlyInvoicingPage() {
   const groups = data?.data || [];
   const lastQb = data?.lastQbInvoice || 0;
 
+  const { data: qbStatus } = useQuery({
+    queryKey: ['qb-status'],
+    queryFn: () => api.get('/quickbooks/status').then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+  const qbConnected = qbStatus?.connected || false;
+
+  const { data: qbCustomersData } = useQuery({
+    queryKey: ['qb-customers'],
+    queryFn: () => api.get('/quickbooks/customers').then(r => r.data),
+    enabled: qbConnected,
+    staleTime: 5 * 60 * 1000,
+  });
+  const qbCustomers = qbCustomersData?.data || [];
+
   return (
     <AppShell>
       <PageHeader title="Monthly Invoicing" action={
-        lastQb > 0 && <span className="text-xs text-gray-400">Last QB Invoice #: {lastQb}</span>
+        <div className="flex items-center gap-2">
+          {qbConnected && <span className="text-[10px] px-2 py-1 rounded bg-green-100 text-green-700 font-medium">QB Connected</span>}
+          {lastQb > 0 && <span className="text-xs text-gray-400">Last QB Invoice #: {lastQb}</span>}
+        </div>
       } />
 
       <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
@@ -60,14 +78,15 @@ export default function MonthlyInvoicingPage() {
           <div className="text-center py-16 text-gray-400 text-sm">No monthly contractors with sessions in this period</div>
         ) : groups.map(group => (
           <ContractorGroup key={group.contractor_id + '_' + (group.location_id || '')} group={group}
-            billingMonth={billingMonth} startDate={startDate} endDate={endDate} lastQb={lastQb} qc={qc} />
+            billingMonth={billingMonth} startDate={startDate} endDate={endDate} lastQb={lastQb} qc={qc}
+            qbConnected={qbConnected} qbCustomers={qbCustomers} />
         ))}
       </div>
     </AppShell>
   );
 }
 
-function ContractorGroup({ group, billingMonth, startDate, endDate, lastQb, qc }) {
+function ContractorGroup({ group, billingMonth, startDate, endDate, lastQb, qc, qbConnected, qbCustomers }) {
   const [invoiceNum, setInvoiceNum] = useState(String(lastQb + 1));
   const today = new Date().toISOString().split('T')[0];
   const [invoiceDate, setInvoiceDate] = useState(today);
@@ -75,8 +94,14 @@ function ContractorGroup({ group, billingMonth, startDate, endDate, lastQb, qc }
   const [memo, setMemo] = useState(`Services Rendered - ${billingMonth}`);
   const [customerName, setCustomerName] = useState(group.customer_name || '');
   const [chargeLabFees, setChargeLabFees] = useState(false);
+  const [qbCustomerId, setQbCustomerId] = useState('');
 
   const totalWithFees = group.total + (chargeLabFees ? group.programs.reduce((s, p) => s + p.lab_fee_total, 0) : 0);
+
+  const qbInvoiceMutation = useMutation({
+    mutationFn: (payload) => api.post('/quickbooks/create-invoice', payload),
+    onSuccess: () => qc.invalidateQueries(['monthly-invoicing']),
+  });
 
   const generateMutation = useMutation({
     mutationFn: (data) => api.post('/invoicing/generate', data),
@@ -157,8 +182,12 @@ function ContractorGroup({ group, billingMonth, startDate, endDate, lastQb, qc }
       </CopyableTable>
 
       <div className="grid grid-cols-4 gap-3 mb-3">
-        <div><label className="text-[10px] text-gray-500">Invoice #</label><input type="number" value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" /></div>
-        <div><label className="text-[10px] text-gray-500">Customer</label><input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" /></div>
+        {!qbConnected && (
+          <>
+            <div><label className="text-[10px] text-gray-500">Invoice #</label><input type="number" value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" /></div>
+            <div><label className="text-[10px] text-gray-500">Customer</label><input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" /></div>
+          </>
+        )}
         <div><label className="text-[10px] text-gray-500">Invoice Date</label><input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" /></div>
         <div><label className="text-[10px] text-gray-500">Due Date</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" /></div>
       </div>
@@ -166,12 +195,57 @@ function ContractorGroup({ group, billingMonth, startDate, endDate, lastQb, qc }
         <input type="text" value={memo} onChange={e => setMemo(e.target.value)} placeholder="Memo" className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs" />
         <label className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={chargeLabFees} onChange={e => setChargeLabFees(e.target.checked)} className="w-3.5 h-3.5" />Lab fees</label>
       </div>
+
+      {qbConnected && (
+        <div className="mb-3 p-3 bg-blue-50/50 rounded border border-blue-200">
+          <div className="text-[10px] font-semibold text-gray-500 mb-1">Push to QuickBooks</div>
+          <div className="flex items-center gap-2">
+            <select value={qbCustomerId} onChange={e => setQbCustomerId(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1 text-xs flex-1">
+              <option value="">Select QB Customer...</option>
+              {(qbCustomers || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <Button onClick={() => {
+              if (!qbCustomerId) return alert('Select a QB customer first');
+              const cust = (qbCustomers || []).find(c => c.id === qbCustomerId);
+              qbInvoiceMutation.mutate({
+                customer_id: qbCustomerId,
+                customer_name: cust?.name || '',
+                invoice_date: invoiceDate,
+                due_date: dueDate,
+                memo,
+                charge_lab_fees: chargeLabFees,
+                program_ids: group.programs.map(p => p.id),
+                programs_data: group.programs.map(p => ({ line_amount: p.invoice_amount, lab_fee_total: p.lab_fee_total })),
+                line_items: group.programs.flatMap(p => {
+                  const items = [{
+                    description: p.text_for_invoice || p.program_nickname,
+                    qty: p.dates_in_period || 1,
+                    rate: p.weekly_rate || 0,
+                    amount: p.invoice_amount,
+                    qb_item_name: p.qb_item_name || '',
+                  }];
+                  if (chargeLabFees && p.lab_fee_total > 0) {
+                    items.push({ description: `Lab fee - ${p.program_nickname}`, qty: 1, rate: p.lab_fee_total, amount: p.lab_fee_total, qb_item_name: 'Lab Fee' });
+                  }
+                  return items;
+                }),
+              });
+            }} disabled={qbInvoiceMutation.isPending || !qbCustomerId}>
+              {qbInvoiceMutation.isPending ? 'Pushing...' : 'Push to QuickBooks'}
+            </Button>
+          </div>
+          {qbInvoiceMutation.isSuccess && <p className="text-xs text-green-600 mt-1">Invoice #{qbInvoiceMutation.data?.data?.invoice?.number} created in QB!</p>}
+          {qbInvoiceMutation.isError && <p className="text-xs text-red-600 mt-1">{qbInvoiceMutation.error?.response?.data?.error || 'QB push failed'}</p>}
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <span className="text-sm font-bold text-green-700">Total: {formatCurrency(totalWithFees)}</span>
         <div className="flex-1" />
-        <Button onClick={downloadCsv}>Download CSV</Button>
-        <Button onClick={handleGenerate} disabled={generateMutation.isPending}>
-          {generateMutation.isPending ? 'Saving...' : 'Mark Sent'}
+        {!qbConnected && <Button onClick={downloadCsv}>Download CSV</Button>}
+        <Button onClick={handleGenerate} disabled={generateMutation.isPending} variant={qbConnected ? 'secondary' : undefined}>
+          {generateMutation.isPending ? 'Saving...' : qbConnected ? 'Mark Sent (no QB)' : 'Mark Sent'}
         </Button>
       </div>
       {generateMutation.isSuccess && <p className="text-xs text-green-600 mt-2">Invoice recorded</p>}

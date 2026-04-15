@@ -172,6 +172,26 @@ router.get('/customers', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/quickbooks/customers — create a new QB customer
+router.post('/customers', authenticate, async (req, res, next) => {
+  try {
+    const { name, email } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: 'Customer name required' });
+
+    const customer = {
+      DisplayName: name,
+      ...(email ? { PrimaryEmailAddr: { Address: email } } : {}),
+    };
+
+    const data = await qbRequest('POST', 'customer', customer);
+    const created = data.Customer;
+    res.json({
+      success: true,
+      data: { id: created.Id, name: created.DisplayName, email: created.PrimaryEmailAddr?.Address },
+    });
+  } catch (err) { next(err); }
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // INVOICE CREATION
 // ═══════════════════════════════════════════════════════════════════
@@ -179,10 +199,23 @@ router.get('/customers', authenticate, async (req, res, next) => {
 // POST /api/quickbooks/create-invoice — push invoice to QB
 router.post('/create-invoice', authenticate, async (req, res, next) => {
   try {
-    const { customer_id, customer_name, line_items, memo, due_date, program_ids } = req.body;
+    const { customer_id, customer_name, line_items, memo, due_date, invoice_date,
+            program_ids, charge_lab_fees, programs_data } = req.body;
 
     if (!customer_id || !line_items?.length) {
       return res.status(400).json({ success: false, error: 'Customer and line items required' });
+    }
+
+    // Look up QB items by name so we can set the right product/service
+    let qbItemCache = {};
+    try {
+      const itemData = await qbRequest('GET', "query?query=SELECT * FROM Item WHERE Active = true AND Type = 'Service' MAXRESULTS 200");
+      (itemData.QueryResponse?.Item || []).forEach(item => {
+        qbItemCache[item.FullyQualifiedName] = item.Id;
+        qbItemCache[item.Name] = item.Id;
+      });
+    } catch (e) {
+      console.warn('[QB] Could not fetch items:', e.message);
     }
 
     // Build QB invoice object
@@ -190,28 +223,58 @@ router.post('/create-invoice', authenticate, async (req, res, next) => {
       CustomerRef: { value: customer_id, name: customer_name },
       DueDate: due_date || undefined,
       PrivateNote: memo || undefined,
-      Line: line_items.map(item => ({
-        Amount: item.amount,
-        DetailType: 'SalesItemLineDetail',
-        Description: item.description,
-        SalesItemLineDetail: {
-          Qty: item.qty || 1,
-          UnitPrice: item.rate,
-          ...(item.item_ref ? { ItemRef: { value: item.item_ref } } : {}),
-        },
-      })),
+      Line: line_items.map(item => {
+        const itemName = item.qb_item_name || '';
+        const itemId = qbItemCache[itemName] || null;
+        return {
+          Amount: item.amount,
+          DetailType: 'SalesItemLineDetail',
+          Description: item.description,
+          SalesItemLineDetail: {
+            Qty: item.qty || 1,
+            UnitPrice: item.rate,
+            ...(itemId ? { ItemRef: { value: itemId, name: itemName } } : {}),
+          },
+        };
+      }),
     };
 
     const data = await qbRequest('POST', 'invoice', invoice);
     const created = data.Invoice;
+    const totalAmt = parseFloat(created.TotalAmt) || 0;
+    const invDate = invoice_date || new Date().toISOString().split('T')[0];
+    const qbInvNum = created.DocNumber || created.Id || `QB-${Date.now()}`;
 
-    // Update program records with QB invoice info
+    console.log('[QB] Invoice created:', JSON.stringify({ Id: created.Id, DocNumber: created.DocNumber, TotalAmt: created.TotalAmt }));
+
+    // Create invoice_record for the tracker
+    const [irResult] = await pool.query(
+      `INSERT INTO invoice_record (invoice_number, invoice_type, invoice_date, due_date,
+        memo, customer_name, total_amount, qb_invoice_number, qb_invoice_id, qb_status, qb_balance, qb_last_synced, created_by_user_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),?)`,
+      [qbInvNum, 'Non-Monthly', invDate, due_date || null,
+       memo || null, customer_name, totalAmt, qbInvNum, created.Id, 'Unpaid', totalAmt, req.user.userId]
+    );
+    const invoiceRecordId = irResult.insertId;
+
+    // Update program records with QB invoice info and add to invoice_record_program
     if (program_ids?.length && created) {
-      for (const pid of program_ids) {
+      for (let i = 0; i < program_ids.length; i++) {
+        const pid = program_ids[i];
+        const pData = programs_data?.[i];
+
         await pool.query(
-          `UPDATE program SET qb_invoice_id = ?, qb_invoice_number = ?, qb_invoice_status = ?, qb_invoice_balance = ?, invoice_date_sent = CURDATE()
+          `UPDATE program SET qb_invoice_id = ?, qb_invoice_number = ?, qb_invoice_status = ?, qb_invoice_balance = ?, invoice_date_sent = ?
            WHERE id = ?`,
-          [created.Id, created.DocNumber, 'Sent', parseFloat(created.TotalAmt) || 0, pid]
+          [created.Id, qbInvNum, 'Sent', totalAmt, invDate, pid]
+        );
+
+        // Add to invoice_record_program
+        await pool.query(
+          `INSERT INTO invoice_record_program (invoice_record_id, program_id, line_amount, include_lab_fee, lab_fee_amount, status)
+           VALUES (?,?,?,?,?,?)`,
+          [invoiceRecordId, pid, pData?.line_amount || 0, charge_lab_fees ? 1 : 0,
+           pData?.lab_fee_total || 0, 'completed']
         );
       }
     }
@@ -220,7 +283,7 @@ router.post('/create-invoice', authenticate, async (req, res, next) => {
       success: true,
       invoice: {
         id: created.Id,
-        number: created.DocNumber,
+        number: qbInvNum,
         total: created.TotalAmt,
         balance: created.Balance,
         status: created.Balance > 0 ? 'Sent' : 'Paid',
@@ -237,44 +300,92 @@ router.post('/send-invoice/:invoiceId', authenticate, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-// POST /api/quickbooks/sync-status — refresh QB status for programs
+// POST /api/quickbooks/sync-status — refresh QB status for all QB-linked invoices
 router.post('/sync-status', authenticate, async (req, res, next) => {
   try {
-    const { program_ids } = req.body;
-
-    // Get programs with QB invoice IDs
-    const [programs] = await pool.query(
-      'SELECT id, qb_invoice_id FROM program WHERE qb_invoice_id IS NOT NULL' +
-      (program_ids?.length ? ' AND id IN (?)' : ''),
-      program_ids?.length ? [program_ids] : []
+    // Sync invoice_record entries that have QB IDs
+    const [records] = await pool.query(
+      'SELECT id, qb_invoice_id, total_amount, amount_paid, is_paid FROM invoice_record WHERE qb_invoice_id IS NOT NULL AND active = 1'
     );
 
-    if (programs.length === 0) return res.json({ success: true, synced: 0 });
+    if (records.length === 0) return res.json({ success: true, synced: 0 });
 
     let synced = 0;
-    for (const prog of programs) {
+    for (const rec of records) {
       try {
-        const data = await qbRequest('GET', `invoice/${prog.qb_invoice_id}`);
+        const data = await qbRequest('GET', `invoice/${rec.qb_invoice_id}`);
         const inv = data.Invoice;
-        if (inv) {
-          const balance = parseFloat(inv.Balance) || 0;
-          const total = parseFloat(inv.TotalAmt) || 0;
-          let status = 'Sent';
-          if (balance === 0 && total > 0) status = 'Paid';
-          else if (inv.DueDate && new Date(inv.DueDate) < new Date()) status = 'Overdue';
+        if (!inv) continue;
 
-          await pool.query(
-            'UPDATE program SET qb_invoice_status = ?, qb_invoice_balance = ? WHERE id = ?',
-            [status, balance, prog.id]
-          );
-          synced++;
-        }
+        const qbBalance = parseFloat(inv.Balance) || 0;
+        const qbTotal = parseFloat(inv.TotalAmt) || 0;
+        const qbPaid = qbTotal - qbBalance;
+        let qbStatus = 'Unpaid';
+        if (qbBalance === 0 && qbTotal > 0) qbStatus = 'Paid';
+        else if (qbPaid > 0) qbStatus = 'Partial';
+        else if (inv.DueDate && new Date(inv.DueDate) < new Date()) qbStatus = 'Overdue';
+
+        // Update invoice_record with QB status (but NOT our is_paid/amount_paid — that's manual)
+        await pool.query(
+          'UPDATE invoice_record SET qb_status = ?, qb_balance = ?, qb_last_synced = NOW() WHERE id = ?',
+          [qbStatus, qbBalance, rec.id]
+        );
+
+        // Also update program-level QB fields
+        await pool.query(
+          'UPDATE program SET qb_invoice_status = ?, qb_invoice_balance = ? WHERE qb_invoice_id = ?',
+          [qbStatus, qbBalance, rec.qb_invoice_id]
+        );
+
+        synced++;
       } catch (e) {
-        // Individual invoice fetch failed, skip
+        // QB returned error — likely deleted/voided/not found
+        console.log(`[QB Sync] Error fetching invoice ${rec.qb_invoice_id}:`, e.message?.substring(0, 200));
+        // Any error fetching means the invoice is gone or inaccessible
+        await pool.query(
+          'UPDATE invoice_record SET qb_status = ?, qb_last_synced = NOW() WHERE id = ?',
+          ['Deleted', rec.id]
+        );
+        await pool.query(
+          "UPDATE program SET qb_invoice_status = 'Deleted' WHERE qb_invoice_id = ?",
+          [rec.qb_invoice_id]
+        );
+        synced++;
       }
     }
 
     res.json({ success: true, synced });
+  } catch (err) { next(err); }
+});
+
+// POST /api/quickbooks/void-invoice — unlink QB invoice and re-queue programs
+router.post('/void-invoice', authenticate, async (req, res, next) => {
+  try {
+    const { invoice_record_id } = req.body;
+    if (!invoice_record_id) return res.status(400).json({ success: false, error: 'invoice_record_id required' });
+
+    // Get the record and its programs
+    const [[record]] = await pool.query('SELECT * FROM invoice_record WHERE id = ?', [invoice_record_id]);
+    if (!record) return res.status(404).json({ success: false, error: 'Invoice record not found' });
+
+    const [programs] = await pool.query(
+      'SELECT program_id FROM invoice_record_program WHERE invoice_record_id = ?', [invoice_record_id]
+    );
+
+    // Clear QB fields and invoice_date_sent on all linked programs so they re-appear in queue
+    for (const p of programs) {
+      await pool.query(
+        `UPDATE program SET invoice_date_sent = NULL, qb_invoice_id = NULL, qb_invoice_number = NULL,
+         qb_invoice_status = NULL, qb_invoice_balance = NULL WHERE id = ?`,
+        [p.program_id]
+      );
+    }
+
+    // Deactivate the invoice record
+    await pool.query('UPDATE invoice_record SET active = 0, qb_status = ?, ts_updated = NOW() WHERE id = ?',
+      ['Voided', invoice_record_id]);
+
+    res.json({ success: true, programs_unlinked: programs.length });
   } catch (err) { next(err); }
 });
 

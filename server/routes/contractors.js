@@ -121,6 +121,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'livescan_multiple', 'livescan_required', 'tb_required', 'professor_misc_notes',
       'behavioral_guidelines', 'area_demographic', 'flexibility_notes',
       'invoice_type', 'invoice_per_location',
+      'invoice_contact_name', 'invoice_contact_email', 'invoice_contact_phone',
       'invoice_notes', 'last_updated', 'general_notes', 'active',
     ];
 
