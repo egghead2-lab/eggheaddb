@@ -33,6 +33,7 @@ const evaluationsRoutes = require('./routes/evaluations');
 const hiringRequestsRoutes = require('./routes/hiring-requests');
 const materialsRoutes = require('./routes/materials');
 const plannerRoutes = require('./routes/planner');
+const quickbooksRoutes = require('./routes/quickbooks');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -110,6 +111,7 @@ app.use('/api/evaluations', evaluationsRoutes);
 app.use('/api/hiring-requests', hiringRequestsRoutes);
 app.use('/api/materials', materialsRoutes);
 app.use('/api/planner', plannerRoutes);
+app.use('/api/quickbooks', quickbooksRoutes);
 
 // Error handler
 app.use(errorHandler);

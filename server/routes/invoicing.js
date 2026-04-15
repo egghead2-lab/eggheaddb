@@ -37,9 +37,9 @@ router.get('/queue', authenticate, async (req, res, next) => {
   try {
     const { contractor_id, location_id, invoice_type, status } = req.query;
 
-    // Get all non-monthly programs that are active, live, not yet invoiced
+    // Get all non-monthly programs that are active, live, not cancelled
     let where = `prog.active = 1 AND prog.live = 1
-      AND cs.class_status_name NOT LIKE 'Cancelled%'`;
+      AND cs.cancelled = 0`;
     const params = [];
 
     if (contractor_id) { where += ' AND loc.contractor_id = ?'; params.push(contractor_id); }
@@ -49,7 +49,8 @@ router.get('/queue', authenticate, async (req, res, next) => {
       `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.last_session_date,
               prog.session_count, prog.number_enrolled, prog.parent_cost, prog.our_cut, prog.lab_fee,
               prog.invoice_date_sent, prog.invoice_paid, prog.invoice_notes, prog.invoice_needed,
-              prog.class_pricing_type_id, prog.payment_through_us,
+              prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
+              loc.class_pricing_type_id, prog.payment_through_us,
               loc.id AS location_id, loc.nickname AS location_nickname, loc.school_name,
               loc.contractor_id, loc.invoice_type AS loc_invoice_type,
               con.contractor_name, con.invoice_type AS con_invoice_type, con.invoice_per_location,
@@ -71,7 +72,7 @@ router.get('/queue', authenticate, async (req, res, next) => {
        JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN contractor con ON con.id = loc.contractor_id
-       LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
+       LEFT JOIN class_pricing_type cpt ON cpt.id = loc.class_pricing_type_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
        WHERE ${where}
@@ -83,6 +84,7 @@ router.get('/queue', authenticate, async (req, res, next) => {
     const today = new Date().toISOString().split('T')[0];
     const data = rows.map(r => {
       // Default to '2nd Week' if no invoice type is set anywhere
+      const missingInvoiceType = !r.con_invoice_type && !r.loc_invoice_type;
       const effectiveType = r.contractor_id
         ? (r.con_invoice_type || r.loc_invoice_type || '2nd Week')
         : (r.loc_invoice_type || '2nd Week');
@@ -101,28 +103,38 @@ router.get('/queue', authenticate, async (req, res, next) => {
       // Calculate total — use billable sessions (excluding not_billed)
       const billableSessions = r.billable_sessions || 0;
       const ourCut = parseFloat(r.our_cut) || 0;
+      const enrolled = r.number_enrolled || 0;
+      const labFeePerUnit = parseFloat(r.lab_fee) || 0;
       let lineAmount = 0;
       let weeklyRate = 0;
+      let labFeeTotal = 0;
       if (r.class_pricing_type_name === 'Flat Fee') {
         lineAmount = ourCut;
         weeklyRate = billableSessions > 0 ? ourCut / billableSessions : ourCut;
+        labFeeTotal = labFeePerUnit;
       } else {
         // Per student: our_cut is per-student rate, multiply by enrolled
-        lineAmount = ourCut * (r.number_enrolled || 0);
+        lineAmount = ourCut * enrolled;
         weeklyRate = ourCut;
+        // Lab fee also per student
+        labFeeTotal = labFeePerUnit * enrolled;
       }
-      const labFeeTotal = parseFloat(r.lab_fee) || 0;
 
       const grades = r.grade_range || '';
 
-      // Build text-for-invoice: location, grades, date list, # dates
-      const textForInvoice = [
-        r.school_name || r.location_nickname || '',
-        grades ? `Grades ${grades}` : '',
-        r.formal_class_name || '',
-        r.billable_date_list ? `Dates: ${r.billable_date_list}` : '',
-        billableSessions > 0 ? `${billableSessions} sessions` : '',
-      ].filter(Boolean).join(' - ');
+      // Day of week from program flags
+      const dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+      const dayFlags = [r.monday, r.tuesday, r.wednesday, r.thursday, r.friday, r.saturday, r.sunday];
+      const days = dayNames.filter((_, i) => dayFlags[i]).join(', ');
+
+      // Build text-for-invoice: "Location: Grade X - Class Name, Day: M/D, M/D, ... (N dates)"
+      const locationPart = r.school_name || r.location_nickname || '';
+      const gradePart = grades ? `Grade ${grades}` : '';
+      const header = [locationPart, gradePart].filter(Boolean).join(': ');
+      const className = r.formal_class_name || r.program_nickname || '';
+      const datesPart = r.billable_date_list || '';
+      const countPart = billableSessions > 0 ? `(${billableSessions} date${billableSessions !== 1 ? 's' : ''})` : '';
+      const textForInvoice = `${header} - ${className}${days ? ', ' + days : ''}: ${datesPart} ${countPart}`.trim();
 
       // Map program type to QB product name
       const typeMap = {
@@ -135,9 +147,10 @@ router.get('/queue', authenticate, async (req, res, next) => {
 
       return {
         ...r, effective_invoice_type: effectiveType, triggered, status: rowStatus,
+        missing_invoice_type: missingInvoiceType,
         line_amount: lineAmount, lab_fee_total: labFeeTotal, weekly_rate: weeklyRate,
         total: lineAmount + labFeeTotal, text_for_invoice: textForInvoice, qb_item_name: qbItemName,
-        grades, billable_sessions: billableSessions,
+        grades, days, billable_sessions: billableSessions,
       };
     }).filter(Boolean);
 
@@ -150,6 +163,23 @@ router.get('/queue', authenticate, async (req, res, next) => {
 
     const lastQb = await getLastQbInvoiceNumber();
     res.json({ success: true, data: filtered, lastQbInvoice: lastQb });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/invoicing/set-invoice-type — set invoice type on location or contractor from queue
+router.put('/set-invoice-type', authenticate, async (req, res, next) => {
+  try {
+    const { location_id, contractor_id, invoice_type } = req.body;
+    if (!invoice_type) return res.status(400).json({ success: false, error: 'invoice_type required' });
+
+    if (contractor_id) {
+      await pool.query('UPDATE contractor SET invoice_type = ? WHERE id = ?', [invoice_type, contractor_id]);
+    } else if (location_id) {
+      await pool.query('UPDATE location SET invoice_type = ? WHERE id = ?', [invoice_type, location_id]);
+    } else {
+      return res.status(400).json({ success: false, error: 'location_id or contractor_id required' });
+    }
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
@@ -173,13 +203,13 @@ router.get('/queue/siblings/:programId', authenticate, async (req, res, next) =>
 
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.last_session_date, prog.our_cut, prog.number_enrolled,
-              prog.lab_fee, prog.class_pricing_type_id, prog.invoice_date_sent,
+              prog.lab_fee, loc.class_pricing_type_id, prog.invoice_date_sent,
               cpt.class_pricing_type_name,
               (SELECT MAX(s2.session_date) FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1) AS actual_last_date
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
-       LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
+       LEFT JOIN class_pricing_type cpt ON cpt.id = loc.class_pricing_type_id
        WHERE prog.active = 1 AND prog.live = 1 AND ${scopeWhere}
          AND prog.id != ? AND prog.invoice_date_sent IS NULL
        ORDER BY prog.last_session_date ASC`,
@@ -204,7 +234,7 @@ router.get('/monthly', authenticate, async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.our_cut, prog.lab_fee, prog.number_enrolled,
-              prog.first_session_date, prog.last_session_date, prog.class_pricing_type_id,
+              prog.first_session_date, prog.last_session_date, loc.class_pricing_type_id,
               prog.invoice_date_sent, prog.invoice_notes, prog.payment_through_us,
               loc.id AS location_id, loc.nickname AS location_nickname, loc.school_name,
               loc.contractor_id,
@@ -222,7 +252,7 @@ router.get('/monthly', authenticate, async (req, res, next) => {
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
-       LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
+       LEFT JOIN class_pricing_type cpt ON cpt.id = loc.class_pricing_type_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
        WHERE prog.active = 1 AND prog.live = 1
