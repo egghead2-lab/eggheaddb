@@ -120,16 +120,29 @@ export default function WeeklyOverviewPage() {
           <div className="space-y-6">
             {(() => {
               const totalUnassigned = byDay.reduce((sum, dg) => sum + dg.sessions.filter(s => !s.lead_id).length, 0);
-              return totalUnassigned > 0 ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold">{totalUnassigned}</span>
-                  <span className="text-xs text-red-700 font-medium">session{totalUnassigned !== 1 ? 's' : ''} with no professor assigned</span>
+              const totalNeedsSub = byDay.reduce((sum, dg) => sum + dg.sessions.filter(s => s.needs_sub).length, 0);
+              const totalIssues = totalUnassigned + totalNeedsSub;
+              return totalIssues > 0 ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-3">
+                  {totalUnassigned > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold">{totalUnassigned}</span>
+                      <span className="text-xs text-red-700 font-medium">unassigned</span>
+                    </div>
+                  )}
+                  {totalNeedsSub > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-bold">{totalNeedsSub}</span>
+                      <span className="text-xs text-orange-700 font-medium">need{totalNeedsSub === 1 ? 's' : ''} sub</span>
+                    </div>
+                  )}
                 </div>
               ) : null;
             })()}
             {byDay.map(dayGroup => {
               const isToday = dayGroup.date === today;
               const dayUnassigned = dayGroup.sessions.filter(s => !s.lead_id).length;
+              const dayNeedsSub = dayGroup.sessions.filter(s => s.needs_sub).length;
               return (
                 <div key={dayGroup.date}>
                   <div className={`flex items-center gap-2 mb-2 ${isToday ? 'text-[#1e3a5f]' : 'text-gray-700'}`}>
@@ -138,6 +151,7 @@ export default function WeeklyOverviewPage() {
                     {isToday && <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">TODAY</span>}
                     <span className="text-[10px] text-gray-400">({dayGroup.sessions.length} session{dayGroup.sessions.length !== 1 ? 's' : ''})</span>
                     {dayUnassigned > 0 && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">{dayUnassigned} unassigned</span>}
+                    {dayNeedsSub > 0 && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">{dayNeedsSub} needs sub</span>}
                   </div>
 
                   {dayGroup.sessions.length === 0 ? (
@@ -175,7 +189,7 @@ export default function WeeklyOverviewPage() {
                             const isSingleDay = firstDate === lastDate;
 
                             return (
-                              <tr key={s.session_id} className={`${!s.lead_id ? 'bg-red-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${isFirst || isLast ? 'bg-amber-50/30' : ''}`}>
+                              <tr key={s.session_id} className={`${!s.lead_id ? 'bg-red-50/40' : s.needs_sub ? 'bg-orange-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${isFirst || isLast ? 'bg-amber-50/30' : ''}`}>
                                 <td className="px-3 py-1.5 truncate">
                                   <Link to={`/programs/${s.program_id}`} className="font-medium text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>
                                   {s.location_nickname && <div className="text-[10px] text-gray-400 truncate">{s.location_nickname}</div>}
@@ -185,7 +199,10 @@ export default function WeeklyOverviewPage() {
                                 </td>
                                 <td className="px-2 py-1.5 truncate">
                                   {s.lead_id ? (
-                                    <Link to={`/professors/${s.lead_id}`} className="text-[#1e3a5f] hover:underline">{s.lead_name}</Link>
+                                    <span className="flex items-center gap-1">
+                                      <Link to={`/professors/${s.lead_id}`} className="text-[#1e3a5f] hover:underline">{s.lead_name}</Link>
+                                      {s.needs_sub ? <span className="text-[9px] bg-orange-100 text-orange-600 px-1 py-0.5 rounded font-medium">NEEDS SUB</span> : null}
+                                    </span>
                                   ) : <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">UNASSIGNED</span>}
                                 </td>
                                 {showAssistant && <td className="px-2 py-1.5 truncate">

@@ -675,7 +675,8 @@ router.get('/weekly-overview', authenticate, async (req, res, next) => {
               ap.id AS assist_id,
               l.lesson_name, l.trainual_link,
               loc.nickname AS location_nickname,
-              ga.id AS area_id, ga.geographic_area_name
+              ga.id AS area_id, ga.geographic_area_name,
+              CASE WHEN doff.id IS NOT NULL AND s.professor_id IS NULL THEN 1 ELSE 0 END AS needs_sub
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
@@ -684,6 +685,8 @@ router.get('/weekly-overview', authenticate, async (req, res, next) => {
        LEFT JOIN lesson l ON l.id = s.lesson_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
+       LEFT JOIN day_off doff ON doff.professor_id = prog.lead_professor_id
+         AND doff.date_requested = s.session_date AND doff.active = 1
        WHERE s.active = 1
          AND s.session_date >= ? AND s.session_date <= ?
          AND cs.class_status_name NOT LIKE 'Cancelled%'
