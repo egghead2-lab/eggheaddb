@@ -199,7 +199,7 @@ export default function CandidateDetailPage() {
               {!isNew && (
                 <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                   {candidate.phone && <span>Phone: <a href={`tel:${candidate.phone}`} className="text-[#1e3a5f] font-medium">{candidate.phone}</a></span>}
-                  {candidate.email && <span>Email: <a href={`mailto:${candidate.email}`} className="text-[#1e3a5f] font-medium">{candidate.email}</a></span>}
+                  {candidate.email && <span>Email: <button type="button" onClick={() => document.getElementById('email-section')?.scrollIntoView({ behavior: 'smooth' })} className="text-[#1e3a5f] font-medium hover:underline">{candidate.email}</button></span>}
                   {candidate.geographic_area_name && <span>Area: <strong>{candidate.geographic_area_name}</strong></span>}
                   {candidate.first_class_date && <span>First Class: <strong>{formatDate(candidate.first_class_date)}</strong></span>}
                 </div>
@@ -428,7 +428,9 @@ export default function CandidateDetailPage() {
           )}
 
           {/* Gmail Email */}
-          {!isNew && <EmailSection candidateId={id} candidateEmail={candidate.email} />}
+          <div id="email-section">
+            {!isNew && <EmailSection candidateId={id} candidateEmail={candidate.email} />}
+          </div>
         </div>
 
         {/* Save bar */}
