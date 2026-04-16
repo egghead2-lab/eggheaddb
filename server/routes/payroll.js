@@ -240,15 +240,19 @@ router.patch('/onboarding-pay/:id/review', authenticate, async (req, res, next) 
 // ============================================================
 router.get('/fm-time', authenticate, async (req, res, next) => {
   try {
-    const { professor_id, start, end } = req.query;
+    const { professor_id, user_id, start, end } = req.query;
     let where = ['1=1'];
     const params = [];
-    if (professor_id) { where.push('ft.professor_id = ?'); params.push(professor_id); }
+    if (user_id) { where.push('ft.user_id = ?'); params.push(user_id); }
+    else if (professor_id) { where.push('ft.professor_id = ?'); params.push(professor_id); }
     if (start) { where.push('ft.work_date >= ?'); params.push(start); }
     if (end) { where.push('ft.work_date <= ?'); params.push(end); }
     const [rows] = await pool.query(
-      `SELECT ft.*, CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
-       FROM field_manager_time_entries ft LEFT JOIN professor p ON p.id = ft.professor_id
+      `SELECT ft.*, CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
+       FROM field_manager_time_entries ft
+       LEFT JOIN user u ON u.id = ft.user_id
+       LEFT JOIN professor p ON p.id = ft.professor_id
        WHERE ${where.join(' AND ')} ORDER BY ft.work_date DESC`,
       params
     );
@@ -259,11 +263,12 @@ router.get('/fm-time', authenticate, async (req, res, next) => {
 router.post('/fm-time', authenticate, async (req, res, next) => {
   try {
     const d = req.body;
-    if (!d.professor_id || !d.work_date || !d.time_in || !d.time_out) return res.status(400).json({ success: false, error: 'Professor, date, time in/out required' });
+    if (!d.work_date || !d.time_in || !d.time_out) return res.status(400).json({ success: false, error: 'Date, time in/out required' });
+    if (!d.user_id && !d.professor_id) return res.status(400).json({ success: false, error: 'user_id or professor_id required' });
     const [result] = await pool.query(
-      `INSERT INTO field_manager_time_entries (professor_id, work_date, time_in, time_out, break_minutes, work_location, field_activities, wfh_activities, professors_contacted, concerns, description)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [d.professor_id, d.work_date, d.time_in, d.time_out, d.break_minutes||0, d.work_location||null, d.field_activities||null, d.wfh_activities||null, d.professors_contacted||null, d.concerns||null, d.description||null]
+      `INSERT INTO field_manager_time_entries (user_id, professor_id, work_date, time_in, time_out, break_minutes, work_location, field_activities, wfh_activities, professors_contacted, concerns, description)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [d.user_id||null, d.professor_id||null, d.work_date, d.time_in, d.time_out, d.break_minutes||0, d.work_location||null, d.field_activities||null, d.wfh_activities||null, d.professors_contacted||null, d.concerns||null, d.description||null]
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
@@ -328,14 +333,18 @@ router.patch('/mileage/:id/process', authenticate, async (req, res, next) => {
 // GET /mileage-weeks — list weekly submissions (admin: all, FM: own)
 router.get('/mileage-weeks', authenticate, async (req, res, next) => {
   try {
-    const { professor_id, status } = req.query;
+    const { professor_id, user_id, status } = req.query;
     let where = ['1=1'];
     const params = [];
-    if (professor_id) { where.push('mw.professor_id = ?'); params.push(professor_id); }
+    if (user_id) { where.push('mw.user_id = ?'); params.push(user_id); }
+    else if (professor_id) { where.push('mw.professor_id = ?'); params.push(professor_id); }
     if (status) { where.push('mw.status = ?'); params.push(status); }
     const [rows] = await pool.query(
-      `SELECT mw.*, CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
-       FROM mileage_weeks mw LEFT JOIN professor p ON p.id = mw.professor_id
+      `SELECT mw.*, CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
+       FROM mileage_weeks mw
+       LEFT JOIN user u ON u.id = mw.user_id
+       LEFT JOIN professor p ON p.id = mw.professor_id
        WHERE ${where.join(' AND ')} ORDER BY mw.week_start DESC`,
       params
     );
@@ -347,8 +356,11 @@ router.get('/mileage-weeks', authenticate, async (req, res, next) => {
 router.get('/mileage-weeks/:id', authenticate, async (req, res, next) => {
   try {
     const [[week]] = await pool.query(
-      `SELECT mw.*, CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
-       FROM mileage_weeks mw LEFT JOIN professor p ON p.id = mw.professor_id WHERE mw.id = ?`, [req.params.id]
+      `SELECT mw.*, CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
+       FROM mileage_weeks mw
+       LEFT JOIN user u ON u.id = mw.user_id
+       LEFT JOIN professor p ON p.id = mw.professor_id WHERE mw.id = ?`, [req.params.id]
     );
     if (!week) return res.status(404).json({ success: false, error: 'Not found' });
     const [entries] = await pool.query(
@@ -361,8 +373,9 @@ router.get('/mileage-weeks/:id', authenticate, async (req, res, next) => {
 // POST /mileage-weeks — create or get draft week for a professor
 router.post('/mileage-weeks', authenticate, async (req, res, next) => {
   try {
-    const { professor_id, week_start } = req.body;
-    if (!professor_id || !week_start) return res.status(400).json({ success: false, error: 'professor_id and week_start required' });
+    const { professor_id, user_id, week_start } = req.body;
+    if (!week_start) return res.status(400).json({ success: false, error: 'week_start required' });
+    if (!user_id && !professor_id) return res.status(400).json({ success: false, error: 'user_id or professor_id required' });
 
     // Calculate week_end (Sunday)
     const ws = new Date(week_start);
@@ -373,15 +386,17 @@ router.post('/mileage-weeks', authenticate, async (req, res, next) => {
     const [[rateSetting]] = await pool.query("SELECT setting_value FROM app_settings WHERE setting_key = 'mileage_reimbursement_rate'");
     const rate = parseFloat(rateSetting?.setting_value) || 0.70;
 
-    // Upsert — return existing draft if one exists
+    // Upsert — return existing draft if one exists (check by user_id first, then professor_id)
+    const lookupCol = user_id ? 'user_id' : 'professor_id';
+    const lookupVal = user_id || professor_id;
     const [[existing]] = await pool.query(
-      'SELECT id FROM mileage_weeks WHERE professor_id = ? AND week_start = ?', [professor_id, week_start]
+      `SELECT id FROM mileage_weeks WHERE ${lookupCol} = ? AND week_start = ?`, [lookupVal, week_start]
     );
     if (existing) return res.json({ success: true, id: existing.id, existing: true });
 
     const [result] = await pool.query(
-      'INSERT INTO mileage_weeks (professor_id, week_start, week_end, reimbursement_rate) VALUES (?,?,?,?)',
-      [professor_id, week_start, weekEnd, rate]
+      'INSERT INTO mileage_weeks (user_id, professor_id, week_start, week_end, reimbursement_rate) VALUES (?,?,?,?,?)',
+      [user_id||null, professor_id||null, week_start, weekEnd, rate]
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
@@ -525,9 +540,19 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
       `SELECT * FROM gusto_employee_codes WHERE company = 'Rocketology' AND is_active = 1`
     );
 
+    // Get FM user IDs to exclude their class/party pay from payroll
+    const [fmUsers] = await pool.query("SELECT u.id FROM user u JOIN role r ON r.id = u.role_id WHERE r.role_name = 'Field Manager'");
+    const fmUserIds = new Set(fmUsers.map(u => u.id));
+
     for (const gc of gustoCodes) {
-      // Session pay
-      const [[sessionPay]] = await pool.query(
+      // Check if this professor is linked to an FM user — if so, skip class and party pay
+      const [[profUser]] = await pool.query('SELECT user_id FROM professor WHERE id = ?', [gc.professor_id]);
+      const isFM = profUser?.user_id && fmUserIds.has(profUser.user_id);
+
+      // Session pay (skip for Field Managers — they are not paid for class sessions)
+      const sessionPay = isFM
+        ? { total_hours_pay: 0, total_bonus: 0, total_hours: 0, total_reimb: 0, total_pay: 0, has_missing: 0 }
+        : (await pool.query(
         `SELECT COALESCE(SUM(regular_pay_component), 0) AS total_hours_pay,
                 COALESCE(SUM(bonus_component), 0) AS total_bonus,
                 COALESCE(SUM(class_hours), 0) AS total_hours,
@@ -537,16 +562,18 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
          FROM program_session_pay
          WHERE professor_id = ? AND session_date BETWEEN ? AND ?`,
         [gc.professor_id, run.start_date, run.end_date]
-      );
+      ))[0][0];
 
-      // Party pay
-      const [[partyPay]] = await pool.query(
+      // Party pay (skip for Field Managers)
+      const partyPay = isFM
+        ? { total_pay: 0, total_reimb: 0 }
+        : (await pool.query(
         `SELECT COALESCE(SUM(pay_amount), 0) AS total_pay,
                 COALESCE(SUM(total_reimbursement), 0) AS total_reimb
          FROM party_session_pay
          WHERE professor_id = ? AND created_at BETWEEN ? AND ?`,
         [gc.professor_id, run.start_date, run.end_date]
-      );
+      ))[0][0];
 
       // Misc pay
       const [[miscPay]] = await pool.query(

@@ -52,39 +52,21 @@ export default function FmWorkdayPage() {
   const [tab, setTab] = useState('log');
   const [showLogForm, setShowLogForm] = useState(false);
 
-  // Resolve logged-in user to professor_id
-  const { data: profMatch, isLoading: profLoading } = useQuery({
-    queryKey: ['my-fm-professor', user?.userId],
-    queryFn: async () => {
-      const res = await api.get('/professors?status=Active&limit=500');
-      const profs = res.data?.data || [];
-      // Match by user name
-      const [first, ...rest] = (user?.name || '').split(' ');
-      const last = rest.join(' ');
-      const match = profs.find(p =>
-        (p.first_name?.toLowerCase() === first?.toLowerCase() && p.last_name?.toLowerCase() === last?.toLowerCase()) ||
-        p.email?.toLowerCase() === user?.email?.toLowerCase()
-      );
-      return match || null;
-    },
-    enabled: !!user,
-    staleTime: 10 * 60 * 1000,
-  });
-  const myProfId = profMatch?.id;
+  const myUserId = user?.userId;
 
   // Daily log / timesheet entries
   const { data: logData, isLoading: logLoading } = useQuery({
-    queryKey: ['fm-time', 'mine', myProfId],
-    queryFn: () => api.get(`/payroll/fm-time?professor_id=${myProfId}`).then(r => r.data),
-    enabled: !!myProfId,
+    queryKey: ['fm-time', 'mine', myUserId],
+    queryFn: () => api.get(`/payroll/fm-time?user_id=${myUserId}`).then(r => r.data),
+    enabled: !!myUserId,
   });
   const logEntries = logData?.data || [];
 
   // Weekly mileage submissions
   const { data: mileWeeksData, isLoading: mileLoading } = useQuery({
-    queryKey: ['mileage-weeks', 'mine', myProfId],
-    queryFn: () => api.get(`/payroll/mileage-weeks?professor_id=${myProfId}`).then(r => r.data),
-    enabled: !!myProfId,
+    queryKey: ['mileage-weeks', 'mine', myUserId],
+    queryFn: () => api.get(`/payroll/mileage-weeks?user_id=${myUserId}`).then(r => r.data),
+    enabled: !!myUserId,
   });
   const mileWeeks = mileWeeksData?.data || [];
 
@@ -141,11 +123,11 @@ export default function FmWorkdayPage() {
   });
 
   const submitLog = () => {
-    if (!myProfId || !logForm.work_date || !logForm.time_in || !logForm.time_out || !logForm.work_location) return;
+    if (!myUserId || !logForm.work_date || !logForm.time_in || !logForm.time_out || !logForm.work_location) return;
     const fieldActs = [...logForm.field_activities, logForm.field_other].filter(Boolean).join(', ');
     const wfhActs = [...logForm.wfh_activities, logForm.wfh_other].filter(Boolean).join(', ');
     logMutation.mutate({
-      professor_id: myProfId,
+      user_id: myUserId,
       work_date: logForm.work_date,
       time_in: logForm.time_in,
       time_out: logForm.time_out,
@@ -221,7 +203,7 @@ export default function FmWorkdayPage() {
   });
 
   const startCurrentWeek = () => {
-    createWeekMutation.mutate({ professor_id: myProfId, week_start: getMonday() });
+    createWeekMutation.mutate({ user_id: myUserId, week_start: getMonday() });
   };
 
   const addDailyEntry = () => {
@@ -229,20 +211,7 @@ export default function FmWorkdayPage() {
     addEntryMutation.mutate(entryForm);
   };
 
-  if (profLoading) return <AppShell><div className="flex items-center justify-center h-64"><Spinner className="w-8 h-8" /></div></AppShell>;
-
-  if (!myProfId) {
-    return (
-      <AppShell>
-        <PageHeader title="My Workday" />
-        <div className="p-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-            Unable to match your account to a professor profile. Please contact an admin to link your account.
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
+  if (!myUserId) return <AppShell><div className="flex items-center justify-center h-64"><Spinner className="w-8 h-8" /></div></AppShell>;
 
   const pendingLogs = logEntries.filter(e => !e.is_approved).length;
   const pendingMiles = mileWeeks.filter(e => e.status === 'submitted').length;

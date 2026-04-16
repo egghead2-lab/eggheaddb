@@ -45,31 +45,19 @@ export default function FmDailyLogPage() {
   const canApprove = ['Admin', 'CEO', 'Human Resources'].includes(user?.role);
   const canSubmit = ['Field Manager', 'Admin', 'CEO'].includes(user?.role);
 
-  // Get field managers — match FM users to professors by name since emails may differ
+  // Get field managers by role
   const { data: fmUsersData } = useQuery({
     queryKey: ['fm-users'],
     queryFn: () => api.get('/users?role=Field+Manager&limit=100').then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
-  const { data: fmProfsData } = useQuery({
-    queryKey: ['fm-professors'],
-    queryFn: () => api.get('/professors?status=Active&limit=500').then(r => r.data),
-    staleTime: 5 * 60 * 1000,
-  });
-  const fmUsers = fmUsersData?.data || [];
-  const allProfs = fmProfsData?.data || [];
-  const fieldManagers = fmUsers.map(u => {
-    // Try to find matching professor by name
-    const prof = allProfs.find(p =>
-      p.email?.toLowerCase() === u.email?.toLowerCase() ||
-      (p.first_name?.toLowerCase() === u.first_name?.toLowerCase() && p.last_name?.toLowerCase() === u.last_name?.toLowerCase())
-    );
-    return { id: prof?.id || u.id, name: `${u.first_name} ${u.last_name}`, userId: u.id, professorId: prof?.id };
-  }).filter(f => f.id);
+  const fieldManagers = (fmUsersData?.data || []).map(u => ({
+    id: u.id, name: `${u.first_name} ${u.last_name}`, userId: u.id,
+  }));
 
   // Form state
   const [form, setForm] = useState({
-    professor_id: '', work_date: new Date().toISOString().split('T')[0],
+    user_id: '', work_date: new Date().toISOString().split('T')[0],
     time_in: '09:00', time_out: '17:00', break_minutes: '30',
     work_location: '', field_activities: [], wfh_activities: [],
     field_other: '', wfh_other: '',
@@ -96,7 +84,7 @@ export default function FmDailyLogPage() {
     onSuccess: () => {
       qc.invalidateQueries(['fm-time']);
       setShowForm(false);
-      setForm({ professor_id: '', work_date: new Date().toISOString().split('T')[0], time_in: '09:00', time_out: '17:00', break_minutes: '30', work_location: '', field_activities: [], wfh_activities: [], field_other: '', wfh_other: '', professors_contacted: '', concerns: '' });
+      setForm({ user_id: '', work_date: new Date().toISOString().split('T')[0], time_in: '09:00', time_out: '17:00', break_minutes: '30', work_location: '', field_activities: [], wfh_activities: [], field_other: '', wfh_other: '', professors_contacted: '', concerns: '' });
     },
   });
 
@@ -106,11 +94,11 @@ export default function FmDailyLogPage() {
   });
 
   const handleSubmit = () => {
-    if (!form.professor_id || !form.work_date || !form.time_in || !form.time_out || !form.work_location) return;
+    if (!form.user_id || !form.work_date || !form.time_in || !form.time_out || !form.work_location) return;
     const fieldActs = [...form.field_activities, form.field_other].filter(Boolean).join(', ');
     const wfhActs = [...form.wfh_activities, form.wfh_other].filter(Boolean).join(', ');
     createMutation.mutate({
-      professor_id: parseInt(form.professor_id),
+      user_id: parseInt(form.user_id),
       work_date: form.work_date,
       time_in: form.time_in,
       time_out: form.time_out,
@@ -137,9 +125,9 @@ export default function FmDailyLogPage() {
             <h3 className="text-sm font-semibold text-gray-800">Daily Activity Log</h3>
 
             <div className="grid grid-cols-3 gap-4">
-              <Select label="Name" required value={form.professor_id} onChange={e => set('professor_id', e.target.value)}>
+              <Select label="Name" required value={form.user_id} onChange={e => set('user_id', e.target.value)}>
                 <option value="">Select…</option>
-                {fieldManagers.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                {fieldManagers.map(f => <option key={f.userId} value={f.userId}>{f.name}</option>)}
               </Select>
               <Input label="Date Being Logged" type="date" required value={form.work_date} onChange={e => set('work_date', e.target.value)} />
             </div>
@@ -229,7 +217,7 @@ export default function FmDailyLogPage() {
             )}
 
             <div className="flex gap-3">
-              <Button onClick={handleSubmit} disabled={createMutation.isPending || !form.professor_id || !form.work_location}>
+              <Button onClick={handleSubmit} disabled={createMutation.isPending || !form.user_id || !form.work_location}>
                 {createMutation.isPending ? 'Submitting…' : 'Submit Log'}
               </Button>
               {createMutation.isError && <span className="text-sm text-red-600">{createMutation.error?.response?.data?.error || 'Failed'}</span>}
@@ -262,7 +250,7 @@ export default function FmDailyLogPage() {
                   return (
                     <tr key={e.id} className={!e.is_approved ? 'bg-amber-50/30' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className="px-3 py-2">{formatDate(e.work_date)}</td>
-                      <td className="px-3 py-2 font-medium">{e.professor_name || '—'}</td>
+                      <td className="px-3 py-2 font-medium">{e.user_name || e.professor_name || '—'}</td>
                       <td className="px-3 py-2">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
                           e.work_location === 'field_majority' ? 'bg-green-100 text-green-700' :
