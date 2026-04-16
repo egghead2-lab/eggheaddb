@@ -187,6 +187,9 @@ export default function CandidateDetailPage() {
               <div className="flex items-center gap-3 mt-0.5">
                 <h1 className="text-xl font-bold text-gray-900">{isNew ? 'New Candidate' : candidate.full_name}</h1>
                 {!isNew && <Badge status={STATUS_LABELS[candidate.status] || candidate.status} />}
+                {candidate.requires_observations ? (
+                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">Requires Observations</span>
+                ) : null}
                 {candidate.professor_id && (
                   <Link to={`/professors/${candidate.professor_id}`} className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded font-medium hover:underline">
                     View Professor Profile &rarr;

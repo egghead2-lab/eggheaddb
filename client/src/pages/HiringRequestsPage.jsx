@@ -186,7 +186,8 @@ function HiringRequestDetail({ requestId, onClose }) {
               {hr.requires_livescan ? <span className="bg-blue-50 text-blue-600 px-1 py-0.5 rounded text-[9px]">LS</span> : null}
               {hr.requires_virtus ? <span className="bg-purple-50 text-purple-600 px-1 py-0.5 rounded text-[9px]">Virtus</span> : null}
               {hr.requires_tb ? <span className="bg-amber-50 text-amber-600 px-1 py-0.5 rounded text-[9px]">TB</span> : null}
-              {!hr.requires_livescan && !hr.requires_virtus && !hr.requires_tb && <span className="text-gray-300">None</span>}
+              {hr.requires_observations ? <span className="bg-green-50 text-green-600 px-1 py-0.5 rounded text-[9px]">Obs</span> : null}
+              {!hr.requires_livescan && !hr.requires_virtus && !hr.requires_tb && !hr.requires_observations && <span className="text-gray-300">None</span>}
             </div>
           </div>
         </div>
@@ -287,7 +288,7 @@ function HiringRequestForm({ areas, onClose, onSuccess }) {
     avail_fri_am: false, avail_fri_pm: false,
     fulfillment_date: '', earliest_start_date: '',
     fulfillment_notes: '',
-    requires_livescan: false, requires_virtus: false, requires_tb: false,
+    requires_livescan: false, requires_virtus: false, requires_tb: false, requires_observations: false,
     experience_level: '', training_type: 'in_person',
     class_types: [], program_types: [],
     base_pay: '', special_notes: '',
@@ -497,6 +498,10 @@ function HiringRequestForm({ areas, onClose, onSuccess }) {
             <label className="flex items-center gap-1.5 text-xs cursor-pointer">
               <input type="checkbox" checked={form.requires_tb} onChange={e => set('requires_tb', e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" /> District TB Test
+            </label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox" checked={form.requires_observations} onChange={e => set('requires_observations', e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" /> Requires Observations
             </label>
           </div>
         </div>

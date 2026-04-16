@@ -784,4 +784,111 @@ router.delete('/:id/incidents/:incidentId', authenticate, async (req, res, next)
   } catch (err) { next(err); }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// OBSERVATION REQUIREMENTS — new hires needing observations
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/professors/observation-requirements — dashboard of new hires needing obs
+router.get('/observation-requirements', authenticate, async (req, res, next) => {
+  try {
+    const [profs] = await pool.query(
+      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name,
+              p.requires_observations, p.observations_cleared,
+              ga.geographic_area_name AS area, ga.id AS area_id,
+              (SELECT COUNT(*) FROM professor_observation po
+               WHERE po.professor_id = p.id AND po.form_status = 'completed') AS completed_observations,
+              (SELECT COUNT(*) FROM professor_observation po
+               WHERE po.professor_id = p.id AND po.form_status = 'pending') AS scheduled_observations
+       FROM professor p
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
+       WHERE p.active = 1 AND p.requires_observations = 1 AND p.observations_cleared = 0
+       ORDER BY ga.geographic_area_name, p.professor_nickname`
+    );
+    res.json({ success: true, data: profs });
+  } catch (err) { next(err); }
+});
+
+// POST /api/professors/:id/clear-observation-requirement — scheduler clears the flag
+router.post('/:id/clear-observation-requirement', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      'UPDATE professor SET observations_cleared = 1, observations_cleared_by = ?, observations_cleared_at = NOW() WHERE id = ?',
+      [req.user.userId, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/professors/:id/reinstate-observation-requirement — undo clear
+router.post('/:id/reinstate-observation-requirement', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      'UPDATE professor SET observations_cleared = 0, observations_cleared_by = NULL, observations_cleared_at = NULL WHERE id = ?',
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/professors/observation-candidates — search for high-rated sessions in an area to observe
+router.get('/observation-candidates', authenticate, async (req, res, next) => {
+  try {
+    const { area_id, week_start } = req.query;
+    if (!area_id) return res.status(400).json({ success: false, error: 'area_id required' });
+
+    // Default to current week if not specified
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+    const wStart = week_start || monday.toISOString().split('T')[0];
+    const wEnd = new Date(wStart);
+    wEnd.setDate(wEnd.getDate() + 6);
+    const wEndStr = wEnd.toISOString().split('T')[0];
+
+    // Find sessions in this area with experienced, high-rated professors
+    const [sessions] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.session_time, s.program_id,
+              prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              cl.class_name, ct.class_type_name,
+              loc.nickname AS location_nickname, loc.address,
+              p.id AS professor_id, p.professor_nickname,
+              CONCAT(p.first_name, ' ', p.last_name) AS professor_full_name,
+              p.last_evaluation_result,
+              l.lesson_name
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1 AND prog.live = 1
+       JOIN professor p ON p.id = prog.lead_professor_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN class_type ct ON ct.id = cl.class_type_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       LEFT JOIN city c ON c.id = p.city_id
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
+         AND c.geographic_area_id = ?
+         AND p.requires_observations = 0
+       ORDER BY s.session_date, s.session_time, p.professor_nickname`,
+      [wStart, wEndStr, area_id]
+    );
+
+    res.json({ success: true, data: sessions, week_start: wStart, week_end: wEndStr });
+  } catch (err) { next(err); }
+});
+
+// POST /api/professors/:id/schedule-observation — schedule observation at a specific session
+router.post('/:id/schedule-observation', authenticate, async (req, res, next) => {
+  try {
+    const { program_id, observation_date, observation_type } = req.body;
+    if (!program_id || !observation_date) {
+      return res.status(400).json({ success: false, error: 'program_id and observation_date required' });
+    }
+    const [result] = await pool.query(
+      `INSERT INTO professor_observation (professor_id, program_id, observation_date, observation_type, form_status)
+       VALUES (?, ?, ?, ?, 'pending')`,
+      [req.params.id, program_id, observation_date, observation_type || 'observation']
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

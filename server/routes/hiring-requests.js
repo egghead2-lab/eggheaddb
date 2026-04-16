@@ -86,10 +86,10 @@ router.post('/', async (req, res, next) => {
         avail_wed_am, avail_wed_pm, avail_thu_am, avail_thu_pm,
         avail_fri_am, avail_fri_pm,
         fulfillment_date, earliest_start_date, fulfillment_notes,
-        requires_livescan, requires_virtus, requires_tb,
+        requires_livescan, requires_virtus, requires_tb, requires_observations,
         experience_level, training_type, class_types, program_types,
         base_pay, special_notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         req.user.userId, d.geographic_area_id, d.city_detail || null,
         d.avail_mon_am ? 1 : 0, d.avail_mon_pm ? 1 : 0,
@@ -98,7 +98,7 @@ router.post('/', async (req, res, next) => {
         d.avail_thu_am ? 1 : 0, d.avail_thu_pm ? 1 : 0,
         d.avail_fri_am ? 1 : 0, d.avail_fri_pm ? 1 : 0,
         d.fulfillment_date || null, d.earliest_start_date || null, d.fulfillment_notes || null,
-        d.requires_livescan ? 1 : 0, d.requires_virtus ? 1 : 0, d.requires_tb ? 1 : 0,
+        d.requires_livescan ? 1 : 0, d.requires_virtus ? 1 : 0, d.requires_tb ? 1 : 0, d.requires_observations ? 1 : 0,
         d.experience_level || null, d.training_type || 'in_person',
         JSON.stringify(d.class_types || []), JSON.stringify(d.program_types || []),
         d.base_pay || null, d.special_notes || null,
@@ -143,6 +143,12 @@ router.post('/:id/link-candidate', async (req, res, next) => {
 
     // Link candidate
     await pool.query("UPDATE hiring_request SET candidate_id = ?, status = 'in_progress', ts_updated = NOW() WHERE id = ?", [candidate_id, id]);
+
+    // Carry requires_observations flag to candidate
+    const [[hr]] = await pool.query('SELECT requires_observations FROM hiring_request WHERE id = ?', [id]);
+    if (hr?.requires_observations) {
+      await pool.query('UPDATE candidate SET requires_observations = 1 WHERE id = ?', [candidate_id]);
+    }
 
     // Get programs from this request
     const [programs] = await pool.query('SELECT program_id FROM hiring_request_program WHERE hiring_request_id = ?', [id]);

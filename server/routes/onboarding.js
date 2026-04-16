@@ -416,10 +416,11 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
 
     const [profResult] = await pool.query(
       `INSERT INTO professor (professor_nickname, first_name, last_name, email, phone_number,
-        geographic_area_id, professor_status_id, base_pay, assist_pay, active, ts_inserted, ts_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+        geographic_area_id, professor_status_id, base_pay, assist_pay, requires_observations, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
       [nickname, firstName, lastName, candidate.email, candidate.phone, candidate.geographic_area_id,
-       req.body.professor_status_id || 1, candidate.lead_pay || null, candidate.assist_pay || null]
+       req.body.professor_status_id || 1, candidate.lead_pay || null, candidate.assist_pay || null,
+       candidate.requires_observations ? 1 : 0]
     );
 
     // Link candidate to professor and mark as hired

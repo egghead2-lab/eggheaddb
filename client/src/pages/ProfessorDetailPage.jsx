@@ -1144,9 +1144,16 @@ export default function ProfessorDetailPage() {
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
             <Link to="/professors" className="text-sm text-gray-500 hover:text-[#1e3a5f]">← Professors</Link>
-            <h1 className="text-xl font-bold text-gray-900 mt-0.5">
-              {isNew ? 'New Professor' : (prof.professor_nickname || [prof.first_name, prof.last_name].filter(Boolean).join(' ') || 'Professor')}
-            </h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <h1 className="text-xl font-bold text-gray-900">
+                {isNew ? 'New Professor' : (prof.professor_nickname || [prof.first_name, prof.last_name].filter(Boolean).join(' ') || 'Professor')}
+              </h1>
+              {prof.requires_observations && !prof.observations_cleared ? (
+                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">
+                  Needs Observations
+                </span>
+              ) : null}
+            </div>
           </div>
           {!isNew && (
             <Link to={`/schedule/${id}`} className="text-sm text-[#1e3a5f] hover:underline">View Schedule →</Link>

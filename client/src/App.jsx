@@ -52,6 +52,7 @@ import EvaluationDashboardPage from './pages/EvaluationDashboardPage';
 import WeeklyOverviewPage from './pages/WeeklyOverviewPage';
 import ObservationLookupPage from './pages/ObservationLookupPage';
 import ObservationHistoryPage from './pages/ObservationHistoryPage';
+import ObservationSchedulerPage from './pages/ObservationSchedulerPage';
 import PartyConfirmsPage from './pages/PartyConfirmsPage';
 import HiringRequestsPage from './pages/HiringRequestsPage';
 import AreaPayRatesPage from './pages/AreaPayRatesPage';
@@ -180,6 +181,7 @@ export default function App() {
       <Route path="/evaluations" element={<ProtectedRoute><EvaluationDashboardPage /></ProtectedRoute>} />
       <Route path="/observation-lookup" element={<ProtectedRoute><ObservationLookupPage /></ProtectedRoute>} />
       <Route path="/observation-history" element={<ProtectedRoute><ObservationHistoryPage /></ProtectedRoute>} />
+      <Route path="/observation-scheduler" element={<ProtectedRoute><ObservationSchedulerPage /></ProtectedRoute>} />
       <Route path="/party-confirms" element={<ProtectedRoute><PartyConfirmsPage /></ProtectedRoute>} />
       <Route path="/hiring-requests" element={<ProtectedRoute><HiringRequestsPage /></ProtectedRoute>} />
       <Route path="/area-pay-rates" element={<ProtectedRoute><AreaPayRatesPage /></ProtectedRoute>} />
