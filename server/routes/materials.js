@@ -648,22 +648,13 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
         const [[prof]] = await pool.query('SELECT professor_nickname FROM professor WHERE id = ?', [profId]);
         if (!prof) continue;
 
-        // Find or create supplemental order for this professor in this cycle
+        // Find existing order for this professor in this cycle (unique constraint: one order per professor per cycle)
         const [[existingOrder]] = await pool.query(
-          "SELECT id FROM shipment_order WHERE cycle_id = ? AND professor_id = ? AND order_name LIKE 'SUPP%'",
+          'SELECT id FROM shipment_order WHERE cycle_id = ? AND professor_id = ?',
           [id, profId]
         );
-        let orderId;
-        if (existingOrder) {
-          orderId = existingOrder.id;
-        } else {
-          const orderName = `SUPP - ${prof.professor_nickname} - ${shipDateStr.replace(/-/g, '/').slice(5)}`;
-          const [orderResult] = await pool.query(
-            'INSERT INTO shipment_order (cycle_id, professor_id, order_name) VALUES (?, ?, ?)',
-            [id, profId, orderName]
-          );
-          orderId = orderResult.insertId;
-        }
+        if (!existingOrder) continue; // no order for this professor — skip (shouldn't happen for shipped orders)
+        const orderId = existingOrder.id;
 
         for (const item of items) {
           await pool.query(
