@@ -59,6 +59,7 @@ app.use(cors({
 
 // Stripe webhook needs raw body — must be before express.json()
 app.post('/api/lab-fees/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(503).json({ error: 'Stripe not configured' });
   const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
   const webhookPool = require('./db/pool');
   const sig = req.headers['stripe-signature'];
