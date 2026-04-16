@@ -117,13 +117,96 @@ router.get('/cycles/:id/orders', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/materials/cycles/:id/generate-orders — the big one
-router.post('/cycles/:id/generate-orders', async (req, res, next) => {
+// GET /api/materials/cycles/:id/area-status — area build status for a cycle
+router.get('/cycles/:id/area-status', async (req, res, next) => {
   try {
     const { id } = req.params;
     const [[cycle]] = await pool.query('SELECT * FROM shipment_cycle WHERE id = ?', [id]);
     if (!cycle) return res.status(404).json({ success: false, error: 'Cycle not found' });
-    if (cycle.status !== 'draft') return res.status(400).json({ success: false, error: 'Cycle must be in draft status' });
+
+    // Get all active areas with shipping config
+    const [areas] = await pool.query(
+      'SELECT id, geographic_area_name, shipping_lead_days FROM geographic_area WHERE active = 1 ORDER BY geographic_area_name'
+    );
+
+    // Count orders per area for this cycle (non-supplemental only)
+    const [orderCounts] = await pool.query(
+      `SELECT ga.id AS area_id, COUNT(so.id) AS order_count,
+              SUM(CASE WHEN so.status = 'shipped' THEN 1 ELSE 0 END) AS shipped_count,
+              SUM(CASE WHEN so.status = 'pending' THEN 1 ELSE 0 END) AS pending_count
+       FROM shipment_order so
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'
+       GROUP BY ga.id`, [id]
+    );
+    const countMap = {};
+    orderCounts.forEach(r => { countMap[r.area_id] = r; });
+
+    // Count qualifying programs per area (to know if there's anything to generate)
+    const [progCounts] = await pool.query(
+      `SELECT ga.id AS area_id, COUNT(DISTINCT prog.lead_professor_id) AS professor_count
+       FROM program prog
+       JOIN class cl ON cl.id = prog.class_id
+       JOIN class_status cs ON cs.id = prog.class_status_id
+       JOIN professor p ON p.id = prog.lead_professor_id
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
+         AND prog.lead_professor_id IS NOT NULL
+         AND EXISTS (SELECT 1 FROM session s WHERE s.program_id = prog.id AND s.active = 1
+           AND s.session_date BETWEEN ? AND ?)
+       GROUP BY ga.id`,
+      [cycle.start_date, cycle.end_date]
+    );
+    const progMap = {};
+    progCounts.forEach(r => { progMap[r.area_id] = r.professor_count; });
+
+    const result = areas.map(a => {
+      const counts = countMap[a.id] || { order_count: 0, shipped_count: 0, pending_count: 0 };
+      const profCount = progMap[a.id] || 0;
+      let status = 'no_programs';
+      if (profCount > 0 && counts.order_count === 0) status = 'not_built';
+      else if (counts.order_count > 0 && counts.shipped_count === counts.order_count) status = 'shipped';
+      else if (counts.order_count > 0) status = 'generated';
+      return {
+        area_id: a.id,
+        area_name: a.geographic_area_name,
+        shipping_lead_days: a.shipping_lead_days,
+        professor_count: profCount,
+        order_count: counts.order_count,
+        shipped_count: counts.shipped_count,
+        pending_count: counts.pending_count,
+        status,
+      };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// POST /api/materials/cycles/:id/generate-orders — generate orders for a specific area
+router.post('/cycles/:id/generate-orders', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { area_id } = req.body;
+    const [[cycle]] = await pool.query('SELECT * FROM shipment_cycle WHERE id = ?', [id]);
+    if (!cycle) return res.status(404).json({ success: false, error: 'Cycle not found' });
+
+    if (!area_id) return res.status(400).json({ success: false, error: 'area_id required — generate orders one area at a time' });
+
+    // Check if this area already has orders in this cycle
+    const [[existingArea]] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM shipment_order so
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN city c ON c.id = p.city_id
+       WHERE so.cycle_id = ? AND c.geographic_area_id = ? AND so.order_name NOT LIKE 'SUPP%'`,
+      [id, area_id]
+    );
+    if (existingArea.cnt > 0) {
+      return res.status(400).json({ success: false, error: 'Orders already generated for this area in this cycle' });
+    }
 
     const cycleStart = cycle.start_date;
     const cycleEnd = cycle.end_date;
@@ -135,25 +218,27 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     const minWeeksStart = exclusionRules.find(r => r.rule_type === 'min_weeks_id_card')?.min_weeks || 4;
     const minWeeksDegree = exclusionRules.find(r => r.rule_type === 'min_weeks_degree')?.min_weeks || 4;
 
-    // Query qualifying programs (includes camps and parties)
+    // Query qualifying programs for this area only
     const [programs] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.lead_professor_id, prog.number_enrolled,
               prog.session_count, prog.first_session_date, prog.last_session_date, prog.class_length_minutes,
               cl.class_name, cl.class_type_id, cl.has_id_card,
-              ct.class_type_name,
-              cs.confirmed
+              ct.class_type_name
        FROM program prog
        JOIN class cl ON cl.id = prog.class_id
        JOIN class_type ct ON ct.id = cl.class_type_id
        JOIN class_status cs ON cs.id = prog.class_status_id
+       JOIN professor p ON p.id = prog.lead_professor_id
+       LEFT JOIN city c ON c.id = p.city_id
        WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
          AND prog.lead_professor_id IS NOT NULL
+         AND c.geographic_area_id = ?
          AND EXISTS (
            SELECT 1 FROM session s
            WHERE s.program_id = prog.id AND s.active = 1
              AND s.session_date BETWEEN ? AND ?
          )`,
-      [cycleStart, cycleEnd]
+      [area_id, cycleStart, cycleEnd]
     );
 
     // Get sessions in this window for each program (for lesson lookup)
@@ -180,9 +265,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
       profBinMap[pb.professor_id].add(pb.bin_type_id);
     });
 
-    // Bin type mapping: class_type_id -> bin_type_id
-    // Science=1->1, Engineering=2->2(Eng Bin), Robotics=3->3, Financial=5->? (we'll use a mapping)
-    const classTypeToBin = { 1: 1, 2: 2, 3: 3, 5: null }; // No specific bin for financial literacy yet
+    const classTypeToBin = { 1: 1, 2: 2, 3: 3, 5: null };
 
     // Group programs by professor
     const byProfessor = {};
@@ -190,9 +273,6 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
       if (!byProfessor[prog.lead_professor_id]) byProfessor[prog.lead_professor_id] = [];
       byProfessor[prog.lead_professor_id].push(prog);
     }
-
-    // Clear existing orders for this cycle (regenerate)
-    await pool.query('DELETE FROM shipment_order WHERE cycle_id = ?', [id]);
 
     const shipDateStr = cycle.ship_date instanceof Date
       ? cycle.ship_date.toISOString().split('T')[0]
@@ -291,12 +371,16 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/materials/cycles/:id/export-csv — Inflow CSV export
+// GET /api/materials/cycles/:id/export-csv — Inflow CSV export (optional area_id filter)
 router.get('/cycles/:id/export-csv', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { area_id } = req.query;
     const [[cycle]] = await pool.query('SELECT * FROM shipment_cycle WHERE id = ?', [id]);
     if (!cycle) return res.status(404).json({ success: false, error: 'Cycle not found' });
+
+    const areaFilter = area_id ? ' AND c.geographic_area_id = ?' : '';
+    const areaParams = area_id ? [area_id] : [];
 
     const [orders] = await pool.query(
       `SELECT so.*, p.professor_nickname, p.first_name, p.last_name, p.email, p.phone_number, p.address,
@@ -307,8 +391,8 @@ router.get('/cycles/:id/export-csv', async (req, res, next) => {
        LEFT JOIN city c ON c.id = p.city_id
        LEFT JOIN state s ON s.id = c.state_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
-       WHERE so.cycle_id = ? AND so.status != 'cancelled'
-       ORDER BY p.professor_nickname`, [id]
+       WHERE so.cycle_id = ? AND so.status != 'cancelled'${areaFilter}
+       ORDER BY p.professor_nickname`, [id, ...areaParams]
     );
 
     const shipDateStr = cycle.ship_date instanceof Date
