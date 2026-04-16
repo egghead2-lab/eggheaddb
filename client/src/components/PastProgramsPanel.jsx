@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { Section } from './ui/Section';
@@ -30,8 +30,11 @@ function getTypeBadge(name) {
   return 'bg-gray-100 text-gray-600';
 }
 
+const INITIAL_SHOW = 10;
+
 export default function PastProgramsPanel({ locationId }) {
   const tableRef = useRef(null);
+  const [showAll, setShowAll] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['past-programs', locationId],
@@ -39,6 +42,8 @@ export default function PastProgramsPanel({ locationId }) {
     enabled: !!locationId,
   });
   const programs = data?.data || [];
+  const visible = showAll ? programs : programs.slice(0, INITIAL_SHOW);
+  const hasMore = programs.length > INITIAL_SHOW;
 
   if (!locationId) return null;
 
@@ -69,7 +74,7 @@ export default function PastProgramsPanel({ locationId }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {programs.map((p, i) => {
+              {visible.map((p, i) => {
                 const cancelled = (p.class_status_name || '').toLowerCase().includes('cancel');
                 return (
                   <tr key={p.id} className={`${cancelled ? 'opacity-40' : ''} ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
@@ -97,6 +102,12 @@ export default function PastProgramsPanel({ locationId }) {
               })}
             </tbody>
           </table>
+          {hasMore && (
+            <button onClick={() => setShowAll(!showAll)}
+              className="w-full py-2 text-xs text-[#1e3a5f] hover:bg-gray-50 border-t border-gray-200 font-medium">
+              {showAll ? 'Show less' : `Show all ${programs.length} programs`}
+            </button>
+          )}
         </div>
       )}
     </Section>
