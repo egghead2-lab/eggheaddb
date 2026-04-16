@@ -409,7 +409,7 @@ export default function ProfessorSchedulePage() {
                 {[
                   ['Science', prof.science_trained_id],
                   ['Engineering', prof.engineering_trained_id],
-                  ['Show Party', prof.show_party_trained_id],
+                  ['Dry Ice Show', prof.show_party_trained_id],
                   ['StudySmart', prof.studysmart_trained_id],
                   ['Camp', prof.camp_trained_id],
                   ['Robotics', prof.robotics_trained_id],

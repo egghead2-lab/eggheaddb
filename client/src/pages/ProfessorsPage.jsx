@@ -84,7 +84,7 @@ export default function ProfessorsPage() {
     { key: 'active', label: 'Active', type: 'toggle' },
     { key: 'science_trained_id', label: 'Science Trained', type: 'toggle' },
     { key: 'engineering_trained_id', label: 'Engineering Trained', type: 'toggle' },
-    { key: 'show_party_trained_id', label: 'Show Party Trained', type: 'toggle' },
+    { key: 'show_party_trained_id', label: 'Dry Ice Show Trained', type: 'toggle' },
     { key: 'camp_trained_id', label: 'Camp Trained', type: 'toggle' },
     { key: 'studysmart_trained_id', label: 'StudySmart Trained', type: 'toggle' },
     { key: 'robotics_trained_id', label: 'Robotics Trained', type: 'toggle' },

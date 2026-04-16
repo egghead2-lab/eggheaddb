@@ -159,7 +159,7 @@ const ENTITIES = {
       // Training
       science_trained: { label: 'Science Trained', type: 'boolean', col: 'p.science_trained_id' },
       engineering_trained: { label: 'Engineering Trained', type: 'boolean', col: 'p.engineering_trained_id' },
-      party_trained: { label: 'Show Party Trained', type: 'boolean', col: 'p.show_party_trained_id' },
+      party_trained: { label: 'Dry Ice Show Trained', type: 'boolean', col: 'p.show_party_trained_id' },
       studysmart_trained: { label: 'StudySmart Trained', type: 'boolean', col: 'p.studysmart_trained_id' },
       camp_trained: { label: 'Camp Trained', type: 'boolean', col: 'p.camp_trained_id' },
       robotics_trained: { label: 'Robotics Trained', type: 'boolean', col: 'p.robotics_trained_id' },
