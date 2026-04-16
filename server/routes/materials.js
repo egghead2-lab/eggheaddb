@@ -144,9 +144,9 @@ router.get('/cycles/:id/area-status', async (req, res, next) => {
     const countMap = {};
     orderCounts.forEach(r => { countMap[r.area_id] = r; });
 
-    // Count qualifying programs per area (to know if there's anything to generate)
+    // Count professors per area with sessions in this cycle window
     const [progCounts] = await pool.query(
-      `SELECT ga.id AS area_id, COUNT(DISTINCT prog.lead_professor_id) AS professor_count
+      `SELECT COALESCE(ga.id, 0) AS area_id, COUNT(DISTINCT prog.lead_professor_id) AS professor_count
        FROM program prog
        JOIN class cl ON cl.id = prog.class_id
        JOIN class_status cs ON cs.id = prog.class_status_id
@@ -157,7 +157,7 @@ router.get('/cycles/:id/area-status', async (req, res, next) => {
          AND prog.lead_professor_id IS NOT NULL
          AND EXISTS (SELECT 1 FROM session s WHERE s.program_id = prog.id AND s.active = 1
            AND s.session_date BETWEEN ? AND ?)
-       GROUP BY ga.id`,
+       GROUP BY COALESCE(ga.id, 0)`,
       [cycle.start_date, cycle.end_date]
     );
     const progMap = {};
@@ -182,6 +182,17 @@ router.get('/cycles/:id/area-status', async (req, res, next) => {
       };
     });
 
+    // Add unassigned professors (no area) if any
+    const unassignedCount = progMap[0] || 0;
+    if (unassignedCount > 0) {
+      result.push({
+        area_id: 0, area_name: 'Unassigned (No Area)',
+        shipping_lead_days: 7, professor_count: unassignedCount,
+        order_count: 0, shipped_count: 0, pending_count: 0,
+        status: 'not_built',
+      });
+    }
+
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -201,13 +212,12 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     }
 
     // Check which areas already have orders — skip those
-    const placeholders = area_ids.map(() => '?').join(',');
     const [existingAreas] = await pool.query(
-      `SELECT DISTINCT c.geographic_area_id AS area_id FROM shipment_order so
+      `SELECT DISTINCT COALESCE(c.geographic_area_id, 0) AS area_id FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
        LEFT JOIN city c ON c.id = p.city_id
-       WHERE so.cycle_id = ? AND c.geographic_area_id IN (${placeholders}) AND so.order_name NOT LIKE 'SUPP%'`,
-      [id, ...area_ids]
+       WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'`,
+      [id]
     );
     const alreadyBuilt = new Set(existingAreas.map(r => r.area_id));
     const newAreaIds = area_ids.filter(a => !alreadyBuilt.has(a));
@@ -225,8 +235,21 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     const minWeeksStart = exclusionRules.find(r => r.rule_type === 'min_weeks_id_card')?.min_weeks || 4;
     const minWeeksDegree = exclusionRules.find(r => r.rule_type === 'min_weeks_degree')?.min_weeks || 4;
 
-    // Query qualifying programs for selected areas
-    const areaPlaceholders = newAreaIds.map(() => '?').join(',');
+    // Query qualifying programs for selected areas (area_id=0 means unassigned/no area)
+    const hasUnassigned = newAreaIds.includes(0);
+    const realAreaIds = newAreaIds.filter(a => a !== 0);
+    let areaWhere = '';
+    const areaParams = [];
+    if (realAreaIds.length > 0 && hasUnassigned) {
+      areaWhere = `AND (c.geographic_area_id IN (${realAreaIds.map(() => '?').join(',')}) OR c.geographic_area_id IS NULL OR p.city_id IS NULL)`;
+      areaParams.push(...realAreaIds);
+    } else if (realAreaIds.length > 0) {
+      areaWhere = `AND c.geographic_area_id IN (${realAreaIds.map(() => '?').join(',')})`;
+      areaParams.push(...realAreaIds);
+    } else if (hasUnassigned) {
+      areaWhere = 'AND (c.geographic_area_id IS NULL OR p.city_id IS NULL)';
+    }
+
     const [programs] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.lead_professor_id, prog.number_enrolled,
               prog.session_count, prog.first_session_date, prog.last_session_date, prog.class_length_minutes,
@@ -240,13 +263,13 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
        LEFT JOIN city c ON c.id = p.city_id
        WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
          AND prog.lead_professor_id IS NOT NULL
-         AND c.geographic_area_id IN (${areaPlaceholders})
+         ${areaWhere}
          AND EXISTS (
            SELECT 1 FROM session s
            WHERE s.program_id = prog.id AND s.active = 1
              AND s.session_date BETWEEN ? AND ?
          )`,
-      [...newAreaIds, cycleStart, cycleEnd]
+      [...areaParams, cycleStart, cycleEnd]
     );
 
     // Get sessions in this window for each program (for lesson lookup)
