@@ -41,6 +41,24 @@ function formatTimeRange(startTime, lengthMin) {
   return `${st} – ${h12}:${String(em).padStart(2, '0')} ${ampm}`;
 }
 
+function ObsNeededBadge() {
+  const { data } = useQuery({
+    queryKey: ['observation-requirements'],
+    queryFn: () => api.get('/professors/observation-requirements').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const count = data?.data?.length || 0;
+  if (count === 0) return null;
+  return (
+    <Link to="/observation-scheduler"
+      className="flex items-center gap-1.5 bg-amber-50 border-b border-amber-200 px-6 py-1.5 hover:bg-amber-100 transition-colors">
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold">{count}</span>
+      <span className="text-xs text-amber-700 font-medium">new hire{count !== 1 ? 's' : ''} need{count === 1 ? 's' : ''} observations scheduled</span>
+      <span className="text-xs text-amber-500 ml-1">&rarr;</span>
+    </Link>
+  );
+}
+
 export default function AssignmentBoardPage() {
   const [selectedAreas, setSelectedAreas] = useState([]);
   const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -234,6 +252,7 @@ export default function AssignmentBoardPage() {
 
   return (
     <AppShell>
+      <ObsNeededBadge />
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <h1 className="text-xl font-bold text-gray-900">Professor Assignment Board</h1>
         <div className="flex items-end gap-3 mt-3">
