@@ -105,6 +105,7 @@ router.get('/dashboard-kpis', authenticate, async (req, res, next) => {
     const [[active]] = await pool.query(
       `SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id
        WHERE p.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
+       AND p.first_session_date <= CURDATE()
        AND (p.last_session_date >= CURDATE() OR p.last_session_date IS NULL)`
     );
     const [[unconfirmed]] = await pool.query(
