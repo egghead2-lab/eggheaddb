@@ -13,7 +13,7 @@ const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STR
 // GET /api/lab-fees/create-links — programs needing a Stripe payment link
 router.get('/create-links', authenticate, async (req, res, next) => {
   try {
-    const leadDays = parseInt(req.query.lead_days) || parseInt(process.env.LAB_FEE_LEAD_DAYS) || 15;
+    const leadDays = parseInt(req.query.lead_days) || 15;
     const [rows] = await pool.query(
       `SELECT p.id, p.program_nickname, p.first_session_date, p.lab_fee,
               (SELECT COUNT(*) FROM program_roster pr WHERE pr.program_id = p.id
@@ -418,7 +418,7 @@ router.post('/send-followup', authenticate, async (req, res, next) => {
 
 router.get('/counts', authenticate, async (req, res, next) => {
   try {
-    const leadDays = parseInt(process.env.LAB_FEE_LEAD_DAYS) || 15;
+    const leadDays = 15;
 
     const [[{ create_count }]] = await pool.query(
       `SELECT COUNT(*) AS create_count FROM program p
