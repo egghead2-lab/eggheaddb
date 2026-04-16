@@ -186,26 +186,33 @@ router.get('/cycles/:id/area-status', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/materials/cycles/:id/generate-orders — generate orders for a specific area
+// POST /api/materials/cycles/:id/generate-orders — generate orders for selected areas
 router.post('/cycles/:id/generate-orders', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { area_id } = req.body;
+    let { area_ids } = req.body;
+    // Support legacy single area_id
+    if (!area_ids && req.body.area_id) area_ids = [req.body.area_id];
     const [[cycle]] = await pool.query('SELECT * FROM shipment_cycle WHERE id = ?', [id]);
     if (!cycle) return res.status(404).json({ success: false, error: 'Cycle not found' });
 
-    if (!area_id) return res.status(400).json({ success: false, error: 'area_id required — generate orders one area at a time' });
+    if (!area_ids || !Array.isArray(area_ids) || area_ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'area_ids required' });
+    }
 
-    // Check if this area already has orders in this cycle
-    const [[existingArea]] = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM shipment_order so
+    // Check which areas already have orders — skip those
+    const placeholders = area_ids.map(() => '?').join(',');
+    const [existingAreas] = await pool.query(
+      `SELECT DISTINCT c.geographic_area_id AS area_id FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
        LEFT JOIN city c ON c.id = p.city_id
-       WHERE so.cycle_id = ? AND c.geographic_area_id = ? AND so.order_name NOT LIKE 'SUPP%'`,
-      [id, area_id]
+       WHERE so.cycle_id = ? AND c.geographic_area_id IN (${placeholders}) AND so.order_name NOT LIKE 'SUPP%'`,
+      [id, ...area_ids]
     );
-    if (existingArea.cnt > 0) {
-      return res.status(400).json({ success: false, error: 'Orders already generated for this area in this cycle' });
+    const alreadyBuilt = new Set(existingAreas.map(r => r.area_id));
+    const newAreaIds = area_ids.filter(a => !alreadyBuilt.has(a));
+    if (newAreaIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'All selected areas already have orders in this cycle' });
     }
 
     const cycleStart = cycle.start_date;
@@ -218,7 +225,8 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     const minWeeksStart = exclusionRules.find(r => r.rule_type === 'min_weeks_id_card')?.min_weeks || 4;
     const minWeeksDegree = exclusionRules.find(r => r.rule_type === 'min_weeks_degree')?.min_weeks || 4;
 
-    // Query qualifying programs for this area only
+    // Query qualifying programs for selected areas
+    const areaPlaceholders = newAreaIds.map(() => '?').join(',');
     const [programs] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.lead_professor_id, prog.number_enrolled,
               prog.session_count, prog.first_session_date, prog.last_session_date, prog.class_length_minutes,
@@ -232,13 +240,13 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
        LEFT JOIN city c ON c.id = p.city_id
        WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
          AND prog.lead_professor_id IS NOT NULL
-         AND c.geographic_area_id = ?
+         AND c.geographic_area_id IN (${areaPlaceholders})
          AND EXISTS (
            SELECT 1 FROM session s
            WHERE s.program_id = prog.id AND s.active = 1
              AND s.session_date BETWEEN ? AND ?
          )`,
-      [area_id, cycleStart, cycleEnd]
+      [...newAreaIds, cycleStart, cycleEnd]
     );
 
     // Get sessions in this window for each program (for lesson lookup)
@@ -367,7 +375,8 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
       }
     }
 
-    res.json({ success: true, ordersCreated, linesCreated, warnings, programCount: programs.length });
+    res.json({ success: true, ordersCreated, linesCreated, warnings, programCount: programs.length,
+      areasBuilt: newAreaIds.length, areasSkipped: alreadyBuilt.size });
   } catch (err) { next(err); }
 });
 
