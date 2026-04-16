@@ -73,7 +73,7 @@ export default function StandardOrderBuilderPage() {
 
   const areasWithPrograms = areaStatus.filter(a => a.status !== 'no_programs');
   const notBuilt = areasWithPrograms.filter(a => a.status === 'not_built');
-  const buildable = areasWithPrograms.filter(a => a.status === 'not_built');
+  const buildable = areasWithPrograms.filter(a => a.status !== 'shipped');
 
   const toggleArea = (id) => {
     setSelectedAreas(prev => {
@@ -107,6 +107,12 @@ export default function StandardOrderBuilderPage() {
       </PageHeader>
 
       <div className="p-6">
+        {/* Inflow warning */}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-center gap-2">
+          <span className="text-amber-600 font-bold text-sm">!</span>
+          <span className="text-xs text-amber-800 font-medium">Do NOT regenerate orders that have already been imported into Inflow.</span>
+        </div>
+
         {/* Generation results */}
         {lastGenResult && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
@@ -114,8 +120,11 @@ export default function StandardOrderBuilderPage() {
               Generated {lastGenResult.ordersCreated} orders with {lastGenResult.linesCreated} line items
               from {lastGenResult.programCount} programs across {lastGenResult.areasBuilt} area(s)
             </div>
+            {lastGenResult.deletedOrders > 0 && (
+              <div className="text-xs text-blue-600 mt-1">{lastGenResult.deletedOrders} existing pending order(s) replaced</div>
+            )}
             {lastGenResult.areasSkipped > 0 && (
-              <div className="text-xs text-amber-600 mt-1">{lastGenResult.areasSkipped} area(s) skipped (already built)</div>
+              <div className="text-xs text-amber-600 mt-1">{lastGenResult.areasSkipped} area(s) skipped (already shipped)</div>
             )}
             {lastGenResult.warnings?.length > 0 && (
               <div className="mt-2">
@@ -148,7 +157,7 @@ export default function StandardOrderBuilderPage() {
                   )}
                   {buildable.length > 0 && (
                     <button onClick={selectAllNotBuilt} className="text-xs text-[#1e3a5f] hover:underline">
-                      Select all not built
+                      Select all buildable
                     </button>
                   )}
                 </div>
@@ -157,7 +166,7 @@ export default function StandardOrderBuilderPage() {
               <div className="flex flex-wrap gap-2 mb-4">
                 {areasWithPrograms.map(a => {
                   const isSelected = selectedAreas.has(a.area_id);
-                  const canSelect = a.status === 'not_built';
+                  const canSelect = a.status !== 'shipped';
                   return (
                     <button key={a.area_id}
                       onClick={() => {

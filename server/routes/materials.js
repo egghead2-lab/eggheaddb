@@ -206,18 +206,50 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'area_ids required' });
     }
 
-    // Check which areas already have orders — skip those
+    // Check which areas have shipped orders — those cannot be regenerated
     const [existingAreas] = await pool.query(
-      `SELECT DISTINCT COALESCE(p.geographic_area_id, 0) AS area_id
+      `SELECT COALESCE(p.geographic_area_id, 0) AS area_id,
+              SUM(CASE WHEN so.status = 'shipped' THEN 1 ELSE 0 END) AS shipped_count
        FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
-       WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'`,
+       WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'
+       GROUP BY COALESCE(p.geographic_area_id, 0)`,
       [id]
     );
-    const alreadyBuilt = new Set(existingAreas.map(r => r.area_id));
-    const newAreaIds = area_ids.filter(a => !alreadyBuilt.has(a));
-    if (newAreaIds.length === 0) {
-      return res.status(400).json({ success: false, error: 'All selected areas already have orders in this cycle' });
+    const shippedAreas = new Set(existingAreas.filter(r => r.shipped_count > 0).map(r => r.area_id));
+    const blockedAreas = area_ids.filter(a => shippedAreas.has(a));
+    if (blockedAreas.length === area_ids.length) {
+      return res.status(400).json({ success: false, error: 'All selected areas have shipped orders and cannot be regenerated' });
+    }
+    const newAreaIds = area_ids.filter(a => !shippedAreas.has(a));
+
+    // Delete existing pending (unshipped) orders for areas being regenerated
+    const areasWithExisting = existingAreas.filter(r => r.shipped_count === 0 && newAreaIds.includes(r.area_id));
+    let deletedOrders = 0;
+    if (areasWithExisting.length > 0) {
+      for (const area of areasWithExisting) {
+        const areaFilter = area.area_id === 0
+          ? 'AND (p.geographic_area_id IS NULL)'
+          : 'AND p.geographic_area_id = ?';
+        const areaParams = area.area_id === 0 ? [] : [area.area_id];
+        // Delete order lines first, then orders
+        await pool.query(
+          `DELETE sol FROM shipment_order_line sol
+           JOIN shipment_order so ON so.id = sol.order_id
+           JOIN professor p ON p.id = so.professor_id
+           WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'
+             AND so.status = 'pending' ${areaFilter}`,
+          [id, ...areaParams]
+        );
+        const [delResult] = await pool.query(
+          `DELETE so FROM shipment_order so
+           JOIN professor p ON p.id = so.professor_id
+           WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'
+             AND so.status = 'pending' ${areaFilter}`,
+          [id, ...areaParams]
+        );
+        deletedOrders += delResult.affectedRows;
+      }
     }
 
     const cycleStart = cycle.start_date;
@@ -393,7 +425,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     }
 
     res.json({ success: true, ordersCreated, linesCreated, warnings, programCount: programs.length,
-      areasBuilt: newAreaIds.length, areasSkipped: alreadyBuilt.size });
+      areasBuilt: newAreaIds.length, areasSkipped: blockedAreas.length, deletedOrders });
   } catch (err) { next(err); }
 });
 
