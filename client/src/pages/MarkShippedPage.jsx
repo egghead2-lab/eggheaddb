@@ -56,9 +56,16 @@ export default function MarkShippedPage() {
     onSuccess: () => { qc.invalidateQueries(['shipments']); setConfirmingUnship(null); },
   });
 
+  const [bulkResult, setBulkResult] = useState(null);
+
   const bulkShipMutation = useMutation({
-    mutationFn: () => api.post('/materials/orders/bulk-ship', { order_ids: [...selected] }),
-    onSuccess: () => { qc.invalidateQueries(['shipments']); setSelected(new Set()); setConfirmingBulk(false); },
+    mutationFn: () => api.post('/materials/orders/bulk-ship', { order_ids: [...selected] }).then(r => r.data),
+    onSuccess: (data) => { qc.invalidateQueries(['shipments']); setSelected(new Set()); setConfirmingBulk(false); setBulkResult(data); },
+  });
+
+  const bulkUnshipMutation = useMutation({
+    mutationFn: () => api.post('/materials/orders/bulk-unship', { order_ids: [...selected] }).then(r => r.data),
+    onSuccess: (data) => { qc.invalidateQueries(['shipments']); setSelected(new Set()); setConfirmingBulk(false); setBulkResult(data); },
   });
 
   const toggleSelect = (id) => {
@@ -69,7 +76,7 @@ export default function MarkShippedPage() {
     });
   };
 
-  const pendingOnPage = orders.filter(o => o.status === 'pending');
+  const selectableOnPage = orders.filter(o => o.status === 'pending' || (o.status === 'shipped' && !o.tracking_number));
 
   return (
     <AppShell>
@@ -106,21 +113,43 @@ export default function MarkShippedPage() {
           </div>
         </div>
 
+        {/* Bulk result banner */}
+        {bulkResult && (
+          <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-4 flex items-center gap-3">
+            <span className="text-sm text-green-800 font-medium">
+              {bulkResult.shipped != null && `${bulkResult.shipped} shipped`}
+              {bulkResult.unshipped != null && `${bulkResult.unshipped} unshipped`}
+            </span>
+            {bulkResult.skippedBin > 0 && (
+              <span className="text-sm text-amber-600">{bulkResult.skippedBin} skipped (have bins — ship individually)</span>
+            )}
+            <button onClick={() => setBulkResult(null)} className="text-xs text-gray-400 ml-auto">dismiss</button>
+          </div>
+        )}
+
         {/* Bulk actions */}
         {selected.size > 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 flex items-center gap-3">
             <span className="text-sm text-blue-800 font-medium">{selected.size} selected</span>
             {confirmingBulk ? (
               <>
-                <span className="text-sm text-blue-700">Ship {selected.size} orders?</span>
-                <Button size="sm" onClick={() => bulkShipMutation.mutate()} disabled={bulkShipMutation.isPending}>
-                  {bulkShipMutation.isPending ? 'Shipping...' : 'Yes, Ship'}
-                </Button>
+                <span className="text-sm text-blue-700">{confirmingBulk} {selected.size} orders?</span>
+                {confirmingBulk === 'Ship' && (
+                  <Button size="sm" onClick={() => bulkShipMutation.mutate()} disabled={bulkShipMutation.isPending}>
+                    {bulkShipMutation.isPending ? 'Shipping...' : 'Yes, Ship'}
+                  </Button>
+                )}
+                {confirmingBulk === 'Unship' && (
+                  <Button size="sm" onClick={() => bulkUnshipMutation.mutate()} disabled={bulkUnshipMutation.isPending}>
+                    {bulkUnshipMutation.isPending ? 'Unshipping...' : 'Yes, Unship'}
+                  </Button>
+                )}
                 <button onClick={() => setConfirmingBulk(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
               </>
             ) : (
               <>
-                <Button size="sm" onClick={() => setConfirmingBulk(true)}>Mark Shipped</Button>
+                <Button size="sm" onClick={() => setConfirmingBulk('Ship')}>Mark Shipped</Button>
+                <Button size="sm" variant="secondary" onClick={() => setConfirmingBulk('Unship')}>Unship</Button>
                 <button onClick={() => setSelected(new Set())} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
               </>
             )}
@@ -139,12 +168,12 @@ export default function MarkShippedPage() {
                   <tr>
                     <th className="w-10 px-3 py-2">
                       <input type="checkbox"
-                        checked={pendingOnPage.length > 0 && pendingOnPage.every(o => selected.has(o.id))}
+                        checked={selectableOnPage.length > 0 && selectableOnPage.every(o => selected.has(o.id))}
                         onChange={() => {
-                          const allSelected = pendingOnPage.every(o => selected.has(o.id));
+                          const allSelected = selectableOnPage.every(o => selected.has(o.id));
                           setSelected(prev => {
                             const next = new Set(prev);
-                            pendingOnPage.forEach(o => allSelected ? next.delete(o.id) : next.add(o.id));
+                            selectableOnPage.forEach(o => allSelected ? next.delete(o.id) : next.add(o.id));
                             return next;
                           });
                         }}
@@ -166,7 +195,7 @@ export default function MarkShippedPage() {
                   ) : orders.map(o => (
                     <tr key={o.id} className={`hover:bg-gray-50/50 ${o.status === 'shipped' ? '' : 'bg-amber-50/20'}`}>
                       <td className="px-3 py-2">
-                        {o.status === 'pending' && (
+                        {(o.status === 'pending' || (o.status === 'shipped' && !o.tracking_number)) && (
                           <input type="checkbox" checked={selected.has(o.id)}
                             onChange={() => toggleSelect(o.id)} className="accent-[#1e3a5f]" />
                         )}

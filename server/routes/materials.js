@@ -790,12 +790,42 @@ router.post('/orders/bulk-ship', async (req, res, next) => {
   try {
     const { order_ids } = req.body;
     if (!Array.isArray(order_ids) || order_ids.length === 0) return res.status(400).json({ success: false, error: 'No orders selected' });
+
+    // Check for orders with unassigned bins — exclude them
     const placeholders = order_ids.map(() => '?').join(',');
-    await pool.query(
-      `UPDATE shipment_order SET status = 'shipped', shipped_at = NOW(), shipped_by_user_id = ? WHERE id IN (${placeholders}) AND status = 'pending'`,
-      [req.user.userId, ...order_ids]
+    const [binOrders] = await pool.query(
+      `SELECT DISTINCT sol.order_id FROM shipment_order_line sol
+       WHERE sol.order_id IN (${placeholders}) AND sol.item_type = 'bin' AND sol.skip_flag = 0`,
+      order_ids
     );
-    res.json({ success: true, shipped: order_ids.length });
+    const binOrderIds = new Set(binOrders.map(r => r.order_id));
+    const shippable = order_ids.filter(id => !binOrderIds.has(id));
+    const skippedBin = order_ids.length - shippable.length;
+
+    if (shippable.length > 0) {
+      const sp = shippable.map(() => '?').join(',');
+      await pool.query(
+        `UPDATE shipment_order SET status = 'shipped', shipped_at = NOW(), shipped_by_user_id = ? WHERE id IN (${sp}) AND status = 'pending'`,
+        [req.user.userId, ...shippable]
+      );
+    }
+
+    res.json({ success: true, shipped: shippable.length, skippedBin });
+  } catch (err) { next(err); }
+});
+
+router.post('/orders/bulk-unship', async (req, res, next) => {
+  try {
+    const { order_ids } = req.body;
+    if (!Array.isArray(order_ids) || order_ids.length === 0) return res.status(400).json({ success: false, error: 'No orders selected' });
+    const placeholders = order_ids.map(() => '?').join(',');
+    // Only unship orders that don't have tracking numbers
+    const [result] = await pool.query(
+      `UPDATE shipment_order SET status = 'pending', shipped_at = NULL, shipped_by_user_id = NULL
+       WHERE id IN (${placeholders}) AND status = 'shipped' AND (tracking_number IS NULL OR tracking_number = '')`,
+      order_ids
+    );
+    res.json({ success: true, unshipped: result.affectedRows });
   } catch (err) { next(err); }
 });
 
