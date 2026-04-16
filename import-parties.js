@@ -303,10 +303,13 @@ async function main() {
     // Notes
     const notes = strOrNull(getVal(row, 'Notes'), 1024);
 
-    // Shirt size, glow slime
+    // Shirt size (skip glow slime)
     const shirtSize = strOrNull(getVal(row, 'Shirt Size'), 64);
-    const glowSlime = intOrNull(getVal(row, 'Glow Slime Amount Needed'));
-    const calendarEvent = strOrNull(getVal(row, 'Calendar Event ID'), 1024);
+    const glowSlime = null;
+    // CSV "Calendar Event ID" is really "has calendar event been created" flag
+    const calendarEvent = yn(getVal(row, 'Calendar Event ID')) ? 'X' : null;
+    // Actual calendar_event_id for all imported parties
+    const calendarEventId = 'losangeles@professoregghead.com';
     const materialsPrepared = yn(getVal(row, 'Materials Prepared'));
     const detailsConfirmed = parseDate(getVal(row, 'Details Confirmed'));
     const invoiceNeeded = yn(getVal(row, 'Invoice Needed'));
@@ -334,10 +337,22 @@ async function main() {
     const depositDate = parseDate(getVal(row, 'Deposit Date'));
     const depositAmount = numOrNull(getVal(row, 'Deposit Amount'));
     const totalPartyCost = numOrNull(getVal(row, 'Total Party Cost'));
-    const emailedFollowUp = parseDate(getVal(row, 'Emailed Follow Up'));
     const chargeConfirmed = yn(getVal(row, 'Charge Confirmed'));
     const finalChargeDate = parseDate(getVal(row, 'Final Charge Date'));
-    const finalChargeType = strOrNull(getVal(row, 'Final Charge Type'), 1024);
+    // Emailed Follow Up: if "x"/"X", fall back to final charge date
+    const emailedFollowUpRaw = getVal(row, 'Emailed Follow Up').trim();
+    const emailedFollowUp = (emailedFollowUpRaw.toLowerCase() === 'x')
+      ? finalChargeDate
+      : parseDate(emailedFollowUpRaw);
+    // Coerce Final Charge Type to valid options: Credit Card, Check, Stripe Link, Other
+    const finalChargeTypeRaw = (getVal(row, 'Final Charge Type') || '').trim().toLowerCase();
+    let finalChargeType = null;
+    if (finalChargeTypeRaw) {
+      if (finalChargeTypeRaw === 'cc' || finalChargeTypeRaw === 'credit card') finalChargeType = 'Credit Card';
+      else if (finalChargeTypeRaw.includes('check')) finalChargeType = 'Check';
+      else if (finalChargeTypeRaw.includes('stripe')) finalChargeType = 'Stripe Link';
+      else finalChargeType = 'Other';
+    }
     const kidsExpected = intOrNull(getVal(row, 'Kids Expected'));
 
     try {
@@ -359,7 +374,7 @@ async function main() {
           emailed_follow_up, charge_confirmed, final_charge_date, final_charge_type,
           party_format_id, party_location_text,
           first_session_date, last_session_date, maximum_students,
-          payment_through_us,
+          payment_through_us, calendar_event_id,
           ts_inserted, ts_updated, active
         ) VALUES (
           ?, ?, 1, ?,
@@ -378,7 +393,7 @@ async function main() {
           ?, ?, ?, ?,
           ?, ?,
           ?, ?, ?,
-          1,
+          1, ?,
           NOW(), NOW(), 1
         )`,
         [
@@ -397,6 +412,7 @@ async function main() {
           emailedFollowUp, chargeConfirmed, finalChargeDate, finalChargeType,
           partyFormatId, strOrNull(locationText, 255),
           partyDate, partyDate, kidsExpected,
+          calendarEventId,
         ]
       );
 

@@ -73,8 +73,8 @@ router.get('/', authenticate, async (req, res, next) => {
       type: 'pf.party_format_name', theme: 'cl.class_name', contact: 'par.last_name',
       location: 'loc.nickname', professor: 'lp.professor_nickname',
     };
-    const sortCol = sortMap[sort] || 'prog.demo_date';
-    const sortDir = dir === 'desc' ? 'DESC' : dir === 'asc' ? 'ASC' : 'DESC';
+    const sortCol = sortMap[sort] || 'prog.first_session_date';
+    const sortDir = dir === 'desc' ? 'DESC' : dir === 'asc' ? 'ASC' : 'ASC';
 
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname,

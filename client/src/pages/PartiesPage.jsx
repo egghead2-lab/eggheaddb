@@ -42,8 +42,8 @@ export default function PartiesPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState('');
-  const [dir, setDir] = useState('desc');
+  const [sort, setSort] = useState('date');
+  const [dir, setDir] = useState('asc');
 
   const { data: partyProfsData } = useQuery({
     queryKey: ['party-professors'],
