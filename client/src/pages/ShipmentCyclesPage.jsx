@@ -6,7 +6,6 @@ import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { formatDate } from '../lib/utils';
@@ -16,7 +15,7 @@ const STATUS_COLORS = { draft: 'Pending', approved: 'Confirmed', shipped: 'Compl
 export default function ShipmentCyclesPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ cycle_type: 'standard', start_date: '', end_date: '', ship_date: '', notes: '' });
+  const [form, setForm] = useState({ start_date: '', end_date: '', ship_date: '', notes: '' });
 
   const { data, isLoading } = useQuery({
     queryKey: ['shipment-cycles'],
@@ -25,7 +24,7 @@ export default function ShipmentCyclesPage() {
 
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/materials/cycles', data),
-    onSuccess: () => { qc.invalidateQueries(['shipment-cycles']); setShowCreate(false); setForm({ cycle_type: 'standard', start_date: '', end_date: '', ship_date: '', notes: '' }); },
+    onSuccess: () => { qc.invalidateQueries(['shipment-cycles']); setShowCreate(false); setForm({ start_date: '', end_date: '', ship_date: '', notes: '' }); },
   });
 
   const statusMutation = useMutation({
@@ -33,9 +32,14 @@ export default function ShipmentCyclesPage() {
     onSuccess: () => qc.invalidateQueries(['shipment-cycles']),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/materials/cycles/${id}`),
+    onSuccess: () => qc.invalidateQueries(['shipment-cycles']),
+  });
+
   const cycles = data?.data || [];
 
-  // Auto-fill end date when start date changes
+  // Auto-fill end date and ship date when start date changes
   const handleStartChange = (val) => {
     const start = new Date(val);
     const end = new Date(start);
@@ -57,14 +61,8 @@ export default function ShipmentCyclesPage() {
       <div className="p-6">
         {showCreate && (
           <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
-            <h3 className="font-semibold text-gray-900 mb-3">Create Shipment Cycle</h3>
+            <h3 className="font-semibold text-gray-900 mb-3">Create Standard Order Cycle</h3>
             <div className="grid grid-cols-2 gap-4">
-              <Select label="Cycle Type" value={form.cycle_type} onChange={e => setForm({ ...form, cycle_type: e.target.value })}>
-                <option value="standard">Standard</option>
-                <option value="mid_cycle">Mid-Cycle</option>
-                <option value="camp">Camp</option>
-              </Select>
-              <div />
               <Input label="Program Week Start (Monday)" type="date" value={form.start_date} onChange={e => handleStartChange(e.target.value)} />
               <Input label="Program Week End (Sunday)" type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
               <Input label="Ship Date" type="date" value={form.ship_date} onChange={e => setForm({ ...form, ship_date: e.target.value })} />
@@ -89,7 +87,6 @@ export default function ShipmentCyclesPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Type</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Program Week</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Ship Date</th>
                   <th className="text-center px-4 py-3 font-semibold text-gray-700">Orders</th>
@@ -99,17 +96,10 @@ export default function ShipmentCyclesPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {cycles.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-12 text-gray-400">No cycles yet</td></tr>
+                  <tr><td colSpan={5} className="text-center py-12 text-gray-400">No cycles yet</td></tr>
                 ) : cycles.map(c => (
                   <tr key={c.id} className="hover:bg-gray-50/50">
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                        c.cycle_type === 'standard' ? 'bg-blue-100 text-blue-700' :
-                        c.cycle_type === 'mid_cycle' ? 'bg-amber-100 text-amber-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>{c.cycle_type.replace('_', ' ')}</span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
+                    <td className="px-4 py-3 text-gray-700 font-medium">
                       {formatDate(c.start_date)} – {formatDate(c.end_date)}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{formatDate(c.ship_date)}</td>
@@ -135,6 +125,8 @@ export default function ShipmentCyclesPage() {
                           <a href={`${api.defaults.baseURL}/materials/cycles/${c.id}/export-csv`}
                             className="text-xs text-[#1e3a5f] hover:underline">CSV</a>
                         )}
+                        <button onClick={() => { if (confirm('Delete this cycle and all its orders? This cannot be undone.')) deleteMutation.mutate(c.id); }}
+                          className="text-xs text-red-400 hover:text-red-600 ml-2">Delete</button>
                       </div>
                     </td>
                   </tr>

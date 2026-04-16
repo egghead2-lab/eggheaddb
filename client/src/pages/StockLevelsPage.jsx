@@ -10,7 +10,7 @@ import { Spinner } from '../components/ui/Spinner';
 export default function StockLevelsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState('stock'); // stock, skus, id_cards
+  const [tab, setTab] = useState('stock'); // stock, skus, id_cards, shipping
   const [editingId, setEditingId] = useState(null);
   const [editQty, setEditQty] = useState('');
 
@@ -49,6 +49,18 @@ export default function StockLevelsPage() {
     onSuccess: () => qc.invalidateQueries(['class-id-cards']),
   });
 
+  // Area shipping config
+  const { data: areaShipData } = useQuery({
+    queryKey: ['area-shipping'],
+    queryFn: () => api.get('/materials/area-shipping').then(r => r.data),
+    enabled: tab === 'shipping',
+  });
+
+  const updateAreaShipping = useMutation({
+    mutationFn: ({ id, days }) => api.patch(`/materials/area-shipping/${id}`, { shipping_lead_days: days }),
+    onSuccess: () => qc.invalidateQueries(['area-shipping']),
+  });
+
   const stock = (stockData?.data || []).filter(s => !search || s.item_name.toLowerCase().includes(search.toLowerCase()) || s.sku.toLowerCase().includes(search.toLowerCase()));
   const lessons = (skuData?.data || []).filter(l => !search || l.lesson_name.toLowerCase().includes(search.toLowerCase()));
   const classes = idCardData?.data || [];
@@ -57,7 +69,7 @@ export default function StockLevelsPage() {
     <AppShell>
       <PageHeader title="Stock & Configuration">
         <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-          {[['stock', 'Stock Levels'], ['skus', 'SKU Mapper'], ['id_cards', 'Start Kit Config']].map(([k, l]) => (
+          {[['stock', 'Stock Levels'], ['skus', 'SKU Mapper'], ['id_cards', 'Start Kit Config'], ['shipping', 'Shipping Config']].map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); setSearch(''); }}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                 tab === k ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500'
@@ -169,6 +181,39 @@ export default function StockLevelsPage() {
                       <input type="checkbox" checked={!!c.has_id_card}
                         onChange={() => updateIdCard.mutate({ id: c.id, val: c.has_id_card ? 0 : 1 })}
                         className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'shipping' && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200">
+              <p className="text-xs text-gray-500">Set the number of days before a program week that materials must be shipped for each area. Items flagged in the resolution center will warn if a session date is too soon based on the area's lead time.</p>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Area</th>
+                  <th className="text-center px-4 py-3 font-semibold text-gray-700 w-40">Shipping Lead Days</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(areaShipData?.data || []).map(a => (
+                  <tr key={a.id}>
+                    <td className="px-4 py-2.5 text-gray-900 font-medium">{a.geographic_area_name}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <input type="number" min="1" max="30"
+                        defaultValue={a.shipping_lead_days}
+                        onBlur={e => {
+                          const val = parseInt(e.target.value);
+                          if (val && val !== a.shipping_lead_days) updateAreaShipping.mutate({ id: a.id, days: val });
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                        className="w-20 text-center rounded border border-gray-300 px-2 py-1 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
                     </td>
                   </tr>
                 ))}

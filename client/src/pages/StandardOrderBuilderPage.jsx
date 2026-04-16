@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
 import api from '../api/client';
+import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -15,7 +16,9 @@ export default function StandardOrderBuilderPage() {
   const cycleId = searchParams.get('cycle');
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [filterArea, setFilterArea] = useState('');
-  const [filterType, setFilterType] = useState('');
+
+  const { data: refData } = useGeneralData();
+  const areas = refData?.data?.areas || [];
 
   const { data: cyclesData } = useQuery({
     queryKey: ['shipment-cycles'],
@@ -42,7 +45,6 @@ export default function StandardOrderBuilderPage() {
   let filtered = orders;
   if (filterArea) filtered = filtered.filter(o => o.area === filterArea);
 
-  const areas = [...new Set(orders.map(o => o.area).filter(Boolean))].sort();
   const totalLines = orders.reduce((sum, o) => sum + (o.line_count || 0), 0);
   const totalSkips = orders.reduce((sum, o) => sum + (o.skip_count || 0), 0);
 
@@ -65,7 +67,7 @@ export default function StandardOrderBuilderPage() {
       }>
         {activeCycle && (
           <div className="text-sm text-gray-500">
-            Cycle: <strong>{activeCycle.cycle_type.replace('_', ' ')}</strong> &middot;
+            Cycle: <strong>Standard</strong> &middot;
             Week: {formatDate(activeCycle.start_date)} – {formatDate(activeCycle.end_date)} &middot;
             Ship: {formatDate(activeCycle.ship_date)} &middot;
             Status: <strong>{activeCycle.status}</strong>
@@ -105,9 +107,9 @@ export default function StandardOrderBuilderPage() {
               <div className="text-sm text-gray-500">
                 <strong>{orders.length}</strong> professors &middot; <strong>{totalLines}</strong> items {totalSkips > 0 && <span className="text-amber-600">({totalSkips} skipped)</span>}
               </div>
-              <Select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="w-40">
+              <Select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="w-48">
                 <option value="">All Areas</option>
-                {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                {areas.map(a => <option key={a.id} value={a.geographic_area_name}>{a.geographic_area_name}</option>)}
               </Select>
             </div>
 

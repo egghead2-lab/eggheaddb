@@ -29,22 +29,46 @@ router.get('/cycles', async (req, res, next) => {
 
 router.post('/cycles', async (req, res, next) => {
   try {
-    const { cycle_type, start_date, end_date, ship_date, approval_date, notes } = req.body;
-    if (!cycle_type || !start_date || !end_date || !ship_date) {
-      return res.status(400).json({ success: false, error: 'Type, start, end, and ship dates required' });
+    const { start_date, end_date, ship_date, approval_date, notes } = req.body;
+    if (!start_date || !end_date || !ship_date) {
+      return res.status(400).json({ success: false, error: 'Start, end, and ship dates required' });
     }
-    // Check no other draft/approved cycle of same type
+    // Check no other draft/approved standard cycle
     const [existing] = await pool.query(
-      "SELECT id FROM shipment_cycle WHERE cycle_type = ? AND status IN ('draft','approved')", [cycle_type]
+      "SELECT id FROM shipment_cycle WHERE cycle_type = 'standard' AND status IN ('draft','approved')"
     );
     if (existing.length > 0) {
-      return res.status(400).json({ success: false, error: `An active ${cycle_type} cycle already exists` });
+      return res.status(400).json({ success: false, error: 'An active standard cycle already exists' });
     }
     const [result] = await pool.query(
       'INSERT INTO shipment_cycle (cycle_type, start_date, end_date, ship_date, approval_date, notes, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [cycle_type, start_date, end_date, ship_date, approval_date || null, notes || null, req.user.userId]
+      ['standard', start_date, end_date, ship_date, approval_date || null, notes || null, req.user.userId]
     );
     res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// DELETE cycle and all its orders/lines
+router.delete('/cycles/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[cycle]] = await pool.query('SELECT id, status FROM shipment_cycle WHERE id = ?', [id]);
+    if (!cycle) return res.status(404).json({ success: false, error: 'Cycle not found' });
+    // Delete resolutions, lines, orders, then cycle
+    await pool.query(
+      `DELETE sr FROM shipment_resolution sr
+       JOIN shipment_order_line sol ON sol.id = sr.order_line_id
+       JOIN shipment_order so ON so.id = sol.order_id
+       WHERE so.cycle_id = ?`, [id]
+    );
+    await pool.query(
+      `DELETE sol FROM shipment_order_line sol
+       JOIN shipment_order so ON so.id = sol.order_id
+       WHERE so.cycle_id = ?`, [id]
+    );
+    await pool.query('DELETE FROM shipment_order WHERE cycle_id = ?', [id]);
+    await pool.query('DELETE FROM shipment_cycle WHERE id = ?', [id]);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
@@ -103,7 +127,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
 
     const cycleStart = cycle.start_date;
     const cycleEnd = cycle.end_date;
-    const source = cycle.cycle_type === 'mid_cycle' ? 'mid_cycle' : 'standard_cycle';
+    const source = 'standard_cycle';
 
     // Load exclusion rules
     const [exclusionRules] = await pool.query('SELECT * FROM shipment_exclusion_rule WHERE active = 1');
@@ -111,7 +135,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     const minWeeksStart = exclusionRules.find(r => r.rule_type === 'min_weeks_id_card')?.min_weeks || 4;
     const minWeeksDegree = exclusionRules.find(r => r.rule_type === 'min_weeks_degree')?.min_weeks || 4;
 
-    // Query qualifying programs
+    // Query qualifying programs (includes camps and parties)
     const [programs] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.lead_professor_id, prog.number_enrolled,
               prog.session_count, prog.first_session_date, prog.last_session_date, prog.class_length_minutes,
@@ -124,7 +148,6 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
        JOIN class_status cs ON cs.id = prog.class_status_id
        WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
          AND prog.lead_professor_id IS NOT NULL
-         AND prog.party_format_id IS NULL
          AND EXISTS (
            SELECT 1 FROM session s
            WHERE s.program_id = prog.id AND s.active = 1
@@ -334,6 +357,212 @@ router.get('/cycles/:id/export-csv', async (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// MID-CYCLE DETECTION — find items that should exist but weren't shipped
+// ═══════════════════════════════════════════════════════════════════
+
+router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [[cycle]] = await pool.query('SELECT * FROM shipment_cycle WHERE id = ?', [id]);
+    if (!cycle) return res.status(404).json({ success: false, error: 'Cycle not found' });
+
+    const cycleStart = cycle.start_date;
+    const cycleEnd = cycle.end_date;
+
+    // Load exclusion rules
+    const [exclusionRules] = await pool.query('SELECT * FROM shipment_exclusion_rule WHERE active = 1');
+    const roboticsSkipTypeId = exclusionRules.find(r => r.rule_type === 'class_type_skip')?.class_type_id;
+    const minWeeksStart = exclusionRules.find(r => r.rule_type === 'min_weeks_id_card')?.min_weeks || 4;
+    const minWeeksDegree = exclusionRules.find(r => r.rule_type === 'min_weeks_degree')?.min_weeks || 4;
+
+    // What SHOULD exist: all qualifying programs with sessions in this window
+    const [programs] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.lead_professor_id, prog.number_enrolled,
+              prog.session_count, prog.first_session_date, prog.last_session_date,
+              cl.class_name, cl.class_type_id, cl.has_id_card, ct.class_type_name
+       FROM program prog
+       JOIN class cl ON cl.id = prog.class_id
+       JOIN class_type ct ON ct.id = cl.class_type_id
+       JOIN class_status cs ON cs.id = prog.class_status_id
+       WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
+         AND prog.lead_professor_id IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM session s
+           WHERE s.program_id = prog.id AND s.active = 1
+             AND s.session_date BETWEEN ? AND ?
+         )`,
+      [cycleStart, cycleEnd]
+    );
+
+    const [sessions] = await pool.query(
+      `SELECT s.program_id, s.session_date, s.lesson_id, l.lesson_name
+       FROM session s LEFT JOIN lesson l ON l.id = s.lesson_id
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?`,
+      [cycleStart, cycleEnd]
+    );
+    const sessionsByProgram = {};
+    sessions.forEach(s => {
+      if (!sessionsByProgram[s.program_id]) sessionsByProgram[s.program_id] = [];
+      sessionsByProgram[s.program_id].push(s);
+    });
+
+    // What DOES exist: all non-cancelled order lines in this cycle (any source)
+    const [existingLines] = await pool.query(
+      `SELECT sol.item_name, sol.item_type, sol.program_id, sol.lesson_id, so.professor_id, so.status AS order_status,
+              sol.source, sol.id AS line_id, sol.skip_flag,
+              sr.resolution, sr.id AS resolution_id
+       FROM shipment_order_line sol
+       JOIN shipment_order so ON so.id = sol.order_id
+       LEFT JOIN shipment_resolution sr ON sr.order_line_id = sol.id
+       WHERE so.cycle_id = ? AND so.status != 'cancelled'`,
+      [id]
+    );
+
+    // Build a set of what's already covered (shipped standard items + any mid_cycle items already flagged)
+    const coveredKey = (profId, progId, itemName, itemType) => `${profId}|${progId || ''}|${itemName}|${itemType}`;
+    const coveredSet = new Set();
+    const existingMidCycleFlags = []; // already-flagged mid-cycle items to return
+
+    for (const line of existingLines) {
+      coveredSet.add(coveredKey(line.professor_id, line.program_id, line.item_name, line.item_type));
+      if (line.source === 'mid_cycle') {
+        existingMidCycleFlags.push(line);
+      }
+    }
+
+    // Compute what's missing
+    const missingItems = []; // items that should exist but don't
+    const prefix = CLASS_TYPE_PREFIX;
+
+    for (const prog of programs) {
+      const profId = prog.lead_professor_id;
+      const isRobotics = prog.class_type_id === roboticsSkipTypeId;
+      const for20 = prog.number_enrolled > 20;
+      const progSessions = sessionsByProgram[prog.id] || [];
+      const pfx = prefix[prog.class_type_id] || 'Sci';
+
+      if (isRobotics) continue;
+
+      // Lesson items
+      for (const sess of progSessions) {
+        if (!sess.lesson_name) continue;
+        const itemName = for20 ? `${sess.lesson_name} For 20` : sess.lesson_name;
+        const key = coveredKey(profId, prog.id, itemName, 'lesson');
+        if (!coveredSet.has(key)) {
+          missingItems.push({
+            professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
+            lesson_id: sess.lesson_id, item_name: itemName, item_type: 'lesson',
+            class_type_name: prog.class_type_name,
+          });
+        }
+      }
+
+      // Start kit
+      const firstSessionInWindow = prog.first_session_date &&
+        prog.first_session_date >= cycleStart && prog.first_session_date <= cycleEnd;
+      if (firstSessionInWindow && prog.has_id_card && prog.session_count >= minWeeksStart) {
+        const startName = for20
+          ? `${pfx} Start for 20 - ${prog.class_name}`
+          : `${pfx} Start - ${prog.class_name}`;
+        const key = coveredKey(profId, prog.id, startName, 'start_kit');
+        if (!coveredSet.has(key)) {
+          missingItems.push({
+            professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
+            item_name: startName, item_type: 'start_kit', class_type_name: prog.class_type_name,
+          });
+        }
+      }
+
+      // Degree
+      const lastSessionInWindow = prog.last_session_date &&
+        prog.last_session_date >= cycleStart && prog.last_session_date <= cycleEnd;
+      if (lastSessionInWindow && prog.session_count >= minWeeksDegree) {
+        const key = coveredKey(profId, prog.id, 'Degrees', 'degree');
+        if (!coveredSet.has(key)) {
+          missingItems.push({
+            professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
+            item_name: 'Degrees', item_type: 'degree', class_type_name: prog.class_type_name,
+          });
+        }
+      }
+    }
+
+    // Insert missing items as mid-cycle flagged lines on supplemental orders
+    let newFlags = 0;
+    if (missingItems.length > 0) {
+      // Group by professor
+      const byProf = {};
+      for (const item of missingItems) {
+        if (!byProf[item.professor_id]) byProf[item.professor_id] = [];
+        byProf[item.professor_id].push(item);
+      }
+
+      const shipDateStr = cycle.ship_date instanceof Date
+        ? cycle.ship_date.toISOString().split('T')[0]
+        : String(cycle.ship_date).split('T')[0];
+
+      for (const [profIdStr, items] of Object.entries(byProf)) {
+        const profId = Number(profIdStr);
+        const [[prof]] = await pool.query('SELECT professor_nickname FROM professor WHERE id = ?', [profId]);
+        if (!prof) continue;
+
+        // Find or create supplemental order for this professor in this cycle
+        const [[existingOrder]] = await pool.query(
+          "SELECT id FROM shipment_order WHERE cycle_id = ? AND professor_id = ? AND order_name LIKE 'SUPP%'",
+          [id, profId]
+        );
+        let orderId;
+        if (existingOrder) {
+          orderId = existingOrder.id;
+        } else {
+          const orderName = `SUPP - ${prof.professor_nickname} - ${shipDateStr.replace(/-/g, '/').slice(5)}`;
+          const [orderResult] = await pool.query(
+            'INSERT INTO shipment_order (cycle_id, professor_id, order_name) VALUES (?, ?, ?)',
+            [id, profId, orderName]
+          );
+          orderId = orderResult.insertId;
+        }
+
+        for (const item of items) {
+          await pool.query(
+            'INSERT INTO shipment_order_line (order_id, program_id, lesson_id, item_name, item_type, quantity, source) VALUES (?, ?, ?, ?, ?, 1, ?)',
+            [orderId, item.program_id, item.lesson_id || null, item.item_name, item.item_type, 'mid_cycle']
+          );
+          newFlags++;
+        }
+      }
+    }
+
+    // Return all mid-cycle flagged items for this cycle (existing + newly created)
+    // Include area lead time and earliest session date for urgency warnings
+    const [allFlags] = await pool.query(
+      `SELECT sol.id AS line_id, sol.item_name, sol.item_type, sol.program_id, sol.quantity,
+              so.id AS order_id, so.order_name, so.professor_id, so.status AS order_status,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              ga.geographic_area_name AS area,
+              ga.shipping_lead_days,
+              prog.program_nickname,
+              (SELECT MIN(s.session_date) FROM session s WHERE s.program_id = sol.program_id AND s.active = 1
+                AND s.session_date BETWEEN ? AND ?) AS earliest_session_date,
+              sr.id AS resolution_id, sr.resolution, sr.quantity_resolved, sr.notes AS resolution_notes,
+              sr.resolved_at
+       FROM shipment_order_line sol
+       JOIN shipment_order so ON so.id = sol.order_id
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN program prog ON prog.id = sol.program_id
+       LEFT JOIN shipment_resolution sr ON sr.order_line_id = sol.id
+       WHERE so.cycle_id = ? AND sol.source = 'mid_cycle' AND so.status != 'cancelled'
+       ORDER BY ga.geographic_area_name, p.professor_nickname, sol.item_name`,
+      [cycleStart, cycleEnd, id]
+    );
+
+    res.json({ success: true, data: allFlags, newFlags });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // MARK SHIPPED
 // ═══════════════════════════════════════════════════════════════════
 
@@ -378,44 +607,57 @@ router.post('/orders/bulk-ship', async (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// RESOLUTIONS
+// RESOLUTIONS — acknowledge and ship mid-cycle flagged items
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/resolutions', async (req, res, next) => {
+// Acknowledge a flagged item (scheduler confirms they've seen it)
+router.post('/resolutions/acknowledge', async (req, res, next) => {
   try {
-    const { cycle_id, area_id } = req.query;
-    let where = 'WHERE sol.skip_flag = 0';
-    const params = [];
-    if (cycle_id) { where += ' AND so.cycle_id = ?'; params.push(cycle_id); }
-    if (area_id) { where += ' AND ga.id = ?'; params.push(area_id); }
-
-    const [rows] = await pool.query(
-      `SELECT sol.*, so.order_name, so.professor_id,
-              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
-              ga.geographic_area_name AS area,
-              sr.id AS resolution_id, sr.resolution, sr.quantity_resolved, sr.notes AS resolution_notes
-       FROM shipment_order_line sol
-       JOIN shipment_order so ON so.id = sol.order_id
-       JOIN professor p ON p.id = so.professor_id
-       LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
-       LEFT JOIN shipment_resolution sr ON sr.order_line_id = sol.id
-       ${where} AND sol.source = 'mid_cycle' AND sol.quantity = 0
-       ORDER BY ga.geographic_area_name, p.professor_nickname`, params
+    const { order_line_id, notes } = req.body;
+    if (!order_line_id) return res.status(400).json({ success: false, error: 'order_line_id required' });
+    await pool.query(
+      `INSERT INTO shipment_resolution (order_line_id, resolution, notes, resolved_by_user_id)
+       VALUES (?, 'acknowledged', ?, ?)
+       ON DUPLICATE KEY UPDATE resolution = 'acknowledged', notes = VALUES(notes),
+         resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW()`,
+      [order_line_id, notes || null, req.user.userId]
     );
-    res.json({ success: true, data: rows });
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
-router.post('/resolutions', async (req, res, next) => {
+// Mark individual flagged item as shipped
+router.post('/resolutions/ship', async (req, res, next) => {
   try {
-    const { order_line_id, resolution, quantity_resolved, notes } = req.body;
-    if (!order_line_id || !resolution) return res.status(400).json({ success: false, error: 'Line and resolution required' });
+    const { order_line_id } = req.body;
+    if (!order_line_id) return res.status(400).json({ success: false, error: 'order_line_id required' });
+    // Update the resolution to 'shipped'
     await pool.query(
-      'INSERT INTO shipment_resolution (order_line_id, resolution, quantity_resolved, notes, resolved_by_user_id) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE resolution = VALUES(resolution), quantity_resolved = VALUES(quantity_resolved), notes = VALUES(notes), resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW()',
-      [order_line_id, resolution, quantity_resolved || null, notes || null, req.user.userId]
+      `INSERT INTO shipment_resolution (order_line_id, resolution, resolved_by_user_id)
+       VALUES (?, 'shipped', ?)
+       ON DUPLICATE KEY UPDATE resolution = 'shipped', resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW()`,
+      [order_line_id, req.user.userId]
     );
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Bulk mark flagged items as shipped
+router.post('/resolutions/bulk-ship', async (req, res, next) => {
+  try {
+    const { order_line_ids } = req.body;
+    if (!Array.isArray(order_line_ids) || order_line_ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'No items selected' });
+    }
+    for (const lineId of order_line_ids) {
+      await pool.query(
+        `INSERT INTO shipment_resolution (order_line_id, resolution, resolved_by_user_id)
+         VALUES (?, 'shipped', ?)
+         ON DUPLICATE KEY UPDATE resolution = 'shipped', resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW()`,
+        [lineId, req.user.userId]
+      );
+    }
+    res.json({ success: true, shipped: order_line_ids.length });
   } catch (err) { next(err); }
 });
 
@@ -486,7 +728,6 @@ router.get('/weekly-requirements', async (req, res, next) => {
          LEFT JOIN class cl ON cl.id = prog.class_id
          LEFT JOIN class_type ct ON ct.id = cl.class_type_id
          WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
-           AND prog.party_format_id IS NULL
            AND (cl.class_type_id IS NULL OR cl.class_type_id != 3)
          GROUP BY l.lesson_name, ct.class_type_name
          ORDER BY ct.class_type_name, l.lesson_name`,
@@ -723,6 +964,31 @@ router.patch('/class-id-cards/:id', async (req, res, next) => {
   try {
     const { has_id_card } = req.body;
     await pool.query('UPDATE class SET has_id_card = ? WHERE id = ?', [has_id_card ? 1 : 0, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// AREA SHIPPING CONFIG
+// ═══════════════════════════════════════════════════════════════════
+
+router.get('/area-shipping', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, geographic_area_name, shipping_lead_days FROM geographic_area WHERE active = 1 ORDER BY geographic_area_name'
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+router.patch('/area-shipping/:id', async (req, res, next) => {
+  try {
+    const { shipping_lead_days } = req.body;
+    if (shipping_lead_days == null || shipping_lead_days < 1) {
+      return res.status(400).json({ success: false, error: 'shipping_lead_days must be >= 1' });
+    }
+    await pool.query('UPDATE geographic_area SET shipping_lead_days = ? WHERE id = ?',
+      [shipping_lead_days, req.params.id]);
     res.json({ success: true });
   } catch (err) { next(err); }
 });
