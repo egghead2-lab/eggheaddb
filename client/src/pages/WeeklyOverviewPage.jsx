@@ -118,8 +118,18 @@ export default function WeeklyOverviewPage() {
           <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
         ) : (
           <div className="space-y-6">
+            {(() => {
+              const totalUnassigned = byDay.reduce((sum, dg) => sum + dg.sessions.filter(s => !s.lead_id).length, 0);
+              return totalUnassigned > 0 ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold">{totalUnassigned}</span>
+                  <span className="text-xs text-red-700 font-medium">session{totalUnassigned !== 1 ? 's' : ''} with no professor assigned</span>
+                </div>
+              ) : null;
+            })()}
             {byDay.map(dayGroup => {
               const isToday = dayGroup.date === today;
+              const dayUnassigned = dayGroup.sessions.filter(s => !s.lead_id).length;
               return (
                 <div key={dayGroup.date}>
                   <div className={`flex items-center gap-2 mb-2 ${isToday ? 'text-[#1e3a5f]' : 'text-gray-700'}`}>
@@ -127,6 +137,7 @@ export default function WeeklyOverviewPage() {
                     <span className="text-xs text-gray-400">{formatDate(dayGroup.date)}</span>
                     {isToday && <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">TODAY</span>}
                     <span className="text-[10px] text-gray-400">({dayGroup.sessions.length} session{dayGroup.sessions.length !== 1 ? 's' : ''})</span>
+                    {dayUnassigned > 0 && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">{dayUnassigned} unassigned</span>}
                   </div>
 
                   {dayGroup.sessions.length === 0 ? (
@@ -164,7 +175,7 @@ export default function WeeklyOverviewPage() {
                             const isSingleDay = firstDate === lastDate;
 
                             return (
-                              <tr key={s.session_id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${isFirst || isLast ? 'bg-amber-50/30' : ''}`}>
+                              <tr key={s.session_id} className={`${!s.lead_id ? 'bg-red-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${isFirst || isLast ? 'bg-amber-50/30' : ''}`}>
                                 <td className="px-3 py-1.5 truncate">
                                   <Link to={`/programs/${s.program_id}`} className="font-medium text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>
                                   {s.location_nickname && <div className="text-[10px] text-gray-400 truncate">{s.location_nickname}</div>}
@@ -175,7 +186,7 @@ export default function WeeklyOverviewPage() {
                                 <td className="px-2 py-1.5 truncate">
                                   {s.lead_id ? (
                                     <Link to={`/professors/${s.lead_id}`} className="text-[#1e3a5f] hover:underline">{s.lead_name}</Link>
-                                  ) : <span className="text-gray-300">—</span>}
+                                  ) : <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">UNASSIGNED</span>}
                                 </td>
                                 {showAssistant && <td className="px-2 py-1.5 truncate">
                                   {s.assist_id ? (
