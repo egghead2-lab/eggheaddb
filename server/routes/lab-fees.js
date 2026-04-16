@@ -4,7 +4,11 @@ const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const QRCode = require('qrcode');
 
-const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+let _stripe = null;
+function getStripe() {
+  if (!_stripe && process.env.STRIPE_SECRET_KEY) _stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  return _stripe;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB 1: CREATE STRIPE LINKS
@@ -44,6 +48,7 @@ router.post('/create-link/:id', authenticate, async (req, res, next) => {
     );
     if (!program) return res.status(404).json({ success: false, error: 'Program not found' });
     if (program.stripe_payment_link_id) return res.status(400).json({ success: false, error: 'Link already created' });
+    const stripe = getStripe();
     if (!stripe) return res.status(503).json({ success: false, error: 'Stripe not configured — add STRIPE_SECRET_KEY to environment' });
 
     let price, paymentLink, qrDataUrl;
