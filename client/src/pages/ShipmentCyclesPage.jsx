@@ -15,6 +15,7 @@ const STATUS_COLORS = { draft: 'Pending', approved: 'Confirmed', shipped: 'Compl
 export default function ShipmentCyclesPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); // { type, id, label }
   const [form, setForm] = useState({ start_date: '', end_date: '', ship_date: '', notes: '' });
 
   const { data, isLoading } = useQuery({
@@ -117,16 +118,33 @@ export default function ShipmentCyclesPage() {
                           </Link>
                         )}
                         {nextStatus[c.status] && (
-                          <Button size="sm" onClick={() => { if (confirm(`${nextLabel[c.status]} this cycle?`)) statusMutation.mutate({ id: c.id, status: nextStatus[c.status] }); }}>
-                            {nextLabel[c.status]}
-                          </Button>
+                          confirmAction?.type === 'status' && confirmAction.id === c.id ? (
+                            <div className="flex items-center gap-1">
+                              <Button size="sm" onClick={() => { statusMutation.mutate({ id: c.id, status: nextStatus[c.status] }); setConfirmAction(null); }}>
+                                Yes, {nextLabel[c.status]}
+                              </Button>
+                              <button onClick={() => setConfirmAction(null)} className="text-xs text-gray-400">Cancel</button>
+                            </div>
+                          ) : (
+                            <Button size="sm" onClick={() => setConfirmAction({ type: 'status', id: c.id })}>
+                              {nextLabel[c.status]}
+                            </Button>
+                          )
                         )}
                         {(c.status === 'approved' || c.status === 'shipped') && (
                           <a href={`${api.defaults.baseURL}/materials/cycles/${c.id}/export-csv`}
                             className="text-xs text-[#1e3a5f] hover:underline">CSV</a>
                         )}
-                        <button onClick={() => { if (confirm('Delete this cycle and all its orders? This cannot be undone.')) deleteMutation.mutate(c.id); }}
-                          className="text-xs text-red-400 hover:text-red-600 ml-2">Delete</button>
+                        {confirmAction?.type === 'delete' && confirmAction.id === c.id ? (
+                          <div className="flex items-center gap-1 ml-2">
+                            <button onClick={() => { deleteMutation.mutate(c.id); setConfirmAction(null); }}
+                              className="text-xs px-2 py-0.5 bg-red-500 text-white rounded font-medium">Yes, Delete</button>
+                            <button onClick={() => setConfirmAction(null)} className="text-xs text-gray-400">Cancel</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmAction({ type: 'delete', id: c.id })}
+                            className="text-xs text-red-400 hover:text-red-600 ml-2">Delete</button>
+                        )}
                       </div>
                     </td>
                   </tr>

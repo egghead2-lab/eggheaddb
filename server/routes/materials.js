@@ -685,26 +685,103 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
 router.patch('/orders/:id/ship', async (req, res, next) => {
   try {
     const { inflow_order_number, bin_number_entries } = req.body;
+
+    // Check if order has bin items — require bin assignments if so
+    const [binLines] = await pool.query(
+      "SELECT id FROM shipment_order_line WHERE order_id = ? AND item_type = 'bin' AND skip_flag = 0", [req.params.id]
+    );
+    if (binLines.length > 0 && (!bin_number_entries || bin_number_entries.length === 0)) {
+      return res.status(400).json({ success: false, error: 'This order has bin items — assign bin numbers before shipping' });
+    }
+
+    // Update professor bins if provided
+    if (bin_number_entries && Array.isArray(bin_number_entries)) {
+      const [[order]] = await pool.query('SELECT professor_id FROM shipment_order WHERE id = ?', [req.params.id]);
+      for (const entry of bin_number_entries) {
+        if (entry.bin_id && entry.bin_number && order) {
+          await pool.query(
+            'INSERT INTO has_bin (professor_id, bin_id, bin_number, active) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE bin_number = VALUES(bin_number), active = 1',
+            [order.professor_id, entry.bin_id, entry.bin_number]
+          );
+        }
+      }
+    }
+
     await pool.query(
       'UPDATE shipment_order SET status = ?, shipped_at = NOW(), shipped_by_user_id = ?, inflow_order_number = ? WHERE id = ?',
       ['shipped', req.user.userId, inflow_order_number || null, req.params.id]
     );
 
-    // Update professor bins if provided
-    if (bin_number_entries && Array.isArray(bin_number_entries)) {
-      for (const entry of bin_number_entries) {
-        if (entry.bin_id && entry.bin_number) {
-          const [[order]] = await pool.query('SELECT professor_id FROM shipment_order WHERE id = ?', [req.params.id]);
-          if (order) {
-            await pool.query(
-              'INSERT INTO has_bin (professor_id, bin_id, bin_number, active) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE bin_number = VALUES(bin_number), active = 1',
-              [order.professor_id, entry.bin_id, entry.bin_number]
-            );
-          }
-        }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Search shipments across all cycles
+router.get('/shipments', async (req, res, next) => {
+  try {
+    const { start_date, end_date, area_id, search, status, limit = 50, page = 1 } = req.query;
+    let where = ['1=1'];
+    const params = [];
+
+    if (start_date) { where.push('sc.start_date >= ?'); params.push(start_date); }
+    if (end_date) { where.push('sc.end_date <= ?'); params.push(end_date); }
+    if (area_id) { where.push('c.geographic_area_id = ?'); params.push(area_id); }
+    if (status) { where.push('so.status = ?'); params.push(status); }
+    if (search) {
+      where.push('(p.professor_nickname LIKE ? OR so.order_name LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) as total FROM shipment_order so
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN shipment_cycle sc ON sc.id = so.cycle_id
+       WHERE ${where.join(' AND ')}`, params
+    );
+
+    const [rows] = await pool.query(
+      `SELECT so.*, CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              ga.geographic_area_name AS area,
+              sc.start_date AS cycle_start, sc.end_date AS cycle_end, sc.ship_date AS cycle_ship_date,
+              (SELECT COUNT(*) FROM shipment_order_line sol WHERE sol.order_id = so.id) AS line_count,
+              (SELECT COUNT(*) FROM shipment_order_line sol WHERE sol.order_id = so.id AND sol.item_type = 'bin' AND sol.skip_flag = 0) AS bin_count
+       FROM shipment_order so
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN city c ON c.id = p.city_id
+       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN shipment_cycle sc ON sc.id = so.cycle_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY so.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+    // Attach bin line items to orders that have them
+    for (const order of rows) {
+      if (order.bin_count > 0) {
+        const [binLines] = await pool.query(
+          "SELECT sol.id, sol.item_name, sol.item_type FROM shipment_order_line sol WHERE sol.order_id = ? AND sol.item_type = 'bin' AND sol.skip_flag = 0",
+          [order.id]
+        );
+        order.bin_lines = binLines;
       }
     }
 
+    res.json({ success: true, data: rows, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) { next(err); }
+});
+
+// Unship — revert shipped order back to pending (allowed until tracking CSV imported)
+router.patch('/orders/:id/unship', async (req, res, next) => {
+  try {
+    const [[order]] = await pool.query('SELECT status, tracking_number FROM shipment_order WHERE id = ?', [req.params.id]);
+    if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+    if (order.tracking_number) return res.status(400).json({ success: false, error: 'Cannot unship — tracking number already imported' });
+    await pool.query(
+      'UPDATE shipment_order SET status = ?, shipped_at = NULL, shipped_by_user_id = NULL WHERE id = ?',
+      ['pending', req.params.id]
+    );
     res.json({ success: true });
   } catch (err) { next(err); }
 });
