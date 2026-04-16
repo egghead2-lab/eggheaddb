@@ -79,7 +79,7 @@ export default function PayrollRunsPage() {
               <tbody className="divide-y divide-gray-100">
                 {previewData.map(r => (
                   <tr key={r.id} className={r.has_missing_assist_pay ? 'bg-red-50/30' : ''}>
-                    <td className="px-3 py-1.5 font-medium">{r.last_name}, {r.first_name}</td>
+                    <td className="px-3 py-1.5 font-medium">{r.first_name} {r.last_name}</td>
                     <td className="px-3 py-1.5 font-mono text-gray-500">{r.gusto_employee_id}</td>
                     <td className="px-3 py-1.5 text-right">{r.regular_hours}</td>
                     <td className="px-3 py-1.5 text-right">{formatCurrency(r.bonus)}</td>

@@ -1,10 +1,27 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { google } = require('googleapis');
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+
+const sigImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: path.join(__dirname, '..', '..', 'uploads', 'signature-images'),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, `user-${req.user.userId}-${Date.now()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^image\/(jpeg|png|gif|webp)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only image files (JPEG, PNG, GIF, WEBP) are allowed'));
+  },
+});
 
 function makeOAuthClient() {
   return new google.auth.OAuth2(
@@ -180,6 +197,15 @@ router.put('/me/signature', authenticate, async (req, res, next) => {
     const { email_signature } = req.body;
     await pool.query('UPDATE user SET email_signature = ?, ts_updated = NOW() WHERE id = ?', [email_signature || null, req.user.userId]);
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/auth/me/signature/image — upload a photo for email signature
+router.post('/me/signature/image', authenticate, sigImageUpload.single('image'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'No image file provided' });
+    const imageUrl = `/api/public/signature-images/${req.file.filename}`;
+    res.json({ success: true, data: { url: imageUrl, filename: req.file.filename } });
   } catch (err) { next(err); }
 });
 

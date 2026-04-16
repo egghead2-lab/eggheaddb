@@ -99,8 +99,7 @@ router.get('/cycles/:id/orders', async (req, res, next) => {
               (SELECT COUNT(*) FROM shipment_order_line sol WHERE sol.order_id = so.id AND sol.skip_flag = 1) AS skip_count
        FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
-       LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        WHERE so.cycle_id = ?
        ORDER BY p.professor_nickname`, [req.params.id]
     );
@@ -131,33 +130,29 @@ router.get('/cycles/:id/area-status', async (req, res, next) => {
 
     // Count orders per area for this cycle (non-supplemental only)
     const [orderCounts] = await pool.query(
-      `SELECT ga.id AS area_id, COUNT(so.id) AS order_count,
+      `SELECT p.geographic_area_id AS area_id, COUNT(so.id) AS order_count,
               SUM(CASE WHEN so.status = 'shipped' THEN 1 ELSE 0 END) AS shipped_count,
               SUM(CASE WHEN so.status = 'pending' THEN 1 ELSE 0 END) AS pending_count
        FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
-       LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'
-       GROUP BY ga.id`, [id]
+       GROUP BY p.geographic_area_id`, [id]
     );
     const countMap = {};
     orderCounts.forEach(r => { countMap[r.area_id] = r; });
 
     // Count professors per area with sessions in this cycle window
     const [progCounts] = await pool.query(
-      `SELECT COALESCE(ga.id, 0) AS area_id, COUNT(DISTINCT prog.lead_professor_id) AS professor_count
+      `SELECT COALESCE(p.geographic_area_id, 0) AS area_id, COUNT(DISTINCT prog.lead_professor_id) AS professor_count
        FROM program prog
        JOIN class cl ON cl.id = prog.class_id
        JOIN class_status cs ON cs.id = prog.class_status_id
        JOIN professor p ON p.id = prog.lead_professor_id
-       LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
          AND prog.lead_professor_id IS NOT NULL
          AND EXISTS (SELECT 1 FROM session s WHERE s.program_id = prog.id AND s.active = 1
            AND s.session_date BETWEEN ? AND ?)
-       GROUP BY COALESCE(ga.id, 0)`,
+       GROUP BY COALESCE(p.geographic_area_id, 0)`,
       [cycle.start_date, cycle.end_date]
     );
     const progMap = {};
@@ -213,9 +208,9 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
 
     // Check which areas already have orders — skip those
     const [existingAreas] = await pool.query(
-      `SELECT DISTINCT COALESCE(c.geographic_area_id, 0) AS area_id FROM shipment_order so
+      `SELECT DISTINCT COALESCE(p.geographic_area_id, 0) AS area_id
+       FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
-       LEFT JOIN city c ON c.id = p.city_id
        WHERE so.cycle_id = ? AND so.order_name NOT LIKE 'SUPP%'`,
       [id]
     );
@@ -241,13 +236,13 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     let areaWhere = '';
     const areaParams = [];
     if (realAreaIds.length > 0 && hasUnassigned) {
-      areaWhere = `AND (c.geographic_area_id IN (${realAreaIds.map(() => '?').join(',')}) OR c.geographic_area_id IS NULL OR p.city_id IS NULL)`;
+      areaWhere = `AND (p.geographic_area_id IN (${realAreaIds.map(() => '?').join(',')}) OR p.geographic_area_id IS NULL)`;
       areaParams.push(...realAreaIds);
     } else if (realAreaIds.length > 0) {
-      areaWhere = `AND c.geographic_area_id IN (${realAreaIds.map(() => '?').join(',')})`;
+      areaWhere = `AND p.geographic_area_id IN (${realAreaIds.map(() => '?').join(',')})`;
       areaParams.push(...realAreaIds);
     } else if (hasUnassigned) {
-      areaWhere = 'AND (c.geographic_area_id IS NULL OR p.city_id IS NULL)';
+      areaWhere = 'AND p.geographic_area_id IS NULL';
     }
 
     const [programs] = await pool.query(
@@ -260,7 +255,6 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
        JOIN class_type ct ON ct.id = cl.class_type_id
        JOIN class_status cs ON cs.id = prog.class_status_id
        JOIN professor p ON p.id = prog.lead_professor_id
-       LEFT JOIN city c ON c.id = p.city_id
        WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
          AND prog.lead_professor_id IS NOT NULL
          ${areaWhere}
@@ -411,7 +405,7 @@ router.get('/cycles/:id/export-csv', async (req, res, next) => {
     const [[cycle]] = await pool.query('SELECT * FROM shipment_cycle WHERE id = ?', [id]);
     if (!cycle) return res.status(404).json({ success: false, error: 'Cycle not found' });
 
-    const areaFilter = area_id ? ' AND c.geographic_area_id = ?' : '';
+    const areaFilter = area_id ? ' AND p.geographic_area_id = ?' : '';
     const areaParams = area_id ? [area_id] : [];
 
     const [orders] = await pool.query(
@@ -420,9 +414,9 @@ router.get('/cycles/:id/export-csv', async (req, res, next) => {
               ga.geographic_area_name AS area
        FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN city c ON c.id = p.city_id
        LEFT JOIN state s ON s.id = c.state_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        WHERE so.cycle_id = ? AND so.status != 'cancelled'${areaFilter}
        ORDER BY p.professor_nickname`, [id, ...areaParams]
     );
@@ -665,8 +659,7 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
        FROM shipment_order_line sol
        JOIN shipment_order so ON so.id = sol.order_id
        JOIN professor p ON p.id = so.professor_id
-       LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN program prog ON prog.id = sol.program_id
        LEFT JOIN shipment_resolution sr ON sr.order_line_id = sol.id
        WHERE so.cycle_id = ? AND sol.source = 'mid_cycle' AND so.status != 'cancelled'
@@ -725,7 +718,7 @@ router.get('/shipments', async (req, res, next) => {
 
     if (start_date) { where.push('sc.start_date >= ?'); params.push(start_date); }
     if (end_date) { where.push('sc.end_date <= ?'); params.push(end_date); }
-    if (area_id) { where.push('c.geographic_area_id = ?'); params.push(area_id); }
+    if (area_id) { where.push('p.geographic_area_id = ?'); params.push(area_id); }
     if (status) { where.push('so.status = ?'); params.push(status); }
     if (search) {
       where.push('(p.professor_nickname LIKE ? OR so.order_name LIKE ?)');
@@ -736,7 +729,6 @@ router.get('/shipments', async (req, res, next) => {
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) as total FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
-       LEFT JOIN city c ON c.id = p.city_id
        LEFT JOIN shipment_cycle sc ON sc.id = so.cycle_id
        WHERE ${where.join(' AND ')}`, params
     );
@@ -749,8 +741,7 @@ router.get('/shipments', async (req, res, next) => {
               (SELECT COUNT(*) FROM shipment_order_line sol WHERE sol.order_id = so.id AND sol.item_type = 'bin' AND sol.skip_flag = 0) AS bin_count
        FROM shipment_order so
        JOIN professor p ON p.id = so.professor_id
-       LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN shipment_cycle sc ON sc.id = so.cycle_id
        WHERE ${where.join(' AND ')}
        ORDER BY so.created_at DESC

@@ -7,6 +7,7 @@ import { PageHeader } from './layout/PageHeader';
 import { Button } from './ui/Button';
 import { Spinner } from './ui/Spinner';
 import { CopyableTable } from './ui/CopyableTable';
+import { RichTextEditor } from './ui/RichTextEditor';
 import { formatDate, formatTime } from '../lib/utils';
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -305,8 +306,8 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
                     </div>
                     <div>
                       <label className="text-[10px] text-gray-500 block mb-0.5">Body</label>
-                      <textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} rows={10}
-                        className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs font-mono" />
+                      <RichTextEditor value={emailBody} onChange={setEmailBody}
+                        placeholder="Write your email..." minHeight="200px" />
                     </div>
 
                     <div className="flex items-center gap-2 border-t border-gray-100 pt-2">

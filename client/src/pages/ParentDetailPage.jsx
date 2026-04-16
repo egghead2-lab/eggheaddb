@@ -316,7 +316,7 @@ export default function ParentDetailPage() {
                                   {cps.results.length > 0 && (
                                     <ul className="absolute top-full z-30 mt-0.5 w-56 bg-white border border-gray-200 rounded shadow max-h-40 overflow-y-auto">
                                       {cps.results.filter(p => p.id !== parseInt(id) && !coParents.find(cp => cp.id === p.id)).map(p => (
-                                        <li key={p.id} onMouseDown={() => handleLinkCoParent(s.id, p)} className="px-2 py-1.5 text-xs cursor-pointer hover:bg-[#1e3a5f]/10">
+                                        <li key={p.id} onMouseDown={(e) => { e.preventDefault(); handleLinkCoParent(s.id, p); }} className="px-2 py-1.5 text-xs cursor-pointer hover:bg-[#1e3a5f]/10">
                                           <span className="font-medium">{p.first_name} {p.last_name}</span>
                                           {p.email && <span className="text-gray-400 ml-1">{p.email}</span>}
                                         </li>
@@ -369,7 +369,7 @@ export default function ParentDetailPage() {
                       {studentResults.filter(s => !linkedStudentIds.has(s.id)).map(s => (
                         <li
                           key={s.id}
-                          onMouseDown={() => handleAddStudent(s)}
+                          onMouseDown={(e) => { e.preventDefault(); handleAddStudent(s); }}
                           className="px-3 py-2 text-sm cursor-pointer hover:bg-[#1e3a5f]/10"
                         >
                           <span className="font-medium">{s.first_name} {s.last_name}</span>

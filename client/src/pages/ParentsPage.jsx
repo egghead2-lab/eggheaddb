@@ -78,7 +78,7 @@ export default function ParentsPage() {
                     <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className="px-4 py-2.5">
                         <Link to={`/parents/${p.id}`} className="font-medium text-[#1e3a5f] hover:underline">
-                          {p.last_name}, {p.first_name}
+                          {p.first_name} {p.last_name}
                         </Link>
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{p.email || '—'}</td>

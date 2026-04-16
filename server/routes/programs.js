@@ -359,6 +359,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'assistant_professor_dry_ice', 'assistant_reimbursements_paid',
       'first_session_date', 'last_session_date', 'invoice_date_sent', 'invoice_paid',
       'invoice_notes', 'contract_permit_required_id', 'special_info_required', 'active',
+      'stripe_payment_link_id', 'stripe_payment_link_url', 'stripe_payment_link_qr_url', 'lab_fee_link_not_needed',
     ];
 
     const updateFields = fields.filter(f => data[f] !== undefined);

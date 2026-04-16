@@ -229,13 +229,13 @@ router.post('/:id/students', authenticate, async (req, res, next) => {
       await pool.query(
         `UPDATE student_parent SET active = 1, parent_role_id = ?, notes = ?, ts_updated = NOW()
          WHERE student_id = ? AND parent_id = ?`,
-        [parent_role_id || null, notes || null, student_id, id]
+        [parent_role_id || 1, notes || null, student_id, id]
       );
     } else {
       await pool.query(
         `INSERT INTO student_parent (student_id, parent_id, parent_role_id, notes, active, ts_inserted, ts_updated)
          VALUES (?, ?, ?, ?, 1, NOW(), NOW())`,
-        [student_id, id, parent_role_id || null, notes || null]
+        [student_id, id, parent_role_id || 1, notes || null]
       );
     }
 

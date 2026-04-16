@@ -133,12 +133,17 @@ async function fetchThreadMessages(refreshToken, threadId) {
  * Send an email via Gmail with optional attachments.
  * @param {{ refreshToken, to, subject, htmlBody, threadId?, attachments?: Array<{name, mimeType, data: Buffer}> }}
  */
-async function sendEmail({ refreshToken, to, subject, htmlBody, threadId, attachments, signature }) {
+async function sendEmail({ refreshToken, to, bcc, subject, htmlBody, threadId, attachments, signature }) {
   const client = getAuthedClient(refreshToken);
   const gmail = google.gmail({ version: 'v1', auth: client });
 
-  const fullHtml = signature
-    ? `${htmlBody}<br><br>--<br>${signature}`
+  // Resolve relative image URLs in signature to absolute for email clients
+  const baseUrl = process.env.SERVER_URL || 'https://eggheaddb-production.up.railway.app';
+  const resolvedSig = signature
+    ? signature.replace(/src="\/api\//g, `src="${baseUrl}/api/`)
+    : signature;
+  const fullHtml = resolvedSig
+    ? `${htmlBody}<br><br>--<br>${resolvedSig}`
     : htmlBody;
   const plainText = htmlToPlainText(fullHtml);
   const altBoundary = `alt_${Date.now()}`;
@@ -149,6 +154,7 @@ async function sendEmail({ refreshToken, to, subject, htmlBody, threadId, attach
   if (!attachments?.length) {
     const message = [
       `To: ${to}`,
+      ...(bcc ? [`Bcc: ${bcc}`] : []),
       `Subject: ${subject}`,
       'MIME-Version: 1.0',
       `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
@@ -167,6 +173,7 @@ async function sendEmail({ refreshToken, to, subject, htmlBody, threadId, attach
   } else {
     const parts = [
       `To: ${to}`,
+      ...(bcc ? [`Bcc: ${bcc}`] : []),
       `Subject: ${subject}`,
       'MIME-Version: 1.0',
       `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,

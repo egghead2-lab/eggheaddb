@@ -28,6 +28,8 @@
     "node-cron": "^4.2.1",
     "node-quickbooks": "^2.0.50",
     "nodemon": "^3.1.14",
+    "qrcode": "^1.5.4",
+    "stripe": "^22.0.2",
     "twilio": "^5.13.1"
   },
   "devDependencies": {

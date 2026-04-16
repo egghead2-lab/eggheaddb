@@ -102,6 +102,7 @@ import RosterApprovalsPage from './pages/RosterApprovalsPage';
 import TwilioResponsesPage from './pages/TwilioResponsesPage';
 import CurriculumSettingPage from './pages/CurriculumSettingPage';
 import UnscheduledProgramsPage from './pages/UnscheduledProgramsPage';
+import LabFeesPage from './pages/LabFeesPage';
 
 export default function App() {
   return (
@@ -218,6 +219,7 @@ export default function App() {
       <Route path="/materials/tracking" element={<ProtectedRoute><TrackingImportPage /></ProtectedRoute>} />
       <Route path="/materials/weekly-requirements" element={<ProtectedRoute><WeeklyRequirementsPage /></ProtectedRoute>} />
       <Route path="/materials/parties" element={<ProtectedRoute><PartyShipmentsPage /></ProtectedRoute>} />
+      <Route path="/lab-fees" element={<ProtectedRoute><LabFeesPage /></ProtectedRoute>} />
 
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />

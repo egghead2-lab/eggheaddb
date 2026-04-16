@@ -144,6 +144,12 @@ export default function ProgramDetailPage() {
             <div className="grid grid-cols-5 gap-4 mt-4">
               <Input label="Parent Cost" type="number" step="0.01" prefix="$" {...register('parent_cost')} />
               <Input label="Lab Fee" type="number" step="0.01" prefix="$" {...register('lab_fee')} />
+              <Toggle label="Lab Fee Link Created" checked={!!watch('stripe_payment_link_id')}
+                onChange={v => {
+                  if (!v) { setValue('stripe_payment_link_id', null, { shouldDirty: true }); setValue('stripe_payment_link_url', null, { shouldDirty: true }); setValue('stripe_payment_link_qr_url', null, { shouldDirty: true }); }
+                }} />
+              <Toggle label="Lab Fee Link Not Needed" checked={!!watch('lab_fee_link_not_needed')}
+                onChange={v => setValue('lab_fee_link_not_needed', v ? 1 : 0, { shouldDirty: true })} />
               <Input label="Our Cut (per session)" type="number" step="0.01" prefix="$" {...register('our_cut')} />
               {(() => {
                 const ourCut = parseFloat(watch('our_cut')) || 0;

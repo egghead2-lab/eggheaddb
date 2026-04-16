@@ -319,7 +319,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                             ? 'bg-[#1e3a5f]/10'
                             : i % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'
                         }`}>
-                        <td className="px-3 py-2 font-medium text-gray-900">{r.last_name}, {r.first_name}</td>
+                        <td className="px-3 py-2 font-medium text-gray-900">{r.first_name} {r.last_name}</td>
                         <td className="px-3 py-2 text-gray-600">{r.age || '—'}</td>
                         <td className="px-3 py-2 text-gray-600">
                           {r.parent_first_name ? `${r.parent_first_name} ${r.parent_last_name}` : '—'}
@@ -339,7 +339,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                             className={`cursor-pointer transition-colors ${
                               selectedId === r.id ? 'bg-[#1e3a5f]/10' : 'bg-red-50/30 hover:bg-red-50'
                             }`}>
-                            <td className="px-3 py-2 font-medium text-gray-500">{r.last_name}, {r.first_name}</td>
+                            <td className="px-3 py-2 font-medium text-gray-500">{r.first_name} {r.last_name}</td>
                             <td className="px-3 py-2 text-gray-400">{r.age || '—'}</td>
                             <td className="px-3 py-2 text-gray-400">
                               {r.parent_first_name ? `${r.parent_first_name} ${r.parent_last_name}` : '—'}

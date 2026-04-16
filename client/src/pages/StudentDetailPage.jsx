@@ -71,6 +71,9 @@ export default function StudentDetailPage() {
       await linkStudent(parent.id, { student_id: parseInt(id) });
       qc.invalidateQueries(['students', id]);
       setParentSearch(''); setParentResults([]);
+    } catch (err) {
+      console.error('Link parent error:', err);
+      alert('Failed to link parent: ' + (err?.response?.data?.error || err.message));
     } finally { setSavingParent(false); }
   };
 
@@ -83,6 +86,9 @@ export default function StudentDetailPage() {
       qc.invalidateQueries(['students', id]);
       setShowCreateParent(false);
       setNewParentData({ first_name: '', last_name: '', email: '', phone: '' });
+    } catch (err) {
+      console.error('Create & link parent error:', err);
+      alert('Failed: ' + (err?.response?.data?.error || err.message));
     } finally { setSavingParent(false); }
   };
 
@@ -187,7 +193,7 @@ export default function StudentDetailPage() {
                         {parentResults
                           .filter(p => !(student.parents || []).find(sp => sp.id === p.id))
                           .map(p => (
-                            <li key={p.id} onMouseDown={() => handleLinkParent(p)} className="px-3 py-2 text-sm cursor-pointer hover:bg-[#1e3a5f]/10">
+                            <li key={p.id} onMouseDown={(e) => { e.preventDefault(); handleLinkParent(p); }} className="px-3 py-2 text-sm cursor-pointer hover:bg-[#1e3a5f]/10">
                               <span className="font-medium">{p.first_name} {p.last_name}</span>
                               {p.email && <span className="text-gray-400 ml-2 text-xs">{p.email}</span>}
                             </li>

@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 
@@ -35,6 +36,7 @@ const materialsRoutes = require('./routes/materials');
 const plannerRoutes = require('./routes/planner');
 const curriculumRoutes = require('./routes/curriculum');
 const quickbooksRoutes = require('./routes/quickbooks');
+const labFeesRoutes = require('./routes/lab-fees');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -55,6 +57,48 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
+// Stripe webhook needs raw body — must be before express.json()
+app.post('/api/lab-fees/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  const webhookPool = require('./db/pool');
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    if (!session.payment_link) return res.json({ received: true });
+
+    try {
+      const [[program]] = await webhookPool.query(
+        'SELECT id FROM program WHERE stripe_payment_link_id = ?', [session.payment_link]
+      );
+      const studentNameField = session.custom_fields?.find(f => f.key === 'studentnames')?.text?.value || null;
+
+      await webhookPool.query(
+        `INSERT IGNORE INTO lab_fee_stripe_event
+         (stripe_event_id, stripe_session_id, program_id, payment_link_id,
+          customer_name, customer_email, amount_cents, student_name_field, paid_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          event.id, session.id, program?.id || null, session.payment_link,
+          session.customer_details?.name || null, session.customer_details?.email || null,
+          session.amount_total, studentNameField, new Date(event.created * 1000),
+        ]
+      );
+    } catch (dbErr) {
+      console.error('Webhook DB error:', dbErr.message);
+    }
+  }
+
+  res.json({ received: true });
+});
+
 // Middleware
 app.use(cookieParser());
 app.use(express.json());
@@ -74,6 +118,9 @@ app.use((req, res, next) => {
   if (req.body && typeof req.body === 'object') req.body = trimStrings(req.body);
   next();
 });
+
+// Public static files (no auth — needed for email client rendering)
+app.use('/api/public/signature-images', express.static(path.join(__dirname, '..', 'uploads', 'signature-images')));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -114,6 +161,7 @@ app.use('/api/materials', materialsRoutes);
 app.use('/api/planner', plannerRoutes);
 app.use('/api/curriculum', curriculumRoutes);
 app.use('/api/quickbooks', quickbooksRoutes);
+app.use('/api/lab-fees', labFeesRoutes);
 
 // Error handler
 app.use(errorHandler);

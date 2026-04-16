@@ -159,6 +159,7 @@ export default function LocationDetailPage() {
               </Select>
               <Input label="Location Enrollment" type="number" {...register('location_enrollment')} />
               <Toggle label="Payment Through Us" checked={!!watch('payment_through_us')} onChange={v => setValue('payment_through_us', v ? 1 : 0, { shouldDirty: true })} />
+              <Toggle label="School Collects Lab Fee" checked={!!watch('school_collects_lab_fee')} onChange={v => setValue('school_collects_lab_fee', v ? 1 : 0, { shouldDirty: true })} />
               <Toggle label="Demo Allowed" checked={!!watch('demo_allowed')} onChange={v => setValue('demo_allowed', v ? 1 : 0, { shouldDirty: true })} />
               <Select label="Demo Type" {...register('demo_type_id')}>
                 <option value="">None</option>

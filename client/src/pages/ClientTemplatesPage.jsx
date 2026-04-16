@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { RichTextEditor } from '../components/ui/RichTextEditor';
 
 const CATEGORIES = [
   { value: 'starting_email', label: 'Starting Emails' },
@@ -20,6 +21,7 @@ const CATEGORIES = [
   { value: 'roster_email', label: 'Roster Email' },
   { value: 'set_dates_email', label: 'Set Dates (Rebook)' },
   { value: 'rebook_receive_email', label: 'Rebook Receive' },
+  { value: 'lab_fee_followup', label: 'Lab Fee Follow-Up' },
 ];
 
 export default function ClientTemplatesPage() {
@@ -113,6 +115,26 @@ export default function ClientTemplatesPage() {
   );
 }
 
+const MERGE_FIELDS_BY_CATEGORY = {
+  _default: [
+    { key: '{{school_name}}', label: 'School Name' },
+    { key: '{{class_name}}', label: 'Class Name' },
+    { key: '{{professor_name}}', label: 'Professor Name' },
+    { key: '{{start_date}}', label: 'Start Date' },
+    { key: '{{session_days}}', label: 'Session Days' },
+    { key: '{{contact_name}}', label: 'Contact Name' },
+    { key: '{{client_manager_name}}', label: 'Client Manager' },
+  ],
+  lab_fee_followup: [
+    { key: '{{parent_name}}', label: 'Parent Name' },
+    { key: '{{student_name}}', label: 'Student Name' },
+    { key: '{{class_name}}', label: 'Class Name' },
+    { key: '{{lab_fee_amount}}', label: 'Lab Fee Amount' },
+    { key: '{{payment_link}}', label: 'Payment Link URL' },
+    { key: '{{start_date}}', label: 'Start Date' },
+  ],
+};
+
 function TemplateEditor({ template, onSave, onDelete, onClose, isPending, error }) {
   const [form, setForm] = useState({
     name: template.name || '',
@@ -121,6 +143,22 @@ function TemplateEditor({ template, onSave, onDelete, onClose, isPending, error 
     category: template.category || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const editorRef = useRef(null);
+
+  const mergeFields = MERGE_FIELDS_BY_CATEGORY[form.category] || MERGE_FIELDS_BY_CATEGORY._default;
+
+  const insertField = (fieldKey) => {
+    const subjectInput = document.getElementById('cm-template-subject');
+    if (subjectInput && document.activeElement === subjectInput) {
+      const start = subjectInput.selectionStart;
+      const end = subjectInput.selectionEnd;
+      const val = form.subject;
+      set('subject', val.slice(0, start) + fieldKey + val.slice(end));
+      setTimeout(() => { subjectInput.focus(); subjectInput.setSelectionRange(start + fieldKey.length, start + fieldKey.length); }, 0);
+    } else if (editorRef.current) {
+      editorRef.current.chain().focus().insertContent(fieldKey).run();
+    }
+  };
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -146,16 +184,26 @@ function TemplateEditor({ template, onSave, onDelete, onClose, isPending, error 
         </div>
         <div>
           <label className="text-[10px] text-gray-500 block mb-0.5">Subject</label>
-          <input type="text" value={form.subject} onChange={e => set('subject', e.target.value)}
+          <input id="cm-template-subject" type="text" value={form.subject} onChange={e => set('subject', e.target.value)}
             className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
         </div>
-        <div>
-          <label className="text-[10px] text-gray-500 block mb-0.5">Body (HTML / plain text with {'{{merge_fields}}'} )</label>
-          <textarea value={form.body_html} onChange={e => set('body_html', e.target.value)} rows={14}
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+        <div className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+          <div className="text-[10px] font-semibold text-gray-600 mb-1.5">
+            Insert Merge Field <span className="font-normal text-gray-400">— click to insert at cursor (works in subject and body)</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {mergeFields.map(f => (
+              <button key={f.key} type="button" onClick={() => insertField(f.key)}
+                className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-[#1e3a5f] font-mono hover:bg-[#1e3a5f] hover:text-white transition-colors">
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="text-[10px] text-gray-400">
-          Common merge fields: {'{{school_name}} {{class_name}} {{professor_name}} {{start_date}} {{session_days}} {{contact_name}} {{client_manager_name}}'}
+        <div>
+          <label className="text-[10px] text-gray-500 block mb-0.5">Body</label>
+          <RichTextEditor value={form.body_html} onChange={html => set('body_html', html)}
+            placeholder="Write your email template..." minHeight="250px" editorRef={editorRef} />
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={() => onSave({ ...form, id: template.id, isNew: template.isNew })} disabled={isPending || !form.name || !form.category}>

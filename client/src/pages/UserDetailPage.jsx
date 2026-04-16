@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -20,6 +20,8 @@ export default function UserDetailPage() {
   const qc = useQueryClient();
   const [showNewRole, setShowNewRole] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
+  const [sigUploading, setSigUploading] = useState(false);
+  const sigFileRef = useRef(null);
 
   const { data: userData, isLoading } = useQuery({
     queryKey: ['users', id],
@@ -118,6 +120,32 @@ export default function UserDetailPage() {
                 <textarea {...register('email_signature')} rows={4}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
                   placeholder="Your name, title, phone, etc. Appended to all outgoing emails." />
+                <div className="mt-1 flex items-center gap-2">
+                  <input type="file" accept="image/*" ref={sigFileRef} className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setSigUploading(true);
+                    try {
+                      const fd = new FormData();
+                      fd.append('image', file);
+                      const res = await (await import('../api/client')).default.post('/auth/me/signature/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                      const imgTag = `<img src="${res.data.data.url}" alt="signature" style="max-height:80px;">`;
+                      const current = document.querySelector('textarea[name="email_signature"]')?.value || '';
+                      setValue('email_signature', current + imgTag, { shouldDirty: true });
+                    } catch (err) {
+                      alert(err?.response?.data?.error || 'Upload failed');
+                    } finally {
+                      setSigUploading(false);
+                      if (sigFileRef.current) sigFileRef.current.value = '';
+                    }
+                  }} />
+                  <button type="button" disabled={sigUploading}
+                    onClick={() => sigFileRef.current?.click()}
+                    className="text-xs text-[#1e3a5f] hover:underline disabled:opacity-50">
+                    {sigUploading ? 'Uploading...' : '+ Add photo'}
+                  </button>
+                  <span className="text-xs text-gray-400">Max 2 MB. Appears in outgoing emails.</span>
+                </div>
               </div>
               <div>
                 <Select label="Role" required {...register('role_id', { required: 'Required' })} error={errors.role_id?.message}>

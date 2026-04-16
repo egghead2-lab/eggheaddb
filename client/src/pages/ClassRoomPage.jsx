@@ -231,7 +231,7 @@ export default function ClassRoomPage() {
                       return (
                         <tr key={r.student_id} className={`hover:bg-gray-50 ${current ? '' : 'bg-amber-50/30'}`}>
                           <td className="px-4 py-2 text-gray-400 text-xs">{i + 1}</td>
-                          <td className="px-3 py-2 font-medium text-gray-900">{r.last_name}, {r.first_name}</td>
+                          <td className="px-3 py-2 font-medium text-gray-900">{r.first_name} {r.last_name}</td>
                           <td className="px-3 py-2 text-gray-500">{r.grade_name || '—'}</td>
                           {STATUSES.map(s => (
                             <td key={s} className="px-2 py-2 text-center">
@@ -314,7 +314,7 @@ export default function ClassRoomPage() {
                       <tr key={r.roster_id} className={`hover:bg-gray-50 ${r.date_dropped ? 'opacity-50' : ''}`}>
                         <td className="px-4 py-2 text-gray-400 text-xs">{i + 1}</td>
                         <td className="px-3 py-2 font-medium text-gray-900">
-                          {r.last_name}, {r.first_name}
+                          {r.first_name} {r.last_name}
                           {r.date_dropped && <span className="text-xs text-red-400 ml-2">Dropped {formatDate(r.date_dropped)}</span>}
                           {r.pending_approval ? <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded ml-2">Pending Approval</span> : null}
                         </td>
