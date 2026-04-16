@@ -299,13 +299,27 @@ function TaskRow({ report }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {results.data.slice(0, 20).map((row, i) => (
-                  <tr key={row.id || i}>
-                    {Object.entries(row).filter(([k]) => k !== 'id').slice(0, 8).map(([k, v]) => (
-                      <td key={k} className="px-2 py-1 text-gray-600">{v === null ? '—' : String(v)}</td>
-                    ))}
-                  </tr>
-                ))}
+                {results.data.slice(0, 20).map((row, i) => {
+                  const cols = Object.entries(row).filter(([k]) => k !== 'id').slice(0, 8);
+                  const detailLink = row.id ? (
+                    report.name?.toLowerCase().includes('professor') || report.name?.toLowerCase().includes('classes')
+                      ? `/professors/${row.id}`
+                      : report.name?.toLowerCase().includes('program') ? `/programs/${row.id}`
+                      : report.name?.toLowerCase().includes('location') ? `/locations/${row.id}`
+                      : null
+                  ) : null;
+                  return (
+                    <tr key={row.id || i} className={detailLink ? 'hover:bg-blue-50/30 cursor-pointer' : ''}>
+                      {cols.map(([k, v], ci) => (
+                        <td key={k} className="px-2 py-1 text-gray-600">
+                          {ci === 0 && detailLink ? (
+                            <Link to={detailLink} className="text-[#1e3a5f] hover:underline">{v === null ? '—' : String(v)}</Link>
+                          ) : (v === null ? '—' : String(v))}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
