@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
-import { formatDate } from '../lib/utils';
+import { formatDate, authUrl } from '../lib/utils';
 
 const STATUS_COLORS = { draft: 'Pending', approved: 'Confirmed', shipped: 'Completed', complete: 'Completed' };
 
@@ -132,7 +132,7 @@ export default function ShipmentCyclesPage() {
                           )
                         )}
                         {(c.status === 'approved' || c.status === 'shipped') && (
-                          <a href={`${api.defaults.baseURL}/materials/cycles/${c.id}/export-csv`}
+                          <a href={authUrl(`${api.defaults.baseURL}/materials/cycles/${c.id}/export-csv`)}
                             className="text-xs text-[#1e3a5f] hover:underline">CSV</a>
                         )}
                         {confirmAction?.type === 'delete' && confirmAction.id === c.id ? (

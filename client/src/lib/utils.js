@@ -88,3 +88,10 @@ export function toFormData(data) {
   }
   return result;
 }
+
+export function authUrl(url) {
+  const token = localStorage.getItem('token');
+  if (!token) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}token=${token}`;
+}

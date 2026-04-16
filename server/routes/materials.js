@@ -713,7 +713,7 @@ router.patch('/orders/:id/ship', async (req, res, next) => {
 
     // Check if order has bin items — require bin assignments if so
     const [binLines] = await pool.query(
-      "SELECT id FROM shipment_order_line WHERE order_id = ? AND item_type = 'bin' AND skip_flag = 0", [req.params.id]
+      "SELECT id, item_name FROM shipment_order_line WHERE order_id = ? AND item_type = 'bin' AND skip_flag = 0", [req.params.id]
     );
     if (binLines.length > 0 && (!bin_number_entries || bin_number_entries.length === 0)) {
       return res.status(400).json({ success: false, error: 'This order has bin items — assign bin numbers before shipping' });
@@ -722,11 +722,29 @@ router.patch('/orders/:id/ship', async (req, res, next) => {
     // Update professor bins if provided
     if (bin_number_entries && Array.isArray(bin_number_entries)) {
       const [[order]] = await pool.query('SELECT professor_id FROM shipment_order WHERE id = ?', [req.params.id]);
+      // Load bin lookup to resolve order line → bin table id
+      const [allBins] = await pool.query('SELECT id, bin_name FROM bin WHERE active = 1');
+      const binNameMap = {};
+      allBins.forEach(b => { binNameMap[b.bin_name.toLowerCase()] = b.id; });
+      // Map: "Science Professor Bin" → "Science Bin" etc.
+      const resolveBinId = (lineName) => {
+        // Try exact match first
+        if (binNameMap[lineName.toLowerCase()]) return binNameMap[lineName.toLowerCase()];
+        // Try stripping "Professor " from the name
+        const simplified = lineName.replace(/Professor\s+/i, '').trim();
+        if (binNameMap[simplified.toLowerCase()]) return binNameMap[simplified.toLowerCase()];
+        return null;
+      };
+
       for (const entry of bin_number_entries) {
-        if (entry.bin_id && entry.bin_number && order) {
+        if (!entry.bin_number || !order) continue;
+        // entry.bin_id is the shipment_order_line.id — find the item_name
+        const binLine = binLines.find(bl => bl.id === entry.bin_id);
+        const actualBinId = binLine ? resolveBinId(binLine.item_name) : null;
+        if (actualBinId) {
           await pool.query(
-            'INSERT INTO has_bin (professor_id, bin_id, bin_number, active) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE bin_number = VALUES(bin_number), active = 1',
-            [order.professor_id, entry.bin_id, entry.bin_number]
+            "INSERT INTO has_bin (professor_id, bin_id, bin_number, comment, active) VALUES (?, ?, ?, '', 1) ON DUPLICATE KEY UPDATE bin_number = VALUES(bin_number), active = 1",
+            [order.professor_id, actualBinId, parseInt(entry.bin_number) || 0]
           );
         }
       }

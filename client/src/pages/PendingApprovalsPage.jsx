@@ -5,7 +5,7 @@ import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Spinner } from '../components/ui/Spinner';
-import { formatDate } from '../lib/utils';
+import { formatDate, authUrl } from '../lib/utils';
 
 const ROLE_LABELS = { scheduler: 'Scheduler', field_manager: 'Field Mgr', recruiter: 'Recruiter', onboarder: 'Onboarder', trainer: 'Trainer' };
 const ROLE_COLORS = { scheduler: 'bg-blue-100 text-blue-700', field_manager: 'bg-emerald-100 text-emerald-700', recruiter: 'bg-teal-100 text-teal-700', onboarder: 'bg-pink-100 text-pink-700', trainer: 'bg-orange-100 text-orange-700' };

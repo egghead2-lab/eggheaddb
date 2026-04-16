@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
-import { formatDate } from '../lib/utils';
+import { formatDate, authUrl } from '../lib/utils';
 
 export default function MidCycleOrdersPage() {
   const qc = useQueryClient();
@@ -52,7 +52,7 @@ export default function MidCycleOrdersPage() {
               {generateMutation.isPending ? 'Generating...' : 'Generate Mid-Cycle Orders'}
             </Button>
             {orders.length > 0 && (
-              <a href={`${api.defaults.baseURL}/materials/cycles/${activeCycle.id}/export-csv`}
+              <a href={authUrl(`${api.defaults.baseURL}/materials/cycles/${activeCycle.id}/export-csv`)}
                 className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-[#1e3a5f]">
                 Export CSV
               </a>
