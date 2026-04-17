@@ -141,6 +141,7 @@ router.get('/status', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = p.location_id
        WHERE p.active = 1
          AND p.lab_fee > 0
+         AND p.lab_fee_link_not_needed = 0
          AND (loc.school_collects_lab_fee = 0 OR loc.school_collects_lab_fee IS NULL OR p.location_id IS NULL)
        ORDER BY p.first_session_date DESC`
     );
@@ -292,6 +293,7 @@ router.get('/followup', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = p.location_id
        WHERE p.active = 1
          AND p.lab_fee > 0
+         AND p.lab_fee_link_not_needed = 0
          AND (loc.school_collects_lab_fee = 0 OR loc.school_collects_lab_fee IS NULL OR p.location_id IS NULL)
        HAVING paid_count < enrolled_count
        ORDER BY p.first_session_date ASC`
@@ -452,7 +454,7 @@ router.get('/counts', authenticate, async (req, res, next) => {
        FROM program p
        JOIN class_status cs ON cs.id = p.class_status_id AND cs.cancelled = 0
        LEFT JOIN location loc ON loc.id = p.location_id
-       WHERE p.active = 1 AND p.lab_fee > 0
+       WHERE p.active = 1 AND p.lab_fee > 0 AND p.lab_fee_link_not_needed = 0
          AND (loc.school_collects_lab_fee = 0 OR loc.school_collects_lab_fee IS NULL OR p.location_id IS NULL)`
     );
     const outstanding_count = outstandingRows.filter(r => r.paid < r.enrolled).length;
