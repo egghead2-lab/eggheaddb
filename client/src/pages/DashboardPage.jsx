@@ -5,13 +5,19 @@ import { useAuth } from '../hooks/useAuth';
 import { AppShell } from '../components/layout/AppShell';
 import { getMyDashboard, runReport } from '../api/reports';
 import { Button } from '../components/ui/Button';
-import { formatDate } from '../lib/utils';
+import { Spinner } from '../components/ui/Spinner';
+import { formatDate, formatTime, formatCurrency } from '../lib/utils';
 import api from '../api/client';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const name = user?.name || 'there';
   const role = user?.role || '';
+
+  // Professor/Candidate role — show their schedule instead of admin dashboard
+  if (role === 'Professor' || role === 'Candidate') {
+    return <ProfessorDashboard name={name} role={role} />;
+  }
 
   const { data: kpiData } = useQuery({
     queryKey: ['dashboard-kpis'],
@@ -165,6 +171,116 @@ function KpiCard({ label, value, link, color }) {
     </div>
   );
   return link ? <Link to={link}>{content}</Link> : content;
+}
+
+function ProfessorDashboard({ name, role }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['my-today'],
+    queryFn: () => api.get('/schedule/my-today').then(r => r.data),
+    refetchInterval: 60000,
+  });
+
+  const sessions = data?.data?.sessions || [];
+  const parties = data?.data?.parties || [];
+  const today = new Date().toISOString().split('T')[0];
+
+  // Group sessions by date
+  const byDate = {};
+  sessions.forEach(s => {
+    const d = s.session_date?.split('T')[0] || today;
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(s);
+  });
+
+  return (
+    <AppShell>
+      <div className="p-6 max-w-3xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Welcome, {name.split(' ')[0]}</h1>
+          <p className="text-sm text-gray-500 mt-1">My Schedule</p>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
+        ) : sessions.length === 0 && parties.length === 0 ? (
+          <div className="bg-white rounded-lg border p-12 text-center text-gray-400">
+            No classes scheduled for today or tomorrow
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(byDate).sort().map(([date, daySessions]) => {
+              const isToday = date === today;
+              const dayLabel = isToday ? 'Today' : new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+              return (
+                <div key={date}>
+                  <h2 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    {dayLabel}
+                    {isToday && <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">TODAY</span>}
+                  </h2>
+                  <div className="space-y-2">
+                    {daySessions.map((s, i) => (
+                      <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-gray-900">{s.program_nickname}</div>
+                            <div className="text-sm text-gray-500 mt-0.5">
+                              {s.location_nickname || s.party_city || '—'}
+                              {s.grade_range && <span className="ml-2 text-gray-400">({s.grade_range})</span>}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-medium text-[#1e3a5f]">
+                              {s.session_time ? formatTime(s.session_time) : (s.start_time ? formatTime(s.start_time) : '—')}
+                            </div>
+                            {s.class_length_minutes && <div className="text-xs text-gray-400">{s.class_length_minutes} min</div>}
+                          </div>
+                        </div>
+                        {s.lesson_name && (
+                          <div className="mt-2 text-xs text-gray-500">
+                            <span className="text-gray-400">Lesson:</span> {s.lesson_name}
+                            {s.trainual_link && <a href={s.trainual_link} target="_blank" rel="noopener noreferrer" className="ml-2 text-[#1e3a5f] hover:underline">View Lesson →</a>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {parties.length > 0 && (
+              <div>
+                <h2 className="text-sm font-bold text-pink-700 mb-2">Upcoming Parties</h2>
+                <div className="space-y-2">
+                  {parties.map((p, i) => (
+                    <div key={i} className="bg-white rounded-lg border border-pink-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-gray-900">{p.program_nickname}</div>
+                          <div className="text-sm text-gray-500">{p.party_city || p.location_nickname || '—'}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm text-gray-700">{formatDate(p.first_session_date)}</div>
+                          <div className="text-sm font-medium text-[#1e3a5f]">{p.start_time ? formatTime(p.start_time) : '—'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick links */}
+            <div className="flex gap-2 pt-4">
+              <Link to="/my-today" className="flex-1 text-center py-2 text-sm font-medium text-[#1e3a5f] bg-white border border-gray-200 rounded-lg hover:bg-gray-50">Full Schedule</Link>
+              <Link to="/my-attendance" className="flex-1 text-center py-2 text-sm font-medium text-[#1e3a5f] bg-white border border-gray-200 rounded-lg hover:bg-gray-50">Attendance</Link>
+              <Link to="/my-pay" className="flex-1 text-center py-2 text-sm font-medium text-[#1e3a5f] bg-white border border-gray-200 rounded-lg hover:bg-gray-50">My Pay</Link>
+            </div>
+          </div>
+        )}
+      </div>
+    </AppShell>
+  );
 }
 
 function QuickLink({ to, label }) {
