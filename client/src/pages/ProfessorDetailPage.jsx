@@ -1186,12 +1186,12 @@ export default function ProfessorDetailPage() {
               <Input label="Email" type="email" required {...register('email', { required: 'Required' })} error={errors.email?.message} />
               <Input label="Phone Number" required {...register('phone_number', { required: 'Required' })} error={errors.phone_number?.message} />
               <div className="col-span-2">
-                <Input label="Street Address" required {...register('address', { required: 'Required' })} error={errors.address?.message} />
+                <Input label="Street Address" {...register('address')} />
               </div>
-              <Input label="City" required defaultValue={prof.city_name || ''} {...register('_city_name', { required: 'Required' })} error={errors._city_name?.message} />
+              <Input label="City" {...register('_city_name')} />
               <div className="grid grid-cols-2 gap-4">
-                <Input label="State" required defaultValue={prof.state_code || ''} {...register('_state_code', { required: 'Required' })} error={errors._state_code?.message} maxLength={2} />
-                <Input label="Zip" required defaultValue={prof.zip_code || ''} {...register('_zip_code', { required: 'Required' })} error={errors._zip_code?.message} />
+                <Input label="State" {...register('_state_code')} maxLength={2} />
+                <Input label="Zip" {...register('_zip_code')} />
               </div>
               <Select label="Geographic Area" required {...register('geographic_area_id', { required: 'Required' })} error={errors.geographic_area_id?.message}>
                 <option value="">Select...</option>
@@ -1299,7 +1299,7 @@ export default function ProfessorDetailPage() {
               <Toggle label="Virtus" checked={!!watch('virtus')} onChange={v => setValue('virtus', v ? 1 : 0, { shouldDirty: true })} />
               <Input label="Virtus Date" type="date" {...register('virtus_date')} />
               <Toggle label="TB Test" checked={!!watch('tb_test')} onChange={v => setValue('tb_test', v ? 1 : 0, { shouldDirty: true })} />
-              <Input label="TB Date" type="date" required {...register('tb_date', { required: 'Required' })} error={errors.tb_date?.message} />
+              <Input label="TB Date" type="date" {...register('tb_date')} />
             </div>
             {/* Livescans */}
             {!isNew && (
