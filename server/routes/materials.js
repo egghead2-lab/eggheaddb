@@ -849,7 +849,7 @@ router.get('/shipments/professor/:profId', async (req, res, next) => {
     );
     for (const order of orders) {
       const [lines] = await pool.query(
-        'SELECT item_name, item_type, quantity, notes FROM shipment_order_line WHERE order_id = ? AND skip_flag = 0 ORDER BY item_type, item_name',
+        'SELECT item_name, item_type, SUM(quantity) AS quantity FROM shipment_order_line WHERE order_id = ? AND skip_flag = 0 GROUP BY item_name, item_type ORDER BY item_type, item_name',
         [order.id]
       );
       order.lines = lines;
@@ -1038,6 +1038,12 @@ router.get('/weekly-requirements', async (req, res, next) => {
   try {
     const { week_start, weeks = 5 } = req.query;
     const startDate = week_start || new Date().toISOString().split('T')[0];
+
+    // Load exclusion rules
+    const [exclusionRules] = await pool.query('SELECT * FROM shipment_exclusion_rule WHERE active = 1');
+    const minWeeksStart = exclusionRules.find(r => r.rule_type === 'min_weeks_id_card')?.min_weeks || 4;
+    const minWeeksDegree = exclusionRules.find(r => r.rule_type === 'min_weeks_degree')?.min_weeks || 4;
+
     const results = [];
 
     for (let w = 0; w < parseInt(weeks); w++) {
@@ -1048,9 +1054,9 @@ router.get('/weekly-requirements', async (req, res, next) => {
       const wStartStr = wStart.toISOString().split('T')[0];
       const wEndStr = wEnd.toISOString().split('T')[0];
 
-      const [items] = await pool.query(
-        `SELECT l.lesson_name, ct.class_type_name,
-                COUNT(*) AS session_count,
+      // Lesson kits (including robotics — warehouse needs to prep everything)
+      const [lessonItems] = await pool.query(
+        `SELECT l.lesson_name, ct.class_type_name, ct.id AS class_type_id,
                 SUM(CASE WHEN prog.number_enrolled > 20 THEN 1 ELSE 0 END) AS for_20_count,
                 SUM(CASE WHEN prog.number_enrolled <= 20 OR prog.number_enrolled IS NULL THEN 1 ELSE 0 END) AS standard_count
          FROM session s
@@ -1060,13 +1066,60 @@ router.get('/weekly-requirements', async (req, res, next) => {
          LEFT JOIN class cl ON cl.id = prog.class_id
          LEFT JOIN class_type ct ON ct.id = cl.class_type_id
          WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
-           AND (cl.class_type_id IS NULL OR cl.class_type_id != 3)
-         GROUP BY l.lesson_name, ct.class_type_name
+         GROUP BY l.lesson_name, ct.class_type_name, ct.id
          ORDER BY ct.class_type_name, l.lesson_name`,
         [wStartStr, wEndStr]
       );
 
-      results.push({ week_start: wStartStr, week_end: wEndStr, items });
+      // Start kits — programs with first session in this window
+      const [startKits] = await pool.query(
+        `SELECT cl.class_name, ct.class_type_name,
+                SUM(CASE WHEN prog.number_enrolled > 20 THEN 1 ELSE 0 END) AS for_20_count,
+                SUM(CASE WHEN prog.number_enrolled <= 20 OR prog.number_enrolled IS NULL THEN 1 ELSE 0 END) AS standard_count
+         FROM program prog
+         JOIN class cl ON cl.id = prog.class_id AND cl.has_id_card = 1
+         JOIN class_type ct ON ct.id = cl.class_type_id
+         JOIN class_status cs ON cs.id = prog.class_status_id AND cs.confirmed = 1
+         WHERE prog.active = 1 AND prog.live = 1 AND prog.session_count >= ?
+           AND prog.first_session_date BETWEEN ? AND ?
+         GROUP BY cl.class_name, ct.class_type_name`,
+        [minWeeksStart, wStartStr, wEndStr]
+      );
+
+      // Degrees — programs with last session in this window
+      const [degrees] = await pool.query(
+        `SELECT COUNT(*) AS degree_count
+         FROM program prog
+         JOIN class_status cs ON cs.id = prog.class_status_id AND cs.confirmed = 1
+         WHERE prog.active = 1 AND prog.live = 1 AND prog.session_count >= ?
+           AND prog.last_session_date BETWEEN ? AND ?`,
+        [minWeeksDegree, wStartStr, wEndStr]
+      );
+
+      // Bins — professors who need bins but don't have them
+      const [bins] = await pool.query(
+        `SELECT b.bin_name, COUNT(DISTINCT prog.lead_professor_id) AS needed
+         FROM program prog
+         JOIN class cl ON cl.id = prog.class_id
+         JOIN class_status cs ON cs.id = prog.class_status_id AND cs.confirmed = 1
+         JOIN professor p ON p.id = prog.lead_professor_id
+         LEFT JOIN has_bin hb ON hb.professor_id = p.id AND hb.bin_id = cl.class_type_id AND hb.active = 1
+         LEFT JOIN bin b ON b.id = cl.class_type_id
+         WHERE prog.active = 1 AND prog.live = 1 AND hb.id IS NULL
+           AND b.id IS NOT NULL
+           AND EXISTS (SELECT 1 FROM session s WHERE s.program_id = prog.id AND s.active = 1
+             AND s.session_date BETWEEN ? AND ?)
+         GROUP BY b.bin_name`,
+        [wStartStr, wEndStr]
+      );
+
+      results.push({
+        week_start: wStartStr, week_end: wEndStr,
+        lessons: lessonItems,
+        start_kits: startKits,
+        degree_count: parseInt(degrees[0]?.degree_count) || 0,
+        bins,
+      });
     }
 
     // Get current stock

@@ -26,16 +26,18 @@ export default function WeeklyRequirementsPage() {
   const stockMap = data?.data?.stock || {};
   const currentWeek = weeks[selectedWeek];
 
-  // Group items by class type
+  // Group lessons by class type
   const grouped = {};
-  (currentWeek?.items || []).forEach(item => {
+  (currentWeek?.lessons || []).forEach(item => {
     const type = item.class_type_name || 'Other';
     if (!grouped[type]) grouped[type] = [];
     grouped[type].push(item);
   });
 
-  // Totals across selected weeks for aggregate mode
-  const totalItems = (currentWeek?.items || []).reduce((sum, i) => sum + i.standard_count + i.for_20_count, 0);
+  const totalLessons = (currentWeek?.lessons || []).reduce((sum, i) => sum + (parseInt(i.standard_count) || 0) + (parseInt(i.for_20_count) || 0), 0);
+  const totalStartKits = (currentWeek?.start_kits || []).reduce((sum, i) => sum + (parseInt(i.standard_count) || 0) + (parseInt(i.for_20_count) || 0), 0);
+  const totalDegrees = currentWeek?.degree_count || 0;
+  const totalBins = (currentWeek?.bins || []).reduce((sum, b) => sum + (parseInt(b.needed) || 0), 0);
 
   return (
     <AppShell>
@@ -63,13 +65,30 @@ export default function WeeklyRequirementsPage() {
           <div className="bg-white rounded-lg border p-12 text-center text-gray-400">No data</div>
         ) : (
           <>
-            <div className="text-sm text-gray-500 mb-4">
-              {currentWeek.week_start} – {currentWeek.week_end} &middot; <strong>{totalItems}</strong> total kits needed
+            {/* Summary cards */}
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-xs text-gray-500">Lesson Kits</div>
+                <div className="text-2xl font-bold text-[#1e3a5f]">{totalLessons}</div>
+              </div>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-xs text-gray-500">Start Kits</div>
+                <div className="text-2xl font-bold text-green-700">{totalStartKits}</div>
+              </div>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-xs text-gray-500">Degrees</div>
+                <div className="text-2xl font-bold text-purple-700">{totalDegrees}</div>
+              </div>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-xs text-gray-500">Bins Needed</div>
+                <div className="text-2xl font-bold text-orange-700">{totalBins}</div>
+              </div>
             </div>
 
+            {/* Lesson kits by type */}
             {Object.entries(grouped).sort().map(([type, items]) => (
               <div key={type} className="mb-6">
-                <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">{type} Lessons</h3>
+                <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">{type}</h3>
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
@@ -79,19 +98,21 @@ export default function WeeklyRequirementsPage() {
                         <th className="text-right px-4 py-2.5 font-semibold text-gray-700 w-24">For 20</th>
                         <th className="text-right px-4 py-2.5 font-semibold text-gray-700 w-24">Total</th>
                         <th className="text-right px-4 py-2.5 font-semibold text-gray-700 w-24">In Stock</th>
-                        <th className="text-right px-4 py-2.5 font-semibold text-gray-700 w-24">Net to Build</th>
+                        <th className="text-right px-4 py-2.5 font-semibold text-gray-700 w-24">Net</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {items.map((item, i) => {
+                        const std = parseInt(item.standard_count) || 0;
+                        const f20 = parseInt(item.for_20_count) || 0;
+                        const total = std + f20;
                         const inStock = stockMap[item.lesson_name.toLowerCase()] || 0;
-                        const total = item.standard_count + item.for_20_count;
                         const net = total - inStock;
                         return (
                           <tr key={i}>
                             <td className="px-4 py-2 text-gray-900">{item.lesson_name}</td>
-                            <td className="px-4 py-2 text-right text-gray-600">{item.standard_count}</td>
-                            <td className="px-4 py-2 text-right text-gray-600">{item.for_20_count || '—'}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{std}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{f20 || '—'}</td>
                             <td className="px-4 py-2 text-right font-medium text-gray-900">{total}</td>
                             <td className="px-4 py-2 text-right text-gray-500">{inStock}</td>
                             <td className={`px-4 py-2 text-right font-bold ${net > 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -106,7 +127,71 @@ export default function WeeklyRequirementsPage() {
               </div>
             ))}
 
-            {Object.keys(grouped).length === 0 && (
+            {/* Start Kits */}
+            {(currentWeek.start_kits || []).length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-green-700 uppercase tracking-wider mb-2">Start Kits</h3>
+                <div className="bg-white rounded-lg border border-green-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-green-50 border-b border-green-200">
+                      <tr>
+                        <th className="text-left px-4 py-2.5 font-semibold text-green-700">Class</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-green-700">Type</th>
+                        <th className="text-right px-4 py-2.5 font-semibold text-green-700 w-24">Standard</th>
+                        <th className="text-right px-4 py-2.5 font-semibold text-green-700 w-24">For 20</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-green-100">
+                      {currentWeek.start_kits.map((sk, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-2 text-gray-900">{sk.class_name}</td>
+                          <td className="px-4 py-2 text-gray-600 text-xs">{sk.class_type_name}</td>
+                          <td className="px-4 py-2 text-right">{parseInt(sk.standard_count) || 0}</td>
+                          <td className="px-4 py-2 text-right">{parseInt(sk.for_20_count) || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Degrees */}
+            {totalDegrees > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-purple-700 uppercase tracking-wider mb-2">Degrees</h3>
+                <div className="bg-white rounded-lg border border-purple-200 p-4">
+                  <span className="text-sm text-gray-700"><strong>{totalDegrees}</strong> degree set{totalDegrees !== 1 ? 's' : ''} needed this week (programs ending)</span>
+                </div>
+              </div>
+            )}
+
+            {/* Bins */}
+            {(currentWeek.bins || []).length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-orange-700 uppercase tracking-wider mb-2">Bins Needed</h3>
+                <div className="bg-white rounded-lg border border-orange-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-orange-50 border-b border-orange-200">
+                      <tr>
+                        <th className="text-left px-4 py-2.5 font-semibold text-orange-700">Bin Type</th>
+                        <th className="text-right px-4 py-2.5 font-semibold text-orange-700 w-24">Needed</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-orange-100">
+                      {currentWeek.bins.map((b, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-2 text-gray-900">{b.bin_name}</td>
+                          <td className="px-4 py-2 text-right font-medium">{b.needed}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {Object.keys(grouped).length === 0 && totalStartKits === 0 && totalDegrees === 0 && totalBins === 0 && (
               <div className="bg-white rounded-lg border p-12 text-center text-gray-400">No sessions scheduled for this week</div>
             )}
           </>
