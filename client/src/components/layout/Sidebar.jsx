@@ -153,15 +153,18 @@ export function Sidebar() {
   const navRef = useRef(null);
   const scrollPos = useRef(0);
 
-  // Save scroll position before navigation
-  const saveScroll = useCallback(() => {
+  // Continuously track scroll position
+  const handleNavScroll = useCallback(() => {
     if (navRef.current) scrollPos.current = navRef.current.scrollTop;
   }, []);
 
-  // Restore scroll position after render
+  // Restore scroll position after route change re-renders
   useEffect(() => {
-    if (navRef.current) navRef.current.scrollTop = scrollPos.current;
-  });
+    const el = navRef.current;
+    if (el && scrollPos.current > 0) {
+      requestAnimationFrame(() => { el.scrollTop = scrollPos.current; });
+    }
+  }, [location.pathname]);
 
   const [openGroups, setOpenGroups] = useState(() => {
     const initial = new Set(['Operations']);
@@ -244,7 +247,7 @@ export function Sidebar() {
       )}
 
       {/* Nav groups */}
-      <nav ref={navRef} onClickCapture={saveScroll} className="flex-1 py-2 px-1 overflow-y-auto">
+      <nav ref={navRef} onScroll={handleNavScroll} className="flex-1 py-2 px-1 overflow-y-auto">
         {!compact && reordering && <div className="text-[9px] text-amber-400 px-2 mb-1">Drag groups to reorder</div>}
         {navGroups.map((group, idx) => (
           <div key={group.label}
