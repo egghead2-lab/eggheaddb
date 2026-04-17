@@ -139,6 +139,26 @@ export default function PartyDetailPage() {
               <Input label="Shirt Size" {...register('shirt_size')} />
               <Input label="Birthday Kid" placeholder="Name" {...register('birthday_kid_name')} />
               <Input label="Turning Age" type="number" {...register('birthday_kid_age')} />
+              <div className="col-span-3">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Quick Address</label>
+                <input placeholder="Paste full address: 123 Main St, Los Angeles, CA 90001"
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-gray-50"
+                  onBlur={e => {
+                    const text = e.target.value.trim();
+                    if (!text) return;
+                    // Parse: address, city, state zip  OR  address, city, state, zip
+                    const m = text.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2}),?\s*(\d{5}(?:-\d{4})?)$/i)
+                      || text.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2})$/i);
+                    if (m) {
+                      setValue('party_address', m[1].trim(), { shouldDirty: true });
+                      setValue('party_city', m[2].trim(), { shouldDirty: true });
+                      setValue('party_state', m[3].trim().toUpperCase(), { shouldDirty: true });
+                      if (m[4]) setValue('party_zip', m[4].trim(), { shouldDirty: true });
+                      e.target.value = '';
+                    }
+                  }} />
+              </div>
+              <div className="col-span-2" />
               <div className="col-span-2">
                 <Input label="Street Address" placeholder="123 Main St" {...register('party_address')} />
               </div>
