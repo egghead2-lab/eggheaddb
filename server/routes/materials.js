@@ -5,6 +5,27 @@ const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
+// Kit packing: determine how many standard (for 15) and for-20 kits to ship
+// Minimizes total kits, prefers standard when equal
+function calcKitPack(enrolled) {
+  if (!enrolled || enrolled <= 0) return { standard: 1, for20: 0 };
+  if (enrolled <= 15) return { standard: 1, for20: 0 };
+  if (enrolled <= 20) return { standard: 0, for20: 1 };
+  // For 21+: find combo that minimizes total kits, then minimizes waste
+  let best = null;
+  for (let f20 = 0; f20 <= Math.ceil(enrolled / 20); f20++) {
+    const remaining = enrolled - f20 * 20;
+    const std = remaining > 0 ? Math.ceil(remaining / 15) : 0;
+    const total = std + f20;
+    const capacity = std * 15 + f20 * 20;
+    const waste = capacity - enrolled;
+    if (!best || total < best.total || (total === best.total && waste < best.waste)) {
+      best = { standard: std, for20: f20, total, waste, capacity };
+    }
+  }
+  return best;
+}
+
 // Class type prefix for start kits
 const CLASS_TYPE_PREFIX = { 1: 'Sci', 2: 'Eng', 3: 'Rob', 4: 'Mix', 5: 'Fin' };
 // Bin names per class type
@@ -363,7 +384,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
 
       for (const prog of progs) {
         const isRobotics = prog.class_type_id === roboticsSkipTypeId;
-        const for20 = prog.number_enrolled > 20;
+        const pack = calcKitPack(prog.number_enrolled);
         const progSessions = sessionsByProgram[prog.id] || [];
         const prefix = CLASS_TYPE_PREFIX[prog.class_type_id] || 'Sci';
 
@@ -376,32 +397,48 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
           continue;
         }
 
-        // Lesson items — one per session in the window
+        // Lesson items — one per session, with proper kit packing
         for (const sess of progSessions) {
           if (!sess.lesson_name) {
             warnings.push({ program: prog.program_nickname, issue: 'Session missing lesson', date: sess.session_date });
             continue;
           }
-          const itemName = for20 ? `${sess.lesson_name} For 20` : sess.lesson_name;
-          await pool.query(
-            'INSERT INTO shipment_order_line (order_id, program_id, lesson_id, item_name, item_type, quantity, source) VALUES (?, ?, ?, ?, ?, 1, ?)',
-            [orderId, prog.id, sess.lesson_id, itemName, 'lesson', source]
-          );
-          linesCreated++;
+          // Standard kits
+          if (pack.standard > 0) {
+            await pool.query(
+              'INSERT INTO shipment_order_line (order_id, program_id, lesson_id, item_name, item_type, quantity, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [orderId, prog.id, sess.lesson_id, sess.lesson_name, 'lesson', pack.standard, source]
+            );
+            linesCreated++;
+          }
+          // For-20 kits
+          if (pack.for20 > 0) {
+            await pool.query(
+              'INSERT INTO shipment_order_line (order_id, program_id, lesson_id, item_name, item_type, quantity, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [orderId, prog.id, sess.lesson_id, `${sess.lesson_name} For 20`, 'lesson', pack.for20, source]
+            );
+            linesCreated++;
+          }
         }
 
         // Start kit — if first session is in this window AND has_id_card AND session_count >= min weeks
         const firstSessionInWindow = prog.first_session_date &&
           prog.first_session_date >= cycleStart && prog.first_session_date <= cycleEnd;
         if (firstSessionInWindow && prog.has_id_card && prog.session_count >= minWeeksStart) {
-          const startName = for20
-            ? `${prefix} Start for 20 - ${prog.class_name}`
-            : `${prefix} Start - ${prog.class_name}`;
-          await pool.query(
-            'INSERT INTO shipment_order_line (order_id, program_id, item_name, item_type, quantity, source) VALUES (?, ?, ?, ?, 1, ?)',
-            [orderId, prog.id, startName, 'start_kit', source]
-          );
-          linesCreated++;
+          if (pack.standard > 0) {
+            await pool.query(
+              'INSERT INTO shipment_order_line (order_id, program_id, item_name, item_type, quantity, source) VALUES (?, ?, ?, ?, ?, ?)',
+              [orderId, prog.id, `${prefix} Start - ${prog.class_name}`, 'start_kit', pack.standard, source]
+            );
+            linesCreated++;
+          }
+          if (pack.for20 > 0) {
+            await pool.query(
+              'INSERT INTO shipment_order_line (order_id, program_id, item_name, item_type, quantity, source) VALUES (?, ?, ?, ?, ?, ?)',
+              [orderId, prog.id, `${prefix} Start for 20 - ${prog.class_name}`, 'start_kit', pack.for20, source]
+            );
+            linesCreated++;
+          }
         }
 
         // Degree — if last session is in this window AND session_count >= min weeks
@@ -593,7 +630,7 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
     for (const prog of programs) {
       const profId = prog.lead_professor_id;
       const isRobotics = prog.class_type_id === roboticsSkipTypeId;
-      const for20 = prog.number_enrolled > 20;
+      const pack = calcKitPack(prog.number_enrolled);
       const progSessions = sessionsByProgram[prog.id] || [];
       const pfx = prefix[prog.class_type_id] || 'Sci';
 
@@ -602,14 +639,26 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
       // Lesson items
       for (const sess of progSessions) {
         if (!sess.lesson_name) continue;
-        const itemName = for20 ? `${sess.lesson_name} For 20` : sess.lesson_name;
-        const key = coveredKey(profId, prog.id, itemName, 'lesson');
-        if (!coveredSet.has(key)) {
-          missingItems.push({
-            professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
-            lesson_id: sess.lesson_id, item_name: itemName, item_type: 'lesson',
-            class_type_name: prog.class_type_name,
-          });
+        if (pack.standard > 0) {
+          const key = coveredKey(profId, prog.id, sess.lesson_name, 'lesson');
+          if (!coveredSet.has(key)) {
+            missingItems.push({
+              professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
+              lesson_id: sess.lesson_id, item_name: sess.lesson_name, item_type: 'lesson',
+              class_type_name: prog.class_type_name,
+            });
+          }
+        }
+        if (pack.for20 > 0) {
+          const f20Name = `${sess.lesson_name} For 20`;
+          const key = coveredKey(profId, prog.id, f20Name, 'lesson');
+          if (!coveredSet.has(key)) {
+            missingItems.push({
+              professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
+              lesson_id: sess.lesson_id, item_name: f20Name, item_type: 'lesson',
+              class_type_name: prog.class_type_name,
+            });
+          }
         }
       }
 
@@ -617,15 +666,23 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
       const firstSessionInWindow = prog.first_session_date &&
         prog.first_session_date >= cycleStart && prog.first_session_date <= cycleEnd;
       if (firstSessionInWindow && prog.has_id_card && prog.session_count >= minWeeksStart) {
-        const startName = for20
-          ? `${pfx} Start for 20 - ${prog.class_name}`
-          : `${pfx} Start - ${prog.class_name}`;
-        const key = coveredKey(profId, prog.id, startName, 'start_kit');
-        if (!coveredSet.has(key)) {
-          missingItems.push({
-            professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
-            item_name: startName, item_type: 'start_kit', class_type_name: prog.class_type_name,
-          });
+        if (pack.standard > 0) {
+          const key = coveredKey(profId, prog.id, `${pfx} Start - ${prog.class_name}`, 'start_kit');
+          if (!coveredSet.has(key)) {
+            missingItems.push({
+              professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
+              item_name: `${pfx} Start - ${prog.class_name}`, item_type: 'start_kit', class_type_name: prog.class_type_name,
+            });
+          }
+        }
+        if (pack.for20 > 0) {
+          const key = coveredKey(profId, prog.id, `${pfx} Start for 20 - ${prog.class_name}`, 'start_kit');
+          if (!coveredSet.has(key)) {
+            missingItems.push({
+              professor_id: profId, program_id: prog.id, program_nickname: prog.program_nickname,
+              item_name: `${pfx} Start for 20 - ${prog.class_name}`, item_type: 'start_kit', class_type_name: prog.class_type_name,
+            });
+          }
         }
       }
 
@@ -1057,7 +1114,7 @@ router.get('/weekly-requirements', async (req, res, next) => {
       // Lesson kits (including robotics — warehouse needs to prep everything)
       const [lessonItems] = await pool.query(
         `SELECT l.lesson_name, ct.class_type_name, ct.id AS class_type_id,
-                SUM(CASE WHEN prog.number_enrolled > 20 THEN 1 ELSE 0 END) AS for_20_count,
+                SUM(CASE WHEN prog.number_enrolled > 15 THEN 1 ELSE 0 END) AS for_20_count,
                 SUM(CASE WHEN prog.number_enrolled <= 20 OR prog.number_enrolled IS NULL THEN 1 ELSE 0 END) AS standard_count
          FROM session s
          JOIN program prog ON prog.id = s.program_id AND prog.active = 1 AND prog.live = 1
@@ -1074,7 +1131,7 @@ router.get('/weekly-requirements', async (req, res, next) => {
       // Start kits — programs with first session in this window
       const [startKits] = await pool.query(
         `SELECT cl.class_name, ct.class_type_name,
-                SUM(CASE WHEN prog.number_enrolled > 20 THEN 1 ELSE 0 END) AS for_20_count,
+                SUM(CASE WHEN prog.number_enrolled > 15 THEN 1 ELSE 0 END) AS for_20_count,
                 SUM(CASE WHEN prog.number_enrolled <= 20 OR prog.number_enrolled IS NULL THEN 1 ELSE 0 END) AS standard_count
          FROM program prog
          JOIN class cl ON cl.id = prog.class_id AND cl.has_id_card = 1
