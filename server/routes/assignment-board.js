@@ -158,13 +158,24 @@ router.get('/data', authenticate, async (req, res, next) => {
     let livescanMap = {};
     if (profIds.length) {
       const [livescans] = await pool.query(
-        'SELECT professor_id, location_id, contractor_id FROM livescan WHERE professor_id IN (?) AND active = 1',
+        `SELECT ls.professor_id, ls.location_id, ls.contractor_id,
+                loc.nickname AS location_name, con.contractor_name
+         FROM livescan ls
+         LEFT JOIN location loc ON loc.id = ls.location_id
+         LEFT JOIN contractor con ON con.id = ls.contractor_id
+         WHERE ls.professor_id IN (?) AND ls.active = 1`,
         [profIds]
       );
       livescans.forEach(ls => {
-        if (!livescanMap[ls.professor_id]) livescanMap[ls.professor_id] = { locations: [], contractors: [] };
-        if (ls.location_id) livescanMap[ls.professor_id].locations.push(ls.location_id);
-        if (ls.contractor_id) livescanMap[ls.professor_id].contractors.push(ls.contractor_id);
+        if (!livescanMap[ls.professor_id]) livescanMap[ls.professor_id] = { locations: [], contractors: [], locationNames: [], contractorNames: [] };
+        if (ls.location_id) {
+          livescanMap[ls.professor_id].locations.push(ls.location_id);
+          if (ls.location_name) livescanMap[ls.professor_id].locationNames.push(ls.location_name);
+        }
+        if (ls.contractor_id) {
+          livescanMap[ls.professor_id].contractors.push(ls.contractor_id);
+          if (ls.contractor_name) livescanMap[ls.professor_id].contractorNames.push(ls.contractor_name);
+        }
       });
     }
 
@@ -183,6 +194,8 @@ router.get('/data', authenticate, async (req, res, next) => {
       tbTest: !!p.tb_test,
       livescanLocations: livescanMap[p.id]?.locations || [],
       livescanContractors: livescanMap[p.id]?.contractors || [],
+      livescanLocationNames: livescanMap[p.id]?.locationNames || [],
+      livescanContractorNames: livescanMap[p.id]?.contractorNames || [],
     }));
 
     res.json({ success: true, data: { programs: enrichedPrograms, professors: enrichedProfs } });

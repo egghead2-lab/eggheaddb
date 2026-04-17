@@ -489,10 +489,21 @@ function ProfessorLabel({ prof }) {
             {prof.virtus ? <span className="px-1 rounded bg-green-100 text-green-700">Virtus</span> : <span className="px-1 rounded bg-red-50 text-red-400">No Virtus</span>}
             {prof.tbTest ? <span className="px-1 rounded bg-green-100 text-green-700">TB</span> : <span className="px-1 rounded bg-red-50 text-red-400">No TB</span>}
           </div>
-          {prof.livescanLocations?.length > 0 && (
+          {(prof.livescanLocationNames?.length > 0 || prof.livescanContractorNames?.length > 0) && (
+            <div className="flex flex-wrap gap-0.5">
+              <span className="text-gray-400 shrink-0">Livescans:</span>
+              {[...new Set(prof.livescanLocationNames || [])].map((name, i) => (
+                <span key={`l${i}`} className="px-1 rounded bg-green-50 text-green-700 text-[9px]">{name}</span>
+              ))}
+              {[...new Set(prof.livescanContractorNames || [])].map((name, i) => (
+                <span key={`c${i}`} className="px-1 rounded bg-blue-50 text-blue-700 text-[9px]">{name}</span>
+              ))}
+            </div>
+          )}
+          {prof.livescanLocations?.length === 0 && prof.livescanContractors?.length === 0 && (
             <div className="flex flex-wrap gap-0.5">
               <span className="text-gray-400">Livescans:</span>
-              <span className="text-gray-600">{prof.livescanLocations.length} location{prof.livescanLocations.length !== 1 ? 's' : ''}</span>
+              <span className="text-red-400">None</span>
             </div>
           )}
         </div>
