@@ -129,7 +129,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
     });
 
     const [parties] = await pool.query(
-      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.party_location_text,
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.party_location_text, prog.party_city,
               cs.class_status_name, pf.party_format_name, cl.class_name AS party_theme
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id

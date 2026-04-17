@@ -459,7 +459,7 @@ export default function ParentDetailPage() {
                       </td>
                       <td className="px-3 py-2 text-gray-600">{p.party_format_name || '—'}</td>
                       <td className="px-3 py-2 text-gray-600">{p.party_theme || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{p.party_location_text || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.party_city || p.party_location_text || '—'}</td>
                       <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
                     </tr>
                   ))}

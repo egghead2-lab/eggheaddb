@@ -60,7 +60,7 @@ router.get('/my-pending-parties', authenticate, async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT paa.id AS ask_id, paa.ask_type, paa.asked_at, paa.notes AS ask_notes,
               prog.id AS program_id, prog.program_nickname, prog.first_session_date, prog.start_time,
-              prog.class_length_minutes, prog.party_location_text, prog.lead_professor_pay,
+              prog.class_length_minutes, prog.party_location_text, prog.party_city, prog.lead_professor_pay,
               prog.birthday_kid_name, prog.birthday_kid_age, prog.total_kids_attended,
               pf.party_format_name,
               cl.class_name AS party_theme,
@@ -572,7 +572,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
     // Upcoming parties
     const [parties] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.start_time,
-              prog.class_length_minutes, prog.party_location_text,
+              prog.class_length_minutes, prog.party_location_text, prog.party_city,
               prog.lead_professor_pay, prog.assistant_professor_pay,
               prog.lead_professor_id,
               cs.class_status_name,

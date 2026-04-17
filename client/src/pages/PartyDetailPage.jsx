@@ -139,9 +139,12 @@ export default function PartyDetailPage() {
               <Input label="Shirt Size" {...register('shirt_size')} />
               <Input label="Birthday Kid" placeholder="Name" {...register('birthday_kid_name')} />
               <Input label="Turning Age" type="number" {...register('birthday_kid_age')} />
-              <div className="col-span-5">
-                <Input label="Location Name / Address" placeholder="e.g. Willard Elementary, 12345 Main St, Los Angeles" {...register('party_location_text')} />
+              <div className="col-span-2">
+                <Input label="Street Address" placeholder="123 Main St" {...register('party_address')} />
               </div>
+              <Input label="City" placeholder="Los Angeles" {...register('party_city')} />
+              <Input label="State" placeholder="CA" maxLength={2} {...register('party_state')} />
+              <Input label="Zip" placeholder="90001" {...register('party_zip')} />
               <div className="col-span-5">
                 <Input label="Notes" {...register('general_notes')} />
               </div>

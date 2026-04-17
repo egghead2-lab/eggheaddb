@@ -206,8 +206,8 @@ export default function PartyAssignPage() {
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                       <div><span className="text-gray-500">Date:</span> {formatDate(selectedParty.first_session_date)}</div>
                       <div><span className="text-gray-500">Time:</span> {selectedParty.start_time ? formatTime(selectedParty.start_time) : '—'}</div>
-                      <div><span className="text-gray-500">Location:</span> {selectedParty.location_nickname || selectedParty.party_location_text || '—'}</div>
-                      <div><span className="text-gray-500">Address:</span> {selectedParty.address || '—'}</div>
+                      <div><span className="text-gray-500">Location:</span> {selectedParty.party_city || selectedParty.location_nickname || '—'}</div>
+                      <div><span className="text-gray-500">Address:</span> {selectedParty.party_address || selectedParty.address || '—'}</div>
                       <div><span className="text-gray-500">Theme:</span> {selectedParty.party_theme || '—'}</div>
                       <div><span className="text-gray-500">Kids:</span> {selectedParty.total_kids_attended || '—'}</div>
                       <div><span className="text-gray-500">Pay:</span> {selectedParty.lead_professor_pay ? formatCurrency(selectedParty.lead_professor_pay) : '—'}</div>

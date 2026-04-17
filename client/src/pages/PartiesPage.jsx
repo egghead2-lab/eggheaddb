@@ -194,10 +194,10 @@ export default function PartiesPage() {
                           : <span className="text-gray-400">—</span>}
                       </td>}
                       {v('location') && <td className="px-4 py-2.5 text-gray-600 max-w-[250px]">
-                        <div className="truncate" title={p.party_location_text || p.location_nickname || ''}>
-                          {p.party_location_text || p.location_nickname || p.city_name || '—'}
+                        <div className="truncate font-medium" title={p.party_address || p.party_location_text || p.location_nickname || ''}>
+                          {p.party_city || p.city_name || p.location_nickname || '—'}
                         </div>
-                        {p.city_name && p.party_location_text && <div className="text-[10px] text-gray-400 truncate">{p.city_name}{p.geographic_area_name ? ` · ${p.geographic_area_name}` : ''}</div>}
+                        {p.party_address && <div className="text-[10px] text-gray-400 truncate">{p.party_address}</div>}
                       </td>}
                       {v('contact') && <td className="px-4 py-2.5 whitespace-nowrap">
                         {p.contact_id

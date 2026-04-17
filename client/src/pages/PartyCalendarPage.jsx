@@ -80,7 +80,7 @@ export default function PartyCalendarPage() {
                     </td>
                     <td className="px-2 py-2 text-gray-600">{formatDate(p.first_session_date)}</td>
                     <td className="px-2 py-2 text-gray-600">{p.start_time ? formatTime(p.start_time) : '—'}</td>
-                    <td className="px-2 py-2 text-gray-600 truncate max-w-[150px]">{p.party_location_text || '—'}</td>
+                    <td className="px-2 py-2 text-gray-600 truncate max-w-[150px]">{p.party_city || p.party_location_text || '—'}</td>
                     <td className="px-2 py-2 text-gray-600">{p.lead_professor_name || '—'}</td>
                     <td className="px-2 py-2 text-gray-600">{p.contact_name || '—'}</td>
                     <td className="px-2 py-2 text-gray-600">

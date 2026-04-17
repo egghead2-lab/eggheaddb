@@ -268,7 +268,7 @@ function PendingPartyCard({ party: p, onRespond }) {
 
       <div className="px-4 py-2 border-t border-pink-100">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <div><span className="text-gray-500">Location:</span> {p.location_nickname || p.party_location_text || '—'}</div>
+          <div><span className="text-gray-500">Location:</span> {p.party_city || p.location_nickname || p.party_location_text || '—'}</div>
           <div><span className="text-gray-500">Theme:</span> {p.party_theme || '—'}</div>
           {p.address && <div className="col-span-2"><span className="text-gray-500">Address:</span> {p.address}</div>}
           <div><span className="text-gray-500">Kids:</span> {p.total_kids_attended || '—'}</div>

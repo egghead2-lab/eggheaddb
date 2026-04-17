@@ -8,7 +8,7 @@ router.get('/unassigned', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.start_time,
-              prog.class_length_minutes, prog.party_location_text, prog.lead_professor_id,
+              prog.class_length_minutes, prog.party_location_text, prog.party_city, prog.lead_professor_id,
               prog.lead_professor_pay, prog.assistant_professor_id,
               prog.birthday_kid_name, prog.birthday_kid_age, prog.total_kids_attended,
               prog.general_notes,

@@ -69,7 +69,7 @@ export default function PartyShipmentsPage() {
                     <td className="px-4 py-2.5 text-gray-600 text-xs">{p.party_format_name || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600 text-xs">{p.party_theme || p.class_name || '—'}</td>
                     <td className="px-4 py-2.5 text-center text-gray-700">{p.total_kids_attended ?? p.maximum_students ?? '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-600 text-xs">{p.party_location_text || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-600 text-xs">{p.party_city || p.party_location_text || '—'}</td>
                     <td className="px-4 py-2.5 text-center">
                       {p.details_confirmed ? <span className="text-green-600">&#10003;</span> : <span className="text-gray-300">—</span>}
                     </td>
