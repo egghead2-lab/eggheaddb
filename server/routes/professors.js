@@ -178,7 +178,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
     const [livescans] = await pool.query(
       `SELECT l.*,
-              loc.nickname AS location_nickname, prog.party_city,
+              loc.nickname AS location_nickname,
               c.contractor_name,
               COALESCE(c.contractor_name, loc.nickname) AS display_name
        FROM livescan l
