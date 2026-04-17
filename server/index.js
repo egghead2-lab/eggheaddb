@@ -41,6 +41,7 @@ const quickbooksRoutes = require('./routes/quickbooks');
 const labFeesRoutes = require('./routes/lab-fees');
 const trainualRoutes = require('./routes/trainual');
 const scheduleConflictsRoutes = require('./routes/schedule-conflicts');
+const registrationBlastsRoutes = require('./routes/registration-blasts');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -171,6 +172,7 @@ app.use('/api/quickbooks', quickbooksRoutes);
 app.use('/api/lab-fees', labFeesRoutes);
 app.use('/api/trainual', trainualRoutes);
 app.use('/api/schedule-conflicts', scheduleConflictsRoutes);
+app.use('/api/registration-blasts', registrationBlastsRoutes);
 
 // Error handler
 app.use(errorHandler);

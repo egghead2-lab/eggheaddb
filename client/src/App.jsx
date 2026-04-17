@@ -107,6 +107,7 @@ import CurriculumSettingPage from './pages/CurriculumSettingPage';
 import UnscheduledProgramsPage from './pages/UnscheduledProgramsPage';
 import LabFeesPage from './pages/LabFeesPage';
 import PermitManagementPage from './pages/PermitManagementPage';
+import EmailBlastToolPage from './pages/EmailBlastToolPage';
 
 export default function App() {
   return (
@@ -233,6 +234,7 @@ export default function App() {
       <Route path="/materials/parties" element={<ProtectedRoute><PartyShipmentsPage /></ProtectedRoute>} />
       <Route path="/lab-fees" element={<ProtectedRoute><LabFeesPage /></ProtectedRoute>} />
       <Route path="/permits" element={<ProtectedRoute><PermitManagementPage /></ProtectedRoute>} />
+      <Route path="/email-blasts" element={<ProtectedRoute><EmailBlastToolPage /></ProtectedRoute>} />
 
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
