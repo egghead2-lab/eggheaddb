@@ -41,7 +41,7 @@ export default function BugBountyPage() {
   const allBugs = data?.data || [];
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, status, admin_notes }) => api.put(`/bug-reports/${id}`, { status, admin_notes }),
+    mutationFn: ({ id, ...data }) => api.put(`/bug-reports/${id}`, data),
     onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); },
   });
 
@@ -122,6 +122,9 @@ export default function BugBountyPage() {
             )}
           </div>
         </div>
+
+        {/* Admin Awards */}
+        {isAdmin && <AwardSection />}
 
         {/* Active bugs */}
         {isLoading ? (
@@ -250,6 +253,83 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
               className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function AwardSection() {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+
+  const { data: usersData } = useQuery({
+    queryKey: ['users-staff'],
+    queryFn: () => api.get('/users?limit=200').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const staffUsers = (usersData?.data || []).filter(u => !['Professor', 'Candidate'].includes(u.role_name));
+
+  const { data: awardsData } = useQuery({
+    queryKey: ['bug-awards'],
+    queryFn: () => api.get('/bug-reports/awards').then(r => r.data),
+  });
+  const awards = awardsData?.data || [];
+  const unpaidAwards = awards.filter(a => !a.paid_at);
+
+  const createMutation = useMutation({
+    mutationFn: (data) => api.post('/bug-reports/awards', data),
+    onSuccess: () => {
+      qc.invalidateQueries(['bug-awards']);
+      qc.invalidateQueries(['bug-leaderboard']);
+      setUserId(''); setAmount(''); setDescription(''); setShowForm(false);
+    },
+  });
+
+  const selectedUser = staffUsers.find(u => String(u.id) === userId);
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 mb-6">
+      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-gray-900">Bonus Awards</h2>
+        <button onClick={() => setShowForm(!showForm)} className="text-xs text-[#1e3a5f] hover:underline">
+          {showForm ? 'Cancel' : '+ Issue Award'}
+        </button>
+      </div>
+      {showForm && (
+        <div className="px-4 py-3 border-b border-gray-100 flex items-end gap-3">
+          <Select label="Person" value={userId} onChange={e => setUserId(e.target.value)} className="w-48">
+            <option value="">Select...</option>
+            {staffUsers.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
+          </Select>
+          <Input label="Amount" type="number" step="0.01" prefix="$" value={amount} onChange={e => setAmount(e.target.value)} className="w-24" />
+          <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} className="flex-1" placeholder="Reason for award" />
+          <Button onClick={() => createMutation.mutate({
+            user_id: parseInt(userId),
+            user_name: selectedUser ? `${selectedUser.first_name} ${selectedUser.last_name}` : '',
+            amount: parseFloat(amount),
+            description,
+          })} disabled={!userId || !amount || createMutation.isPending}>
+            {createMutation.isPending ? 'Adding...' : 'Add'}
+          </Button>
+        </div>
+      )}
+      {awards.length > 0 ? (
+        <div className="divide-y divide-gray-100">
+          {awards.slice(0, 10).map(a => (
+            <div key={a.id} className="px-4 py-2 flex items-center gap-3 text-xs">
+              <span className="font-medium text-gray-800">{a.user_name}</span>
+              <span className="font-bold text-green-700">${parseFloat(a.amount).toFixed(2)}</span>
+              <span className="text-gray-500 flex-1">{a.description}</span>
+              {a.paid_at ? <span className="text-green-600">Paid {formatDate(a.paid_at)}</span> : <span className="text-amber-500">Unpaid</span>}
+              <span className="text-gray-400">{formatDate(a.ts_inserted)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="px-4 py-4 text-xs text-gray-400 text-center">No awards yet</div>
       )}
     </div>
   );

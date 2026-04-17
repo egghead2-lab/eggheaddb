@@ -762,6 +762,16 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
        GROUP BY submitted_by_user_id, submitted_by_name
        ORDER BY earnings DESC`
     );
+    // Add award amounts per user
+    const [awards] = await pool.query(
+      `SELECT user_id, SUM(amount) AS award_total FROM bug_bounty_award
+       WHERE MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())
+       GROUP BY user_id`
+    );
+    const awardMap = {};
+    awards.forEach(a => { awardMap[a.user_id] = parseFloat(a.award_total) || 0; });
+    rows.forEach(r => { r.award_amount = awardMap[r.user_id] || 0; r.earnings = parseInt(r.earnings) + r.award_amount; });
+
     // Cap at $100 per person
     rows.forEach(r => { r.earnings = Math.min(r.earnings, 100); });
     const totalPayout = Math.min(rows.reduce((sum, r) => sum + r.earnings, 0), 1000);
@@ -769,13 +779,37 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Bug bounty awards
+router.get('/bug-reports/awards', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM bug_bounty_award ORDER BY ts_inserted DESC');
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+router.post('/bug-reports/awards', authenticate, async (req, res, next) => {
+  try {
+    const { user_id, user_name, amount, description } = req.body;
+    if (!user_id || !amount) return res.status(400).json({ success: false, error: 'User and amount required' });
+    const [result] = await pool.query(
+      'INSERT INTO bug_bounty_award (user_id, user_name, amount, description, awarded_by_user_id) VALUES (?, ?, ?, ?, ?)',
+      [user_id, user_name || '', amount, description || '', req.user.userId]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
 // Mark unpaid approved/fixed bugs as paid
 router.post('/bug-reports/mark-paid', authenticate, async (req, res, next) => {
   try {
     const [result] = await pool.query(
-      "UPDATE bug_report SET paid_at = NOW() WHERE status IN ('approved_minor', 'approved_major', 'fixed') AND paid_at IS NULL"
+      "UPDATE bug_report SET paid_at = NOW() WHERE status IN ('approved_minor', 'approved_major') AND paid_at IS NULL"
     );
-    res.json({ success: true, marked: result.affectedRows });
+    // Also mark unpaid awards as paid
+    const [awardResult] = await pool.query(
+      "UPDATE bug_bounty_award SET paid_at = NOW() WHERE paid_at IS NULL"
+    );
+    res.json({ success: true, marked: result.affectedRows + awardResult.affectedRows });
   } catch (err) { next(err); }
 });
 
