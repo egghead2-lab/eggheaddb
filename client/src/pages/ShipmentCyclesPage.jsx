@@ -46,7 +46,7 @@ export default function ShipmentCyclesPage() {
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
     const ship = new Date(start);
-    ship.setDate(ship.getDate() - 7);
+    ship.setDate(ship.getDate() + 2); // Default to Wednesday of program week
     setForm({ ...form, start_date: val, end_date: end.toISOString().split('T')[0], ship_date: ship.toISOString().split('T')[0] });
   };
 
