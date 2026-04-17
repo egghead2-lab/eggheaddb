@@ -675,7 +675,7 @@ router.get('/weekly-overview', authenticate, async (req, res, next) => {
               CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assist_name,
               ap.id AS assist_id,
               l.lesson_name, l.trainual_link,
-              loc.nickname AS location_nickname,
+              loc.nickname AS location_nickname, prog.party_city,
               ga.id AS area_id, ga.geographic_area_name,
               CASE WHEN doff.id IS NOT NULL AND s.professor_id IS NULL THEN 1 ELSE 0 END AS needs_sub
        FROM session s

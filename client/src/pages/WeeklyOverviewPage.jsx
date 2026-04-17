@@ -192,7 +192,7 @@ export default function WeeklyOverviewPage() {
                               <tr key={s.session_id} className={`${!s.lead_id ? 'bg-red-50/40' : s.needs_sub ? 'bg-orange-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${isFirst || isLast ? 'bg-amber-50/30' : ''}`}>
                                 <td className="px-3 py-1.5 truncate">
                                   <Link to={`/programs/${s.program_id}`} className="font-medium text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>
-                                  {s.location_nickname && <div className="text-[10px] text-gray-400 truncate">{s.location_nickname}</div>}
+                                  {(s.location_nickname || s.party_city) && <div className="text-[10px] text-gray-400 truncate">{s.location_nickname || s.party_city}</div>}
                                 </td>
                                 <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap">
                                   {s.session_time ? formatTime(s.session_time) : (s.start_time ? formatTime(s.start_time) : '—')}

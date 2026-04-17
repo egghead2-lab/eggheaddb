@@ -80,7 +80,7 @@ router.get('/', authenticate, async (req, res, next) => {
               prog.last_session_date, prog.parent_cost, prog.lab_fee,
               prog.invoice_paid, prog.invoice_date_sent, prog.invoice_needed,
               cs.class_status_name,
-              loc.nickname AS location_nickname,
+              loc.nickname AS location_nickname, prog.party_city,
               cl.class_name, cl.class_code,
               pt.program_type_name, ct2.class_type_name,
               CONCAT(lp.first_name, ' ', lp.last_name) AS lead_professor_name,
@@ -162,7 +162,7 @@ router.get('/pending-roster', authenticate, async (req, res, next) => {
               pr.added_by_user_id,
               st.first_name AS student_first, st.last_name AS student_last,
               prog.program_nickname,
-              loc.nickname AS location_nickname,
+              loc.nickname AS location_nickname, prog.party_city,
               con.contractor_name,
               ga.geographic_area_name,
               CONCAT(u.first_name, ' ', u.last_name) AS added_by_name
@@ -228,7 +228,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
     const [[program]] = await pool.query(
       `SELECT prog.*,
               cs.class_status_name,
-              loc.nickname AS location_nickname,
+              loc.nickname AS location_nickname, prog.party_city,
               loc.retained AS location_retained,
               cl.class_name, cl.class_code, cl.formal_class_name,
               pt.program_type_name,
@@ -971,7 +971,7 @@ router.get('/:id/classroom', authenticate, async (req, res, next) => {
     // Program info
     const [[program]] = await pool.query(
       `SELECT prog.*, cs.class_status_name, cl.class_name,
-              loc.nickname AS location_nickname, loc.school_name,
+              loc.nickname AS location_nickname, prog.party_city, loc.school_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
               CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_name
        FROM program prog

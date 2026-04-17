@@ -597,7 +597,7 @@ function ObservationSection({ professorId, observations, basePay, qc }) {
             )}
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {o.location_nickname}{o.address ? ` — ${o.address}` : ''}
+            {o.location_nickname || o.party_city || '—'}{o.address ? ` — ${o.address}` : ''}
           </div>
           <div className="text-xs text-gray-500">
             Lead: <span className="font-medium">{o.lead_professor_name || '—'}</span>
@@ -717,7 +717,7 @@ function ObservationSection({ professorId, observations, basePay, qc }) {
                         <li key={p.id} onMouseDown={e => { e.preventDefault(); setSelectedProgram(p); setSearchQuery(p.program_nickname); setSearchResults([]); fetchSessions(p.id); }}
                           className="px-3 py-2 text-xs cursor-pointer hover:bg-[#1e3a5f]/10">
                           <div className="font-medium">{p.program_nickname}</div>
-                          <div className="text-gray-400">{p.location_nickname} &bull; {p.lead_professor_name || 'No lead'}</div>
+                          <div className="text-gray-400">{p.location_nickname || p.party_city || '—'} &bull; {p.lead_professor_name || 'No lead'}</div>
                         </li>
                       ))}
                     </ul>
@@ -728,7 +728,7 @@ function ObservationSection({ professorId, observations, basePay, qc }) {
               {selectedProgram && (
                 <div className="bg-white rounded border border-gray-200 p-2 text-xs">
                   <div className="font-medium text-gray-800">{selectedProgram.program_nickname}</div>
-                  <div className="text-gray-500">{selectedProgram.location_nickname}{selectedProgram.address ? ` — ${selectedProgram.address}` : ''}</div>
+                  <div className="text-gray-500">{selectedProgram.location_nickname || selectedProgram.party_city || '—'}{selectedProgram.address ? ` — ${selectedProgram.address}` : ''}</div>
                   <div className="text-gray-500">Lead: {selectedProgram.lead_professor_name || '—'} {selectedProgram.lead_professor_phone || ''}</div>
                 </div>
               )}
@@ -1383,7 +1383,7 @@ export default function ProfessorDetailPage() {
                   {prof.activePrograms.map(p => (
                     <tr key={p.id}>
                       <td className="px-3 py-2"><Link to={`/programs/${p.id}`} className="text-[#1e3a5f] hover:underline font-medium">{p.program_nickname}</Link></td>
-                      <td className="px-3 py-2 text-gray-600">{p.location_nickname || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.location_nickname || p.party_city || '—'}</td>
                       <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
                       <td className="px-3 py-2 text-center"><span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${p.role === 'Lead' ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'}`}>{p.role}</span></td>
                       <td className="px-3 py-2 text-xs text-gray-500">{p.first_session_date ? formatDate(p.first_session_date) : '—'}{p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}</td>
@@ -1431,7 +1431,7 @@ export default function ProfessorDetailPage() {
                           </td>
                           <td className="px-3 py-2 text-gray-500">{s.session_time ? formatTime(s.session_time) : '—'}</td>
                           <td className="px-3 py-2 text-gray-600">{s.program_nickname}</td>
-                          <td className="px-3 py-2 text-gray-500">{s.location_id ? <Link to={`/locations/${s.location_id}`} className="text-[#1e3a5f] hover:underline">{s.location_nickname}</Link> : (s.location_nickname || '—')}</td>
+                          <td className="px-3 py-2 text-gray-500">{s.location_id ? <Link to={`/locations/${s.location_id}`} className="text-[#1e3a5f] hover:underline">{s.location_nickname}</Link> : (s.location_nickname || s.party_city || '—')}</td>
                           <td className="px-3 py-2 text-center">
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
                               s.class_status_name === 'Confirmed' ? 'bg-green-100 text-green-700' :

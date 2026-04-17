@@ -216,7 +216,7 @@ export default function ProgramsPage() {
                       </td>}
                       {v('status') && <td className="px-4 py-2.5"><Badge status={p.class_status_name} /></td>}
                       {v('location') && <td className="px-4 py-2.5 text-gray-600">
-                        {p.location_id ? <Link to={`/locations/${p.location_id}`} className="text-[#1e3a5f] hover:underline">{p.location_nickname}</Link> : '—'}
+                        {p.location_id ? <Link to={`/locations/${p.location_id}`} className="text-[#1e3a5f] hover:underline">{p.location_nickname}</Link> : (p.party_city || '—')}
                       </td>}
                       {v('type') && <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1.5">

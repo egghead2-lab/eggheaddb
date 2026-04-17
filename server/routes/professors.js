@@ -118,7 +118,7 @@ router.get('/observations/search-programs', authenticate, async (req, res, next)
       `SELECT prog.id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday,
               prog.first_session_date, prog.last_session_date,
-              loc.nickname AS location_nickname, loc.address,
+              loc.nickname AS location_nickname, prog.party_city, loc.address,
               ga.id AS area_id, ga.geographic_area_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
               lp.phone_number AS lead_professor_phone
@@ -178,7 +178,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
     const [livescans] = await pool.query(
       `SELECT l.*,
-              loc.nickname AS location_nickname,
+              loc.nickname AS location_nickname, prog.party_city,
               c.contractor_name,
               COALESCE(c.contractor_name, loc.nickname) AS display_name
        FROM livescan l
@@ -254,7 +254,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
     const [observations] = await pool.query(
       `SELECT po.*, prog.program_nickname, prog.start_time, prog.class_length_minutes,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
-              loc.nickname AS location_nickname, loc.address,
+              loc.nickname AS location_nickname, prog.party_city, loc.address,
               ga2.geographic_area_name AS program_area,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
               lp.phone_number AS lead_professor_phone,
@@ -733,7 +733,7 @@ router.get('/:id/observations', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `SELECT po.*, prog.program_nickname, prog.start_time, prog.class_length_minutes,
-              loc.nickname AS location_nickname, loc.address,
+              loc.nickname AS location_nickname, prog.party_city, loc.address,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
               lp.phone_number AS lead_professor_phone
        FROM professor_observation po
@@ -851,7 +851,7 @@ router.get('/observation-candidates', authenticate, async (req, res, next) => {
       `SELECT s.id AS session_id, s.session_date, s.session_time, s.program_id,
               prog.program_nickname, prog.start_time, prog.class_length_minutes,
               cl.class_name, ct.class_type_name,
-              loc.nickname AS location_nickname, loc.address,
+              loc.nickname AS location_nickname, prog.party_city, loc.address,
               p.id AS professor_id, p.professor_nickname,
               CONCAT(p.first_name, ' ', p.last_name) AS professor_full_name,
               p.last_evaluation_result,
