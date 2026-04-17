@@ -77,6 +77,7 @@ export default function MarkShippedPage() {
   };
 
   const selectableOnPage = orders.filter(o => o.status === 'pending' || (o.status === 'shipped' && !o.tracking_number));
+  const allSelectableIds = data?.allSelectableIds || [];
 
   return (
     <AppShell>
@@ -168,14 +169,10 @@ export default function MarkShippedPage() {
                   <tr>
                     <th className="w-10 px-3 py-2">
                       <input type="checkbox"
-                        checked={selectableOnPage.length > 0 && selectableOnPage.every(o => selected.has(o.id))}
+                        checked={allSelectableIds.length > 0 && allSelectableIds.every(id => selected.has(id))}
                         onChange={() => {
-                          const allSelected = selectableOnPage.every(o => selected.has(o.id));
-                          setSelected(prev => {
-                            const next = new Set(prev);
-                            selectableOnPage.forEach(o => allSelected ? next.delete(o.id) : next.add(o.id));
-                            return next;
-                          });
+                          const allSelected = allSelectableIds.every(id => selected.has(id));
+                          setSelected(allSelected ? new Set() : new Set(allSelectableIds));
                         }}
                         className="accent-[#1e3a5f]" />
                     </th>

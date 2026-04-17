@@ -817,7 +817,18 @@ router.get('/shipments', async (req, res, next) => {
       }
     }
 
-    res.json({ success: true, data: rows, total, page: parseInt(page), limit: parseInt(limit) });
+    // Return all selectable IDs (pending + shipped without tracking) for "select all" across pages
+    const [selectableRows] = await pool.query(
+      `SELECT so.id FROM shipment_order so
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN shipment_cycle sc ON sc.id = so.cycle_id
+       WHERE ${where.join(' AND ')}
+         AND (so.status = 'pending' OR (so.status = 'shipped' AND (so.tracking_number IS NULL OR so.tracking_number = '')))`,
+      params
+    );
+    const allSelectableIds = selectableRows.map(r => r.id);
+
+    res.json({ success: true, data: rows, total, page: parseInt(page), limit: parseInt(limit), allSelectableIds });
   } catch (err) { next(err); }
 });
 
