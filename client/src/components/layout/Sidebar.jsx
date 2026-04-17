@@ -151,20 +151,28 @@ export function Sidebar() {
   const pinnedTools = allTools.filter(t => pins.includes(t.path));
 
   const navRef = useRef(null);
-  const scrollPos = useRef(0);
 
-  // Continuously track scroll position
+  // Persist scroll position in sessionStorage so it survives re-renders/remounts
   const handleNavScroll = useCallback(() => {
-    if (navRef.current) scrollPos.current = navRef.current.scrollTop;
+    if (navRef.current) {
+      sessionStorage.setItem('sidebar-scroll', String(navRef.current.scrollTop));
+    }
   }, []);
 
-  // Restore scroll position after route change re-renders
+  // Restore scroll after every render (covers route changes, group toggles, etc.)
   useEffect(() => {
     const el = navRef.current;
-    if (el && scrollPos.current > 0) {
-      requestAnimationFrame(() => { el.scrollTop = scrollPos.current; });
+    if (!el) return;
+    const saved = parseInt(sessionStorage.getItem('sidebar-scroll') || '0');
+    if (saved > 0) {
+      // Double RAF to ensure DOM has fully settled after React render
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.scrollTop = saved;
+        });
+      });
     }
-  }, [location.pathname]);
+  });
 
   const [openGroups, setOpenGroups] = useState(() => {
     const initial = new Set(['Operations']);
