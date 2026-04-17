@@ -457,16 +457,12 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
       try {
         const { isConfigured, trainualPut } = require('../lib/trainual');
         if (isConfigured()) {
-          const inTrainingRoleId = parseInt(process.env.TRAINUAL_ROLE_IN_TRAINING);
-          const sciEngRoleId = parseInt(process.env.TRAINUAL_ROLE_SCI_ENG_PROFESSOR);
-          if (inTrainingRoleId) {
-            try { await trainualPut(`/users/${candidate.trainual_user_id}/unassign_roles`, { role_ids: [inTrainingRoleId] }); }
-            catch (e) { console.warn('Trainual unassign In Training failed:', e.message); }
-          }
-          if (sciEngRoleId) {
-            try { await trainualPut(`/users/${candidate.trainual_user_id}/assign_roles`, { role_ids: [sciEngRoleId] }); }
-            catch (e) { console.warn('Trainual assign Sci & Eng Professor failed:', e.message); }
-          }
+          const inTrainingRoleId = parseInt(process.env.TRAINUAL_ROLE_IN_TRAINING) || 241016;
+          const sciEngRoleId = parseInt(process.env.TRAINUAL_ROLE_SCI_ENG_PROFESSOR) || 53906;
+          try { await trainualPut(`/users/${candidate.trainual_user_id}/unassign_roles`, { role_ids: [inTrainingRoleId] }); }
+          catch (e) { console.warn('Trainual unassign In Training failed:', e.message); }
+          try { await trainualPut(`/users/${candidate.trainual_user_id}/assign_roles`, { role_ids: [sciEngRoleId] }); }
+          catch (e) { console.warn('Trainual assign Sci & Eng Professor failed:', e.message); }
         }
       } catch (e) { console.warn('Trainual role swap failed:', e.message); }
     }

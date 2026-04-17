@@ -4,6 +4,10 @@ const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { isConfigured, trainualGet, trainualPost, trainualPut } = require('../lib/trainual');
 
+// Trainual role IDs (permanent in account 7243). Env var overrides take precedence.
+const ROLE_IN_TRAINING = parseInt(process.env.TRAINUAL_ROLE_IN_TRAINING) || 241016;
+const ROLE_SCI_ENG_PROFESSOR = parseInt(process.env.TRAINUAL_ROLE_SCI_ENG_PROFESSOR) || 53906;
+
 router.use(authenticate);
 
 // POST /api/trainual/sync — pull all users from Trainual and upsert into trainual_user
@@ -125,8 +129,6 @@ router.get('/professor-issues', async (req, res, next) => {
 router.post('/invite-candidate/:candidateId', async (req, res, next) => {
   try {
     if (!isConfigured()) return res.status(503).json({ success: false, error: 'Trainual not configured' });
-    const inTrainingRoleId = parseInt(process.env.TRAINUAL_ROLE_IN_TRAINING);
-    if (!inTrainingRoleId) return res.status(503).json({ success: false, error: 'TRAINUAL_ROLE_IN_TRAINING not configured' });
 
     const [[candidate]] = await pool.query(
       'SELECT id, full_name, email, trainual_user_id FROM candidate WHERE id = ?',
@@ -153,7 +155,7 @@ router.post('/invite-candidate/:candidateId', async (req, res, next) => {
 
     // Assign In Training role as a follow-up call
     try {
-      await trainualPut(`/users/${trainualUserId}/assign_roles`, { role_ids: [inTrainingRoleId] });
+      await trainualPut(`/users/${trainualUserId}/assign_roles`, { role_ids: [ROLE_IN_TRAINING] });
     } catch (err) {
       console.warn(`Trainual assign In Training failed for new user ${trainualUserId}: ${err.message}`);
     }
@@ -189,11 +191,6 @@ router.post('/invite-candidate/:candidateId', async (req, res, next) => {
 router.post('/promote-candidate/:candidateId', async (req, res, next) => {
   try {
     if (!isConfigured()) return res.status(503).json({ success: false, error: 'Trainual not configured' });
-    const inTrainingRoleId = parseInt(process.env.TRAINUAL_ROLE_IN_TRAINING);
-    const sciEngRoleId = parseInt(process.env.TRAINUAL_ROLE_SCI_ENG_PROFESSOR);
-    if (!inTrainingRoleId || !sciEngRoleId) {
-      return res.status(503).json({ success: false, error: 'Trainual role IDs not configured' });
-    }
 
     const [[candidate]] = await pool.query(
       'SELECT trainual_user_id FROM candidate WHERE id = ?', [req.params.candidateId]
@@ -204,11 +201,11 @@ router.post('/promote-candidate/:candidateId', async (req, res, next) => {
 
     // Unassign In Training, then assign Sci & Eng Professor
     try {
-      await trainualPut(`/users/${candidate.trainual_user_id}/unassign_roles`, { role_ids: [inTrainingRoleId] });
+      await trainualPut(`/users/${candidate.trainual_user_id}/unassign_roles`, { role_ids: [ROLE_IN_TRAINING] });
     } catch (err) {
       console.warn(`Trainual unassign In Training failed (continuing): ${err.message}`);
     }
-    await trainualPut(`/users/${candidate.trainual_user_id}/assign_roles`, { role_ids: [sciEngRoleId] });
+    await trainualPut(`/users/${candidate.trainual_user_id}/assign_roles`, { role_ids: [ROLE_SCI_ENG_PROFESSOR] });
 
     res.json({ success: true });
   } catch (err) { next(err); }
