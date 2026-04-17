@@ -143,6 +143,7 @@ router.get('/status', authenticate, async (req, res, next) => {
          AND p.lab_fee > 0
          AND p.lab_fee_link_not_needed = 0
          AND (loc.school_collects_lab_fee = 0 OR loc.school_collects_lab_fee IS NULL OR p.location_id IS NULL)
+         AND (p.first_session_date IS NULL OR p.first_session_date <= CURDATE())
        ORDER BY p.first_session_date DESC`
     );
 
