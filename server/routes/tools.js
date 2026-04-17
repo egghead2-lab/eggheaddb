@@ -39,34 +39,22 @@ router.get('/my-permissions', authenticate, async (req, res, next) => {
     let tools;
     const restrictedRoles = ['Professor', 'Candidate'];
 
-    if (adminRoles.includes(role)) {
-      // Admin/CEO see everything except professor-only "My Classes" section
+    if (restrictedRoles.includes(role)) {
+      // Professor/Candidate — ONLY see tools explicitly assigned to their role
+      const [[userRole]] = await pool.query('SELECT id FROM role WHERE role_name = ? AND active = 1', [role]);
+      if (!userRole) return res.json({ success: true, data: [] });
+      [tools] = await pool.query(
+        `SELECT t.path, t.label, t.nav_group, t.sort_order FROM tool t
+         JOIN tool_role tr ON tr.tool_id = t.id AND tr.role_id = ?
+         WHERE t.active = 1
+         ORDER BY t.nav_group, t.sort_order, t.label`,
+        [userRole.id]
+      );
+    } else {
+      // All staff roles see all tools (visibility only — edit permissions still role-based)
       [tools] = await pool.query(
         `SELECT path, label, nav_group, sort_order FROM tool WHERE active = 1 AND nav_group != 'My Classes' ORDER BY nav_group, sort_order, label`
       );
-    } else {
-      // Get the user's role_id
-      const [[userRole]] = await pool.query('SELECT id FROM role WHERE role_name = ? AND active = 1', [role]);
-      if (!userRole) return res.json({ success: true, data: [] });
-
-      if (restrictedRoles.includes(role)) {
-        // Restricted roles ONLY see tools explicitly assigned to their role (no universal)
-        [tools] = await pool.query(
-          `SELECT t.path, t.label, t.nav_group, t.sort_order FROM tool t
-           JOIN tool_role tr ON tr.tool_id = t.id AND tr.role_id = ?
-           WHERE t.active = 1
-           ORDER BY t.nav_group, t.sort_order, t.label`,
-          [userRole.id]
-        );
-      } else {
-        [tools] = await pool.query(
-          `SELECT t.path, t.label, t.nav_group, t.sort_order FROM tool t
-           LEFT JOIN tool_role tr ON tr.tool_id = t.id AND tr.role_id = ?
-           WHERE t.active = 1 AND (t.universal = 1 OR tr.id IS NOT NULL) AND t.nav_group != 'My Classes'
-           ORDER BY t.nav_group, t.sort_order, t.label`,
-          [userRole.id]
-        );
-      }
     }
 
     // Group by nav_group
