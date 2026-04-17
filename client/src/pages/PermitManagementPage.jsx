@@ -46,6 +46,7 @@ export default function PermitManagementPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [tab, setTab] = useState('needs_permit');
+  const [flagDays, setFlagDays] = useState(30);
 
   const { data, isLoading } = useQuery({
     queryKey: ['permits'],
@@ -53,8 +54,8 @@ export default function PermitManagementPage() {
   });
 
   const { data: flaggedData } = useQuery({
-    queryKey: ['permits-flagged'],
-    queryFn: () => api.get('/permits/flagged').then(r => r.data),
+    queryKey: ['permits-flagged', flagDays],
+    queryFn: () => api.get('/permits/flagged', { params: { days: flagDays } }).then(r => r.data),
     enabled: tab === 'needs_permit',
   });
 
@@ -125,11 +126,19 @@ export default function PermitManagementPage() {
             {/* ── NEEDS PERMIT ──────────────────────────────── */}
             {tab === 'needs_permit' && (
               <div className="space-y-4">
+                {/* Days filter */}
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-500">Show programs starting within</span>
+                  <input type="number" value={flagDays} onChange={e => setFlagDays(parseInt(e.target.value) || 30)}
+                    className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-center" min={1} />
+                  <span className="text-gray-500">days</span>
+                </div>
+
                 {/* Flagged programs needing permits */}
                 {flagged.length > 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-semibold text-amber-800">{flagged.length} programs need permits (within {cfg.permit_flag_days || 30} days)</h3>
+                      <h3 className="text-sm font-semibold text-amber-800">{flagged.length} programs need permits (within {flagDays} days)</h3>
                       <Button size="sm" onClick={() => bulkCreateMutation.mutate(flagged.map(f => f.id))}>
                         Create All Permit Requests
                       </Button>

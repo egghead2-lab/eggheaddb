@@ -79,7 +79,7 @@ router.get('/', async (req, res, next) => {
 router.get('/flagged', async (req, res, next) => {
   try {
     const [[flagDaysSetting]] = await pool.query("SELECT setting_value FROM app_settings WHERE setting_key = 'permit_flag_days'");
-    const flagDays = parseInt(flagDaysSetting?.setting_value) || 30;
+    const flagDays = parseInt(req.query.days) || parseInt(flagDaysSetting?.setting_value) || 30;
 
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.location_id,
@@ -89,7 +89,8 @@ router.get('/flagged', async (req, res, next) => {
        JOIN location loc ON loc.id = prog.location_id AND loc.contract_permit_required = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        WHERE prog.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
-         AND prog.first_session_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
+         AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
+         AND prog.first_session_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
          AND NOT EXISTS (SELECT 1 FROM permit_request pr WHERE pr.program_id = prog.id AND pr.active = 1)
        ORDER BY prog.first_session_date ASC`,
       [flagDays]
