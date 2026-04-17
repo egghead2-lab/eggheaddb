@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
-import { PageHeader } from '../components/layout/PageHeader';
+import { OrderManagementTabs } from '../components/OrderManagementTabs';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
@@ -55,9 +55,10 @@ export default function ShipmentCyclesPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Shipment Cycles" action={
+      <OrderManagementTabs />
+      <div className="px-6 pt-4 flex justify-end">
         <Button onClick={() => setShowCreate(!showCreate)}>{showCreate ? 'Cancel' : '+ New Cycle'}</Button>
-      } />
+      </div>
 
       <div className="p-6">
         {showCreate && (
@@ -106,14 +107,14 @@ export default function ShipmentCyclesPage() {
                     <td className="px-4 py-3 text-gray-600">{formatDate(c.ship_date)}</td>
                     <td className="px-4 py-3 text-center">
                       {c.order_count > 0 ? (
-                        <Link to={`/materials/standard-order?cycle=${c.id}`} className="text-[#1e3a5f] hover:underline font-medium">{c.order_count}</Link>
+                        <Link to={`/materials/orders/builder?cycle=${c.id}`} className="text-[#1e3a5f] hover:underline font-medium">{c.order_count}</Link>
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3 text-center"><Badge status={STATUS_COLORS[c.status] || c.status} /></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center gap-2 justify-end">
                         {c.status === 'draft' && (
-                          <Link to={`/materials/standard-order?cycle=${c.id}`}>
+                          <Link to={`/materials/orders/builder?cycle=${c.id}`}>
                             <Button size="sm" variant="secondary">Build Orders</Button>
                           </Link>
                         )}

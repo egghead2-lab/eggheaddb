@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
-import { PageHeader } from '../components/layout/PageHeader';
+import { OrderManagementTabs } from '../components/OrderManagementTabs';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate, authUrl } from '../lib/utils';
@@ -61,10 +61,10 @@ export default function StandardOrderBuilderPage() {
   if (!activeCycle) {
     return (
       <AppShell>
-        <PageHeader title="Standard Order Builder" />
+        <OrderManagementTabs />
         <div className="p-6">
           <div className="bg-white rounded-lg border p-12 text-center text-gray-400">
-            No cycle selected. <Link to="/materials/cycles" className="text-[#1e3a5f] hover:underline">Create or select a cycle</Link>.
+            No cycle selected. <Link to="/materials/orders" className="text-[#1e3a5f] hover:underline">Create or select a cycle</Link>.
           </div>
         </div>
       </AppShell>
@@ -98,19 +98,18 @@ export default function StandardOrderBuilderPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Standard Order Builder">
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-500">
-            Week: <strong>{formatDate(activeCycle.start_date)} – {formatDate(activeCycle.end_date)}</strong>
-            {' '}&middot; Ship: <strong>{formatDate(activeCycle.ship_date)}</strong>
-            {' '}&middot; Status: <strong>{activeCycle.status}</strong>
-          </div>
-          <a href={authUrl(`${api.defaults.baseURL}/materials/cycles/${activeCycle.id}/export-csv`)}
-            className="px-3 py-1.5 bg-[#1e3a5f] text-white text-xs font-medium rounded-lg hover:bg-[#162d4a] transition-colors">
-            Export All CSV
-          </a>
+      <OrderManagementTabs />
+      <div className="px-6 pt-4 flex items-center justify-between">
+        <div className="text-sm text-gray-500">
+          Week: <strong>{formatDate(activeCycle.start_date)} – {formatDate(activeCycle.end_date)}</strong>
+          {' '}&middot; Ship: <strong>{formatDate(activeCycle.ship_date)}</strong>
+          {' '}&middot; Status: <strong>{activeCycle.status}</strong>
         </div>
-      </PageHeader>
+        <a href={authUrl(`${api.defaults.baseURL}/materials/cycles/${activeCycle.id}/export-csv`)}
+          className="px-3 py-1.5 bg-[#1e3a5f] text-white text-xs font-medium rounded-lg hover:bg-[#162d4a] transition-colors">
+          Export All CSV
+        </a>
+      </div>
 
       <div className="p-6">
         {/* Inflow warning */}

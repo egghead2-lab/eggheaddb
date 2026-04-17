@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
-import { PageHeader } from '../components/layout/PageHeader';
+import { OrderManagementTabs } from '../components/OrderManagementTabs';
 import { Button } from '../components/ui/Button';
 
 export default function TrackingImportPage() {
@@ -43,7 +43,7 @@ export default function TrackingImportPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Tracking Import" />
+      <OrderManagementTabs />
 
       <div className="p-6 max-w-3xl">
         <div className="bg-white rounded-lg border border-gray-200 p-6">

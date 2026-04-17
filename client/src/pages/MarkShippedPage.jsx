@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
-import { PageHeader } from '../components/layout/PageHeader';
+import { OrderManagementTabs } from '../components/OrderManagementTabs';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -80,7 +80,7 @@ export default function MarkShippedPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Shipments" />
+      <OrderManagementTabs />
 
       <div className="p-6">
         {/* Filters */}

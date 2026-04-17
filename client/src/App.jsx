@@ -209,6 +209,10 @@ export default function App() {
       <Route path="/invoicing/monthly" element={<ProtectedRoute><MonthlyInvoicingPage /></ProtectedRoute>} />
       <Route path="/invoicing/tracker" element={<ProtectedRoute><InvoiceTrackerPage /></ProtectedRoute>} />
       <Route path="/invoicing/records" element={<ProtectedRoute><InvoiceRecordPage /></ProtectedRoute>} />
+      <Route path="/materials/orders" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
+      <Route path="/materials/orders/builder" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
+      <Route path="/materials/orders/shipments" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />
+      {/* Legacy routes */}
       <Route path="/materials/cycles" element={<ProtectedRoute><ShipmentCyclesPage /></ProtectedRoute>} />
       <Route path="/materials/standard-order" element={<ProtectedRoute><StandardOrderBuilderPage /></ProtectedRoute>} />
       <Route path="/materials/mark-shipped" element={<ProtectedRoute><MarkShippedPage /></ProtectedRoute>} />
@@ -216,6 +220,7 @@ export default function App() {
       <Route path="/materials/stock" element={<ProtectedRoute><StockLevelsPage /></ProtectedRoute>} />
       <Route path="/materials/mid-cycle" element={<ProtectedRoute><MidCycleOrdersPage /></ProtectedRoute>} />
       <Route path="/materials/resolutions" element={<ProtectedRoute><ResolutionCenterPage /></ProtectedRoute>} />
+      <Route path="/materials/orders/tracking" element={<ProtectedRoute><TrackingImportPage /></ProtectedRoute>} />
       <Route path="/materials/tracking" element={<ProtectedRoute><TrackingImportPage /></ProtectedRoute>} />
       <Route path="/materials/weekly-requirements" element={<ProtectedRoute><WeeklyRequirementsPage /></ProtectedRoute>} />
       <Route path="/materials/parties" element={<ProtectedRoute><PartyShipmentsPage /></ProtectedRoute>} />
