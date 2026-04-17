@@ -98,14 +98,22 @@ export default function TrackingImportPage() {
               )}
 
               {result && (
-                <div className="mt-4 p-4 rounded-lg border bg-gray-50">
+                <div className="mt-4 p-4 rounded-lg border bg-gray-50 space-y-2">
                   <div className="text-sm font-medium text-gray-900">Import Results</div>
-                  <div className="text-sm text-green-600 mt-1"><strong>{result.matched}</strong> matched and updated</div>
-                  {result.unmatched > 0 && (
-                    <div className="mt-2">
-                      <div className="text-sm text-red-600"><strong>{result.unmatched}</strong> unmatched orders:</div>
+                  <div className="text-sm text-green-600"><strong>{result.matched}</strong> matched and tracking assigned</div>
+                  {result.skipped > 0 && (
+                    <div>
+                      <div className="text-sm text-amber-600"><strong>{result.skipped}</strong> skipped (already have tracking)</div>
+                      <div className="text-xs text-amber-500 mt-1 max-h-20 overflow-y-auto">
+                        {result.skippedOrders?.map((o, i) => <div key={i}>{o}</div>)}
+                      </div>
+                    </div>
+                  )}
+                  {result.notFound > 0 && (
+                    <div>
+                      <div className="text-sm text-red-600"><strong>{result.notFound}</strong> not found in system:</div>
                       <div className="text-xs text-red-500 mt-1 max-h-32 overflow-y-auto">
-                        {result.unmatchedOrders?.map((o, i) => <div key={i}>{o}</div>)}
+                        {result.notFoundOrders?.map((o, i) => <div key={i}>{o}</div>)}
                       </div>
                     </div>
                   )}

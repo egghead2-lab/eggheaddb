@@ -17,7 +17,7 @@ const ALWAYS_OPEN = new Set(['Dashboard', 'Operations', 'My Classes']);
 // Groups with <= this many tools auto-collapse
 const AUTO_COLLAPSE_THRESHOLD = 2;
 
-function SidebarGroup({ group, isOpen, onToggle, compact }) {
+function SidebarGroup({ group, isOpen, onToggle, compact, pins = [], onTogglePin }) {
   const location = useLocation();
   const isActive = group.items.some(item =>
     item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
@@ -51,16 +51,27 @@ function SidebarGroup({ group, isOpen, onToggle, compact }) {
       </button>
       {isOpen && (
         <div className="mt-0.5 space-y-0.5">
-          {group.items.map(item => (
-            <NavLink key={item.to} to={item.to}
-              className={({ isActive }) =>
-                `flex items-center ${compact ? 'pl-1 pr-1 py-1 text-[10px]' : 'pl-6 pr-3 py-1.5 text-sm'} rounded transition-colors ${
-                  isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/10'
-                }`
-              } title={compact ? item.label : undefined}>
-              {compact ? item.label.slice(0, 6) : item.label}
-            </NavLink>
-          ))}
+          {group.items.map(item => {
+            const isPinned = pins.includes(item.to);
+            return (
+              <div key={item.to} className="flex items-center group/item">
+                <NavLink to={item.to}
+                  className={({ isActive }) =>
+                    `flex-1 flex items-center ${compact ? 'pl-1 pr-1 py-1 text-[10px]' : 'pl-6 pr-1 py-1.5 text-sm'} rounded transition-colors ${
+                      isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/10'
+                    }`
+                  } title={compact ? item.label : undefined}>
+                  {compact ? item.label.slice(0, 6) : item.label}
+                </NavLink>
+                {onTogglePin && group.label !== 'Dashboard' && (
+                  <button onClick={() => onTogglePin(item.to)} title={isPinned ? 'Unpin' : 'Pin to top'}
+                    className={`text-xs px-1 leading-none transition-colors ${isPinned ? 'text-amber-400' : 'text-transparent group-hover/item:text-white/30 hover:!text-amber-400'}`}>
+                    {isPinned ? '★' : '☆'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -242,26 +253,9 @@ export function Sidebar() {
             onDragOver={e => { if (reordering) e.preventDefault(); }}
             onDrop={() => handleGroupDrop(idx)}
             className={reordering ? 'cursor-grab' : ''}>
-            <div className="flex items-center group">
-              <div className="flex-1">
-                <SidebarGroup group={group} compact={compact}
-                  isOpen={openGroups.has(group.label)} onToggle={() => toggleGroup(group.label)} />
-              </div>
-              {/* Pin stars — always visible for pinned, show on hover for others */}
-              {!compact && !reordering && openGroups.has(group.label) && group.label !== 'Dashboard' && (
-                <div className="flex flex-col gap-0.5 pr-1">
-                  {group.items.map(item => {
-                    const isPinned = pins.includes(item.to);
-                    return (
-                      <button key={item.to} onClick={() => togglePin(item.to)} title={isPinned ? 'Unpin' : 'Pin to top'}
-                        className={`text-sm leading-none transition-colors ${isPinned ? 'text-amber-400' : 'text-white/10 group-hover:text-white/30 hover:!text-amber-400'}`}>
-                        {isPinned ? '★' : '☆'}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <SidebarGroup group={group} compact={compact}
+              isOpen={openGroups.has(group.label)} onToggle={() => toggleGroup(group.label)}
+              pins={pins} onTogglePin={!compact && !reordering ? togglePin : null} />
           </div>
         ))}
       </nav>

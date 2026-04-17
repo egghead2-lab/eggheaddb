@@ -1150,18 +1150,28 @@ router.post('/tracking/import', async (req, res, next) => {
   try {
     const { rows } = req.body; // [{OrderNumber, TrackingNumber}]
     if (!Array.isArray(rows)) return res.status(400).json({ success: false, error: 'Rows array required' });
-    let matched = 0, unmatched = 0;
-    const unmatchedOrders = [];
+    let matched = 0, skipped = 0, notFound = 0;
+    const notFoundOrders = [];
+    const skippedOrders = [];
     for (const row of rows) {
       if (!row.OrderNumber || !row.TrackingNumber) continue;
-      const [result] = await pool.query(
-        'UPDATE shipment_order SET tracking_number = ?, tracking_imported_at = NOW() WHERE order_name = ? AND tracking_number IS NULL',
-        [row.TrackingNumber, row.OrderNumber]
-      );
-      if (result.affectedRows > 0) matched++;
-      else { unmatched++; unmatchedOrders.push(row.OrderNumber); }
+      // Check if order exists
+      const [[order]] = await pool.query('SELECT id, tracking_number FROM shipment_order WHERE order_name = ?', [row.OrderNumber]);
+      if (!order) {
+        notFound++;
+        notFoundOrders.push(row.OrderNumber);
+      } else if (order.tracking_number) {
+        skipped++;
+        skippedOrders.push(row.OrderNumber);
+      } else {
+        await pool.query(
+          'UPDATE shipment_order SET tracking_number = ?, tracking_imported_at = NOW(), status = ? WHERE id = ?',
+          [row.TrackingNumber, 'shipped', order.id]
+        );
+        matched++;
+      }
     }
-    res.json({ success: true, matched, unmatched, unmatchedOrders });
+    res.json({ success: true, matched, skipped, notFound, notFoundOrders, skippedOrders });
   } catch (err) { next(err); }
 });
 
