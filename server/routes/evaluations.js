@@ -200,9 +200,10 @@ router.get('/upcoming', async (req, res, next) => {
       row.issue_message = null;
 
       // Check if professor is inactive or has a non-active status
-      if (!row.professor_active || row.professor_active === 0) {
+      const inactiveStatuses = ['Inactive', 'Inactive - Items Pending', 'Terminated', 'On Leave'];
+      if (!row.professor_active || row.professor_active === 0 || (row.professor_status_name && inactiveStatuses.some(s => row.professor_status_name.includes(s)))) {
         row.has_issue = true;
-        row.issue_message = `Professor is no longer active${row.professor_status_name ? ' — status: ' + row.professor_status_name : ''}`;
+        row.issue_message = `Professor is no longer active — status: ${row.professor_status_name || 'Inactive'}`;
       }
 
       if (row.program_id && !row.has_issue) {
