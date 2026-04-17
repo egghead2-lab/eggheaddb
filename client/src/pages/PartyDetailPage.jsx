@@ -165,6 +165,10 @@ export default function PartyDetailPage() {
               <Input label="City" placeholder="Los Angeles" {...register('party_city')} />
               <Input label="State" placeholder="CA" maxLength={2} {...register('party_state')} />
               <Input label="Zip" placeholder="90001" {...register('party_zip')} />
+              <Select label="Area" {...register('geographic_area_id')}>
+                <option value="">Select area…</option>
+                {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
+              </Select>
               <div className="col-span-5">
                 <Input label="Notes" {...register('general_notes')} />
               </div>

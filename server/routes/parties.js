@@ -81,7 +81,7 @@ router.get('/', authenticate, async (req, res, next) => {
               prog.first_session_date AS party_date,
               prog.start_time AS party_start,
               prog.class_length_minutes,
-              prog.party_location_text, prog.party_address, prog.party_city, prog.party_state, prog.party_zip,
+              prog.party_location_text, prog.party_address, prog.party_city, prog.party_state, prog.party_zip, prog.geographic_area_id,
               prog.total_party_cost, prog.total_kids_attended,
               prog.charge_confirmed,
               cs.class_status_name,
@@ -138,7 +138,7 @@ router.get('/unconfirmed', authenticate, async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.first_session_date,
               prog.start_time, prog.class_length_minutes,
-              prog.party_location_text, prog.party_address, prog.party_city, prog.party_state, prog.party_zip, prog.party_confirmation_sent,
+              prog.party_location_text, prog.party_address, prog.party_city, prog.party_state, prog.party_zip, prog.geographic_area_id, prog.party_confirmation_sent,
               prog.party_confirmation_sent_at,
               cs.class_status_name,
               pf.party_format_name,
@@ -262,7 +262,7 @@ router.post('/', authenticate, async (req, res, next) => {
       'total_party_cost', 'emailed_follow_up', 'charge_confirmed', 'final_charge_date',
       'final_charge_type', 'shirt_size', 'glow_slime_amount_needed',
       'first_session_date', 'start_time', 'class_length_minutes',
-      'party_format_id', 'party_location_text', 'party_address', 'party_city', 'party_state', 'party_zip', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
+      'party_format_id', 'party_location_text', 'party_address', 'party_city', 'party_state', 'party_zip', 'geographic_area_id', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
       'demo_professor_id', 'demo_notes', 'parent_id', 'birthday_kid_name', 'birthday_kid_age',
     ];
 
@@ -299,7 +299,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'total_party_cost', 'emailed_follow_up', 'charge_confirmed', 'final_charge_date',
       'final_charge_type', 'shirt_size', 'glow_slime_amount_needed',
       'first_session_date', 'start_time', 'class_length_minutes',
-      'party_format_id', 'party_location_text', 'party_address', 'party_city', 'party_state', 'party_zip', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
+      'party_format_id', 'party_location_text', 'party_address', 'party_city', 'party_state', 'party_zip', 'geographic_area_id', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
       'demo_professor_id', 'demo_notes', 'parent_id', 'birthday_kid_name', 'birthday_kid_age', 'active',
     ];
 
