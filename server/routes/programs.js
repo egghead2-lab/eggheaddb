@@ -434,11 +434,12 @@ router.put('/:id/sessions', authenticate, async (req, res, next) => {
         if (session.id) {
           await conn.query(
             `UPDATE session SET lesson_id=?, professor_id=?, professor_pay=?, assistant_id=?,
-             assistant_pay=?, session_date=?, session_time=?, specific_notes=?, ts_updated=NOW()
+             assistant_pay=?, observer_id=?, observer_pay=?, session_date=?, session_time=?, specific_notes=?, ts_updated=NOW()
              WHERE id=? AND program_id=?`,
             [
               session.lesson_id || null, session.professor_id || null, payOrNull(session.professor_pay),
               session.assistant_id || null, payOrNull(session.assistant_pay),
+              session.observer_id || null, payOrNull(session.observer_pay),
               session.session_date || null, session.session_time || null,
               session.specific_notes || null, session.id, id,
             ]
@@ -446,11 +447,12 @@ router.put('/:id/sessions', authenticate, async (req, res, next) => {
         } else {
           await conn.query(
             `INSERT INTO session (program_id, lesson_id, professor_id, professor_pay, assistant_id,
-             assistant_pay, session_date, session_time, specific_notes, active, ts_inserted, ts_updated)
-             VALUES (?,?,?,?,?,?,?,?,?,1,NOW(),NOW())`,
+             assistant_pay, observer_id, observer_pay, session_date, session_time, specific_notes, active, ts_inserted, ts_updated)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,1,NOW(),NOW())`,
             [
               id, session.lesson_id || null, session.professor_id || null, payOrNull(session.professor_pay),
               session.assistant_id || null, payOrNull(session.assistant_pay),
+              session.observer_id || null, payOrNull(session.observer_pay),
               session.session_date || null, session.session_time || null, session.specific_notes || null,
             ]
           );
@@ -545,14 +547,14 @@ router.post('/:id/sessions/bulk', authenticate, async (req, res, next) => {
 router.post('/:id/sessions/add', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, lesson_id, specific_notes, not_billed } = req.body;
+    const { session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, observer_id, observer_pay, lesson_id, specific_notes, not_billed } = req.body;
 
     if (!session_date) return res.status(400).json({ success: false, error: 'Date is required' });
 
     const [result] = await pool.query(
-      `INSERT INTO session (program_id, session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, lesson_id, specific_notes, not_billed, active, ts_inserted, ts_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-      [id, session_date, session_time || null, professor_id || null, professor_pay || null, assistant_id || null, assistant_pay || null, lesson_id || null, specific_notes || null, not_billed ? 1 : 0]
+      `INSERT INTO session (program_id, session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, observer_id, observer_pay, lesson_id, specific_notes, not_billed, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [id, session_date, session_time || null, professor_id || null, professor_pay || null, assistant_id || null, assistant_pay || null, observer_id || null, observer_pay || null, lesson_id || null, specific_notes || null, not_billed ? 1 : 0]
     );
 
     // Auto-update first/last session dates on the program
@@ -576,7 +578,7 @@ router.post('/:id/sessions/add', authenticate, async (req, res, next) => {
 router.put('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
   try {
     const { id, sessionId } = req.params;
-    const { session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, lesson_id, specific_notes, not_billed } = req.body;
+    const { session_date, session_time, professor_id, professor_pay, assistant_id, assistant_pay, observer_id, observer_pay, lesson_id, specific_notes, not_billed } = req.body;
 
     const fields = [];
     const values = [];
@@ -586,6 +588,8 @@ router.put('/:id/sessions/:sessionId', authenticate, async (req, res, next) => {
     if (professor_pay !== undefined) { fields.push('professor_pay = ?'); values.push((professor_pay !== '' && professor_pay != null && Number(professor_pay) !== 0) ? professor_pay : null); }
     if (assistant_id !== undefined) { fields.push('assistant_id = ?'); values.push(assistant_id || null); }
     if (assistant_pay !== undefined) { fields.push('assistant_pay = ?'); values.push((assistant_pay !== '' && assistant_pay != null && Number(assistant_pay) !== 0) ? assistant_pay : null); }
+    if (observer_id !== undefined) { fields.push('observer_id = ?'); values.push(observer_id || null); }
+    if (observer_pay !== undefined) { fields.push('observer_pay = ?'); values.push((observer_pay !== '' && observer_pay != null && Number(observer_pay) !== 0) ? observer_pay : null); }
     if (lesson_id !== undefined) { fields.push('lesson_id = ?'); values.push(lesson_id || null); }
     if (specific_notes !== undefined) { fields.push('specific_notes = ?'); values.push(specific_notes || null); }
     if (not_billed !== undefined) { fields.push('not_billed = ?'); values.push(not_billed ? 1 : 0); }

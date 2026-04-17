@@ -1,373 +1,183 @@
+/**
+ * Location Import Script
+ * Matches CSV → DB by nickname, updates in-place to preserve program mappings
+ */
 const fs = require('fs');
-const mysql = require('mysql2/promise');
 const path = require('path');
+const pool = require('./server/db/pool');
 
-// Simple CSV parser that handles quoted fields with commas and newlines
 function parseCSV(text) {
-  const rows = [];
-  let i = 0;
-  while (i < text.length) {
-    const row = [];
-    while (i < text.length) {
-      if (text[i] === '"') {
-        // Quoted field
-        i++;
-        let field = '';
-        while (i < text.length) {
-          if (text[i] === '"') {
-            if (i + 1 < text.length && text[i + 1] === '"') {
-              field += '"';
-              i += 2;
-            } else {
-              i++; // closing quote
-              break;
-            }
-          } else {
-            field += text[i];
-            i++;
-          }
-        }
-        row.push(field);
-        if (i < text.length && text[i] === ',') i++;
-        else if (i < text.length && (text[i] === '\n' || text[i] === '\r')) {
-          if (text[i] === '\r' && i + 1 < text.length && text[i + 1] === '\n') i += 2;
-          else i++;
-          break;
-        }
-      } else {
-        // Unquoted field
-        let field = '';
-        while (i < text.length && text[i] !== ',' && text[i] !== '\n' && text[i] !== '\r') {
-          field += text[i];
-          i++;
-        }
-        row.push(field);
-        if (i < text.length && text[i] === ',') i++;
-        else if (i < text.length && (text[i] === '\n' || text[i] === '\r')) {
-          if (text[i] === '\r' && i + 1 < text.length && text[i + 1] === '\n') i += 2;
-          else i++;
-          break;
-        }
-      }
-    }
-    if (row.length > 1 || (row.length === 1 && row[0].trim() !== '')) {
-      rows.push(row);
-    }
+  const rows = []; let current = []; let field = ''; let inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) { if (ch === '"' && text[i+1] === '"') { field += '"'; i++; } else if (ch === '"') inQ = false; else field += ch; }
+    else { if (ch === '"') inQ = true; else if (ch === ',') { current.push(field.trim()); field = ''; } else if (ch === '\n' || (ch === '\r' && text[i+1] === '\n')) { current.push(field.trim()); field = ''; if (current.length > 1) rows.push(current); current = []; if (ch === '\r') i++; } else field += ch; }
   }
+  if (field || current.length) { current.push(field.trim()); if (current.length > 1) rows.push(current); }
   return rows;
 }
 
-function yn(val) {
-  if (!val) return 0;
-  const v = val.toString().trim().toLowerCase();
-  if (v === 'yes' || v === '1' || v === 'true') return 1;
-  return 0;
-}
-
-function numOrNull(val) {
-  if (!val || val.trim() === '') return null;
-  const n = parseInt(val.replace(/[^0-9-]/g, ''), 10);
-  return isNaN(n) ? null : n;
-}
-
-function strOrNull(val, maxLen) {
-  if (!val || val.trim() === '') return null;
-  const s = val.trim();
-  return maxLen ? s.substring(0, maxLen) : s;
-}
-
-async function main() {
-  const csvPath = process.argv[2];
-  if (!csvPath) {
-    console.error('Usage: node import-locations.js <csv-file>');
-    process.exit(1);
-  }
-
-  const csvText = fs.readFileSync(csvPath, 'utf-8');
+async function run() {
+  const csvText = fs.readFileSync(path.join(__dirname, 'Program Databases - Locations (1).csv'), 'utf-8');
   const rows = parseCSV(csvText);
   const headers = rows[0];
-  const dataRows = rows.slice(1);
+  const data = rows.slice(1).map(row => { const obj = {}; headers.forEach((h, i) => { obj[h] = row[i] || ''; }); return obj; });
+  console.log(`Parsed ${data.length} locations from CSV`);
 
-  console.log(`Parsed ${dataRows.length} data rows with ${headers.length} columns`);
+  // Lookups
+  const [areas] = await pool.query('SELECT id, geographic_area_name FROM geographic_area WHERE active = 1');
+  const areaMap = {}; areas.forEach(a => { areaMap[a.geographic_area_name.toLowerCase().trim()] = a.id; });
 
-  const pool = mysql.createPool({
-    host: 'egghead.mysql.database.azure.com', port: 3306,
-    user: 'eggheaddb', password: 'Meesterodb1*', database: 'program_data',
-    ssl: { rejectUnauthorized: false },
-    connectionLimit: 5,
-  });
+  const [cons] = await pool.query('SELECT id, contractor_name FROM contractor WHERE active = 1');
+  const conMap = {}; cons.forEach(c => { conMap[c.contractor_name.toLowerCase().trim()] = c.id; });
 
-  // Load lookup tables
-  const [areas] = await pool.query('SELECT id, geographic_area_name FROM geographic_area');
-  const [locTypes] = await pool.query('SELECT id, location_type_name FROM location_type');
-  const [contractors] = await pool.query('SELECT id, contractor_name FROM contractor');
-  const [pricingTypes] = await pool.query('SELECT id, class_pricing_type_name FROM class_pricing_type');
-  const [parkingDiffs] = await pool.query('SELECT id, parking_difficulty_name FROM parking_difficulty');
-  const [users] = await pool.query('SELECT id, first_name, last_name FROM user');
-  const [cities] = await pool.query('SELECT id, city_name, zip_code, state_id, geographic_area_id FROM city');
-  const [states] = await pool.query('SELECT id, state_name, state_code FROM state');
+  const [lts] = await pool.query('SELECT id, location_type_name FROM location_type WHERE active = 1');
+  const ltMap = {}; lts.forEach(l => { ltMap[l.location_type_name.toLowerCase().trim()] = l.id; });
 
-  // Build lookup maps (case-insensitive)
-  const areaMap = {};
-  areas.forEach(a => { areaMap[a.geographic_area_name.toLowerCase()] = a.id; });
-  // Add aliases
-  areaMap['south la'] = areaMap['south la'] || 7;
-  areaMap['north oc'] = areaMap['north oc'] || 10;
-  areaMap['south oc'] = areaMap['oc'] || 6;
+  const [pts] = await pool.query('SELECT id, class_pricing_type_name FROM class_pricing_type WHERE active = 1');
+  const ptMap = {}; pts.forEach(p => { ptMap[p.class_pricing_type_name.toLowerCase().trim()] = p.id; });
 
-  const locTypeMap = {};
-  locTypes.forEach(t => { locTypeMap[t.location_type_name.toLowerCase()] = t.id; });
+  const [pds] = await pool.query('SELECT id, parking_difficulty_name FROM parking_difficulty WHERE active = 1');
+  const pdMap = {}; pds.forEach(p => { pdMap[p.parking_difficulty_name.toLowerCase().trim()] = p.id; });
 
-  const contractorMap = {};
-  contractors.forEach(c => { contractorMap[c.contractor_name.toLowerCase()] = c.id; });
-  // Add common aliases from the CSV
-  contractorMap['city of arcadia'] = contractorMap['city of arcadia'] || 8;
-  contractorMap['city of burbank'] = contractorMap['city of burbank'] || 9;
-  contractorMap['city of monrovia'] = contractorMap['city of monrovia'] || 10;
-  contractorMap['city of temple city'] = contractorMap['city of temple city'] || 11;
-  contractorMap['duarte parks and rec'] = contractorMap['duarte parks and rec'] || 17;
-  contractorMap['ace enrichement'] = contractorMap['ace enrichment'] || 74;
-  contractorMap['bh parks'] = contractorMap['bh parks'] || 6;
-  contractorMap['burbank parks'] = contractorMap['burbank parks'] || 7;
-  contractorMap['pv enrichment'] = contractorMap['pv enrichment'] || 28;
+  const [users] = await pool.query('SELECT id, first_name FROM user WHERE active = 1');
+  const userMap = {}; users.forEach(u => { userMap[(u.first_name || '').toLowerCase().trim()] = u.id; });
 
-  const pricingMap = {};
-  pricingTypes.forEach(p => { pricingMap[p.class_pricing_type_name.toLowerCase()] = p.id; });
+  const [cities] = await pool.query('SELECT id, city_name, zip_code, geographic_area_id FROM city');
+  const cityByZip = {}; cities.forEach(c => { cityByZip[c.zip_code] = c; });
 
-  const parkingMap = {};
-  parkingDiffs.forEach(p => { parkingMap[p.parking_difficulty_name.toLowerCase()] = p.id; });
+  const [states] = await pool.query('SELECT id, state_code FROM state');
+  const stateMap = {}; states.forEach(s => { stateMap[(s.state_code || '').toLowerCase()] = s.id; });
 
-  const userMap = {};
-  users.forEach(u => { userMap[u.first_name.toLowerCase()] = u.id; });
+  const [existingLocs] = await pool.query('SELECT id, nickname FROM location');
+  const locByNick = {}; existingLocs.forEach(l => { locByNick[l.nickname.trim().toUpperCase()] = l.id; });
 
-  const stateMap = {};
-  states.forEach(s => { stateMap[s.state_code.toLowerCase()] = s.id; stateMap[s.state_name.toLowerCase()] = s.id; });
+  const toBool = (v) => { const s = (v || '').trim().toLowerCase(); return s === 'yes' || s === '1' || s === 'true' ? 1 : 0; };
 
-  // City lookup by zip
-  const cityByZip = {};
-  cities.forEach(c => { cityByZip[c.zip_code] = c.id; });
+  let updated = 0, created = 0, skipped = 0, citiesCreated = 0;
+  const errors = [];
+  const missingContractors = new Set();
 
-  // Helper to find or create city
-  async function getOrCreateCity(cityName, zip, stateCode, geoAreaId) {
-    if (!zip || !cityName) return null;
-    zip = zip.trim();
-    cityName = cityName.trim();
-    if (cityByZip[zip]) return cityByZip[zip];
-
-    const stateId = stateMap[stateCode.toLowerCase().trim()] || stateMap['california'] || 5;
-    const areaId = geoAreaId || 9; // default to Outside Los Angeles
-
+  for (const row of data) {
     try {
-      const [result] = await pool.query(
-        'INSERT INTO city (city_name, zip_code, state_id, geographic_area_id) VALUES (?, ?, ?, ?)',
-        [cityName.substring(0, 64), zip.substring(0, 16), stateId, areaId]
-      );
-      cityByZip[zip] = result.insertId;
-      return result.insertId;
-    } catch (e) {
-      if (e.code === 'ER_DUP_ENTRY') {
-        const [existing] = await pool.query('SELECT id FROM city WHERE zip_code = ?', [zip]);
-        if (existing.length > 0) {
-          cityByZip[zip] = existing[0].id;
-          return existing[0].id;
-        }
+      const nickname = (row['Nickname'] || '').trim();
+      if (!nickname || ['old', 'error', 'duplicate', 'error input'].includes(nickname.toLowerCase())) { skipped++; continue; }
+
+      // City
+      const zip = (row['Zip Code'] || '').trim();
+      const cityName = (row['City'] || '').trim();
+      const stateName = (row['State'] || '').trim();
+      let cityId = null;
+      if (zip && cityByZip[zip]) { cityId = cityByZip[zip].id; }
+      else if (zip && cityName) {
+        const aId = areaMap[(row['Geographic Area'] || '').toLowerCase().trim()] || null;
+        const sId = stateMap[stateName.toLowerCase()] || stateMap['ca'] || null;
+        const [r] = await pool.query('INSERT INTO city (city_name, zip_code, state_id, geographic_area_id) VALUES (?,?,?,?)', [cityName, zip, sId, aId]);
+        cityId = r.insertId; cityByZip[zip] = { id: cityId }; citiesCreated++;
       }
-      console.warn(`  Warning: Could not create city ${cityName} ${zip}: ${e.message}`);
-      return null;
-    }
-  }
 
-  // Helper to get column index
-  function col(name) {
-    const idx = headers.indexOf(name);
-    return idx;
-  }
+      const areaId = areaMap[(row['Geographic Area'] || '').toLowerCase().trim()] || null;
+      const conName = (row['Contractor'] || '').trim();
+      let conId = conName ? (conMap[conName.toLowerCase().trim()] || null) : null;
+      if (conName && !conId) missingContractors.add(conName);
 
-  function getVal(row, colName) {
-    const idx = col(colName);
-    if (idx < 0 || idx >= row.length) return '';
-    return row[idx] || '';
-  }
+      const ltId = ltMap[(row['Location Type'] || '').toLowerCase().trim()] || null;
+      const ptName = (row['Class Pricing Type'] || '').trim();
+      const ptId = ptName ? (ptMap[ptName.toLowerCase().trim()] || null) : null;
 
-  // Resolve geographic area from CSV text
-  function resolveArea(val) {
-    if (!val) return null;
-    const v = val.trim().toLowerCase();
-    if (areaMap[v] !== undefined) return areaMap[v];
-    // Try partial matches
-    if (v.includes('inland empire')) return areaMap['west inland empire'] || 11;
-    return areaMap['outside current territories'] || 18;
-  }
+      // Parking
+      const parkText = (row['Parking Information'] || '').trim();
+      let pdId = null;
+      const pl = parkText.toLowerCase();
+      if (pl === 'easy' || pl.startsWith('easy')) pdId = pdMap['easy'];
+      else if (pl === 'medium' || pl.startsWith('medium')) pdId = pdMap['medium'];
+      else if (pl === 'hard' || pl.startsWith('hard') || pl.startsWith('very hard') || pl.startsWith('difficult')) pdId = pdMap['hard'];
 
-  // Resolve parking difficulty from text
-  function resolveParking(val) {
-    if (!val) return null;
-    const v = val.trim().toLowerCase();
-    if (parkingMap[v] !== undefined) return parkingMap[v];
-    if (v.includes('easy') || v.includes('lot') || v === 'tbd') return 1;
-    if (v.includes('medium') || v === 'check') return 2;
-    if (v.includes('hard') || v.includes('difficult') || v.includes('street')) return null; // many "Street" entries aren't necessarily hard
-    return null;
-  }
+      const cmId = userMap[(row['Client Manager'] || '').toLowerCase().trim()] || null;
 
-  // Process each row
-  let inserted = 0, updated = 0, skipped = 0, errors = 0;
+      // School cut
+      let schoolCutType = null, schoolCutValue = null, schoolCutNotes = null;
+      const cutTypeRaw = (row['School Cut Type'] || '').trim().toLowerCase();
+      const cutValueRaw = (row['School Cut'] || '').trim();
+      if (cutTypeRaw && cutValueRaw) {
+        const numMatch = cutValueRaw.match(/([\d.]+)/);
+        const numVal = numMatch ? parseFloat(numMatch[1]) : null;
+        if (cutTypeRaw === 'percentage' || cutTypeRaw === 'subsidy percentage') {
+          schoolCutType = cutTypeRaw === 'subsidy percentage' ? 'subsidy_percentage' : 'percentage';
+          if (numVal != null) schoolCutValue = numVal > 1 ? numVal / 100 : numVal;
+        } else if (cutTypeRaw === 'weekly') { schoolCutType = 'weekly_fixed'; schoolCutValue = numVal; }
+        else if (cutTypeRaw === 'session fixed') { schoolCutType = 'session_fixed'; schoolCutValue = numVal; }
+        else if (cutTypeRaw === 'student per session') { schoolCutType = 'student_per_session'; schoolCutValue = numVal; }
+        else if (cutTypeRaw === 'student per week') { schoolCutType = 'student_per_week'; schoolCutValue = numVal; }
+        if (cutValueRaw && !cutValueRaw.match(/^[\d.$%\s]+$/)) schoolCutNotes = cutValueRaw;
+      }
 
-  for (let i = 0; i < dataRows.length; i++) {
-    const row = dataRows[i];
-    const csvId = numOrNull(getVal(row, 'ID'));
-    const nickname = strOrNull(getVal(row, 'Nickname'), 128);
-    const schoolName = strOrNull(getVal(row, 'School Name'), 128);
+      const locData = {
+        nickname, school_name: (row['School Name'] || nickname).trim(),
+        active: toBool(row['Active']), payment_through_us: toBool(row['Payment Through Us']),
+        location_type_id: ltId, location_phone: (row['Location Phone'] || '').trim(),
+        address: (row['Address'] || '').trim(), city_id: cityId, geographic_area_id_online: areaId,
+        point_of_contact: (row['Point of Contact'] || '').trim(),
+        poc_phone: (row['POC Phone'] || '').trim(), poc_email: (row['POC Email'] || '').trim(),
+        poc_title: (row['POC Title'] || '').trim() || null,
+        contractor_id: conId, location_enrollment: parseInt(row['Location Enrollment']) || null,
+        demo_allowed: toBool(row['Demo Allowed']),
+        demo_pay: parseInt(row['Base Professor Pay']) || null,
+        virtus_required: toBool(row['Virtus Required']), tb_required: toBool(row['TB Required']),
+        livescan_required: toBool(row['Livescan Required']),
+        livescan_info: (row['Livescan Info'] || '').trim() || null,
+        contract_permit_required: toBool(row['Contract/Permit Required']),
+        contract_permit_notes: (row['Contract/Permit Notes'] || '').trim() || null,
+        special_info_required: (row['Special Info Required'] || '').trim() || null,
+        flyer_required: toBool(row['Flyer Required']),
+        registration_link_for_flyer: (row['Registration Link for Flyer'] || '').trim() || null,
+        custom_flyer_required: toBool(row['Custom Flyer Required']),
+        custom_flyer_items_required: (row['Custom Flyer Items Required'] || '').trim() || null,
+        flyer_quantity: parseInt(row['Flyer Quantity']) || null,
+        parking_difficulty_id: pdId, parking_information: parkText || null,
+        internal_notes: (row['Internal Notes'] || '').trim() || null,
+        observes_allowed: row['Observes Allowed'] ? toBool(row['Observes Allowed']) : null,
+        jewish: row['Jewish'] ? toBool(row['Jewish']) : null,
+        set_dates_ourselves: row['Set Dates Ourselves'] ? (row['Set Dates Ourselves'].trim().toUpperCase() === 'YES' ? 1 : 0) : null,
+        number_of_weeks: parseInt(row['Number of Weeks']) || null,
+        school_calendar_link: (row['School Calendar Link'] || '').trim() || null,
+        invoicing_notes: (row['Invoicing Notes'] || '').trim() || null,
+        retained: toBool(row['Retained Client']),
+        client_manager_user_id: cmId, class_pricing_type_id: ptId,
+        school_cut_type: schoolCutType, school_cut_value: schoolCutValue,
+        school_cut_notes: schoolCutNotes, tbd: 0,
+      };
 
-    if (!nickname || !schoolName) {
-      console.log(`Row ${i + 1}: Skipping - missing nickname or school name`);
-      skipped++;
-      continue;
-    }
-
-    // Resolve lookups
-    const geoAreaText = getVal(row, 'Geographic Area').trim();
-    const geoAreaId = resolveArea(geoAreaText);
-    const cityName = getVal(row, 'City').trim();
-    const stateCode = getVal(row, 'State').trim();
-    const zip = getVal(row, 'Zip Code').trim();
-    const cityId = await getOrCreateCity(cityName, zip, stateCode || 'CA', geoAreaId);
-
-    const locTypeText = getVal(row, 'Location Type').trim().toLowerCase();
-    const locTypeId = locTypeMap[locTypeText] || null;
-
-    const contractorText = getVal(row, 'Contractor').trim();
-    const contractorId = contractorText ? (contractorMap[contractorText.toLowerCase()] || null) : null;
-
-    const pricingText = getVal(row, 'Class Pricing Type').trim().toLowerCase();
-    const pricingId = pricingMap[pricingText] || null;
-
-    const parkingText = getVal(row, 'Parking Information').trim();
-    const parkingId = resolveParking(parkingText);
-
-    const clientMgr = getVal(row, 'Client Manager').trim().toLowerCase();
-    const clientMgrId = userMap[clientMgr] || null;
-
-    const enrollmentRaw = getVal(row, 'Location Enrollment').trim();
-    const enrollment = numOrNull(enrollmentRaw);
-
-    const weeksRaw = getVal(row, 'Number of Weeks').trim();
-    const weeks = numOrNull(weeksRaw);
-
-    const flyerQtyRaw = getVal(row, 'Flyer Quantity').trim();
-    const flyerQty = numOrNull(flyerQtyRaw);
-
-    // Build INSERT
-    const fields = {
-      nickname,
-      school_name: schoolName,
-      active: yn(getVal(row, 'Active')),
-      payment_through_us: yn(getVal(row, 'Payment Through Us')),
-      location_type_id: locTypeId,
-      location_phone: strOrNull(getVal(row, 'Location Phone'), 32) || '',
-      address: strOrNull(getVal(row, 'Address'), 128) || '',
-      city_id: cityId,
-      geographic_area_id_online: geoAreaId,
-      point_of_contact: strOrNull(getVal(row, 'Point of Contact'), 64),
-      poc_title: strOrNull(getVal(row, 'POC Title'), 128),
-      poc_phone: strOrNull(getVal(row, 'POC Phone'), 128),
-      poc_email: strOrNull(getVal(row, 'POC Email'), 128),
-      contractor_id: contractorId,
-      location_enrollment: enrollment,
-      demo_allowed: yn(getVal(row, 'Demo Allowed')),
-      demo_notes: strOrNull(getVal(row, 'Demo Start Time'), 1024),
-      class_pricing_type_id: pricingId,
-      virtus_required: yn(getVal(row, 'Virtus Required')),
-      tb_required: yn(getVal(row, 'TB Required')),
-      livescan_required: yn(getVal(row, 'Livescan Required')),
-      livescan_info: strOrNull(getVal(row, 'Livescan Info'), 1024),
-      contract_permit_required: yn(getVal(row, 'Contract/Permit Required')),
-      contract_permit_notes: strOrNull(getVal(row, 'Contract/Permit Notes'), 255),
-      special_info_required: strOrNull(getVal(row, 'Special Info Required'), 255),
-      flyer_required: yn(getVal(row, 'Flyer Required')),
-      registration_link_for_flyer: strOrNull(getVal(row, 'Registration Link for Flyer'), 255),
-      custom_flyer_required: yn(getVal(row, 'Custom Flyer Required')),
-      custom_flyer_items_required: strOrNull(getVal(row, 'Custom Flyer Items Required'), 1024),
-      flyer_quantity: flyerQty,
-      parking_difficulty_id: parkingId,
-      parking_information: strOrNull(getVal(row, 'Parking Information'), 1024),
-      school_procedure_Info: strOrNull(getVal(row, 'School Procedure Info'), 1024),
-      internal_notes: strOrNull(getVal(row, 'Internal Notes'), 1024),
-      observes_allowed: yn(getVal(row, 'Observes Allowed')),
-      jewish: yn(getVal(row, 'Jewish')),
-      set_dates_ourselves: yn(getVal(row, 'Set Dates Ourselves')),
-      number_of_weeks: weeks,
-      school_calendar_link: strOrNull(getVal(row, 'School Calendar Link'), 1024),
-      invoicing_notes: strOrNull(getVal(row, 'Invoicing Notes'), 1024),
-      client_manager_user_id: clientMgrId,
-      retained: yn(getVal(row, 'Retained Client')),
-      tbd: 0,
-    };
-
-    // Build the SQL
-    const cols = Object.keys(fields);
-    const vals = cols.map(c => fields[c]);
-
-    try {
-      // Check if location already exists by nickname
-      const [existing] = await pool.query('SELECT id FROM location WHERE nickname = ?', [nickname]);
-
-      if (existing.length > 0) {
-        // UPDATE existing row
-        const setClauses = cols.map(c => `${c} = ?`).join(', ');
+      const existingId = locByNick[nickname.toUpperCase()];
+      if (existingId) {
+        const entries = Object.entries(locData).filter(([, v]) => v !== undefined);
         await pool.query(
-          `UPDATE location SET ${setClauses}, ts_updated = NOW() WHERE nickname = ?`,
-          [...vals, nickname]
+          `UPDATE location SET ${entries.map(([k]) => `${k} = ?`).join(', ')}, ts_updated = NOW() WHERE id = ?`,
+          [...entries.map(([, v]) => v), existingId]
         );
         updated++;
       } else {
-        // INSERT new row, try with CSV id first, fall back to auto-increment
-        let didInsert = false;
-        if (csvId) {
-          try {
-            await pool.query(
-              `INSERT INTO location (id, ${cols.join(', ')}, ts_inserted, ts_updated)
-               VALUES (?, ${cols.map(() => '?').join(', ')}, NOW(), NOW())`,
-              [csvId, ...vals]
-            );
-            didInsert = true;
-          } catch (idErr) {
-            if (idErr.code === 'ER_DUP_ENTRY' && idErr.message.includes('PRIMARY')) {
-              // ID taken, fall back to auto-increment
-              await pool.query(
-                `INSERT INTO location (${cols.join(', ')}, ts_inserted, ts_updated)
-                 VALUES (${cols.map(() => '?').join(', ')}, NOW(), NOW())`,
-                vals
-              );
-              didInsert = true;
-            } else {
-              throw idErr;
-            }
-          }
-        } else {
-          await pool.query(
-            `INSERT INTO location (${cols.join(', ')}, ts_inserted, ts_updated)
-             VALUES (${cols.map(() => '?').join(', ')}, NOW(), NOW())`,
-            vals
-          );
-          didInsert = true;
-        }
-        if (didInsert) inserted++;
+        const keys = Object.keys(locData);
+        await pool.query(
+          `INSERT INTO location (${keys.join(', ')}, ts_inserted, ts_updated) VALUES (${keys.map(() => '?').join(', ')}, NOW(), NOW())`,
+          Object.values(locData)
+        );
+        created++;
       }
-      if ((inserted + updated) % 100 === 0) console.log(`  Processed ${inserted + updated} locations...`);
-    } catch (e) {
-      console.error(`Row ${i + 1} (ID ${csvId}, ${nickname}): ${e.message}`);
-      errors++;
+    } catch (err) {
+      errors.push(`${row['Nickname']}: ${err.message}`);
     }
   }
 
-  console.log(`\nDone! Inserted: ${inserted}, Updated: ${updated}, Skipped: ${skipped}, Errors: ${errors}`);
-
-  // Final count
-  const [finalCount] = await pool.query('SELECT COUNT(*) as cnt FROM location');
-  console.log(`Total locations in DB: ${finalCount[0].cnt}`);
-
-  await pool.end();
+  console.log(`\n=== IMPORT COMPLETE ===`);
+  console.log(`Updated: ${updated}`);
+  console.log(`Created: ${created}`);
+  console.log(`Skipped: ${skipped}`);
+  console.log(`Cities created: ${citiesCreated}`);
+  if (missingContractors.size) console.log(`Missing contractors (not in DB):`, [...missingContractors]);
+  console.log(`Errors: ${errors.length}`);
+  if (errors.length) errors.slice(0, 20).forEach(e => console.log(' ', e));
+  process.exit();
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+run().catch(err => { console.error(err); process.exit(1); });

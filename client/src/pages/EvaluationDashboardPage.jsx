@@ -188,7 +188,7 @@ function EvalTable({ professors, statusCol, tint }) {
 
 function FragmentRow({ children }) { return <>{children}</>; }
 
-// ─── Expanded view: next 3 sessions with inline scheduling ────────────
+// ─── Expanded view: next sessions with inline FM/Peer scheduling ────────────
 function ExpandedSessions({ professorId, professorName }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -202,7 +202,7 @@ function ExpandedSessions({ professorId, professorName }) {
 
   return (
     <div className="space-y-2">
-      <div className="text-xs font-semibold text-gray-600">Next {sessions.length} upcoming session{sessions.length > 1 ? 's' : ''} — schedule an observation/evaluation:</div>
+      <div className="text-xs font-semibold text-gray-600">Next {sessions.length} upcoming session{sessions.length > 1 ? 's' : ''} — schedule an evaluation:</div>
       {sessions.map(s => (
         <SessionRow key={s.session_id} session={s} professorId={professorId} professorName={professorName} qc={qc} />
       ))}
@@ -210,10 +210,9 @@ function ExpandedSessions({ professorId, professorName }) {
   );
 }
 
-// ─── One session row with inline scheduler form ───────────────────────
+// ─── One session row with inline FM/Peer scheduling ───────────────────────
 function SessionRow({ session, professorId, professorName, qc }) {
   const [showForm, setShowForm] = useState(false);
-  const [obsType, setObsType] = useState('evaluation'); // evaluation | observation
   const [evalSubType, setEvalSubType] = useState('fm'); // fm | peer_to_peer
   const [evaluatorId, setEvaluatorId] = useState('');
   const [obsPay, setObsPay] = useState('');
@@ -225,7 +224,7 @@ function SessionRow({ session, professorId, professorName, qc }) {
 
   const { data: fmData } = useQuery({
     queryKey: ['fm-users'],
-    queryFn: () => api.get('/users?role=Field Manager&limit=100').then(r => r.data),
+    queryFn: () => api.get('/users?role=Field+Manager&limit=100').then(r => r.data),
     staleTime: 5 * 60 * 1000,
     enabled: showForm,
   });
@@ -240,7 +239,7 @@ function SessionRow({ session, professorId, professorName, qc }) {
   const professorList = profListData?.data || [];
 
   const addMut = useMutation({
-    mutationFn: (data) => api.post(`/professors/${professorId}/observations`, data),
+    mutationFn: (data) => api.post(`/evaluations/professor/${professorId}`, data),
     onSuccess: () => {
       qc.invalidateQueries(['professor-upcoming-sessions', professorId]);
       qc.invalidateQueries(['eval-dashboard']);
@@ -250,16 +249,14 @@ function SessionRow({ session, professorId, professorName, qc }) {
   });
 
   const handleSchedule = () => {
-    const isEval = obsType === 'evaluation';
     const isPeer = evalSubType === 'peer_to_peer';
-    const isFM = evalSubType === 'fm';
     addMut.mutate({
+      evaluation_date: dateStr,
+      evaluation_type: isPeer ? 'peer_to_peer' : 'fm_evaluation',
+      evaluator_professor_id: isPeer ? evaluatorId : null,
+      evaluator_user_id: !isPeer ? evaluatorId : null,
       program_id: session.program_id,
-      observation_date: dateStr,
-      observation_type: isEval ? 'evaluation' : 'observation',
-      pay_amount: isEval ? (isFM ? 0 : (obsPay || null)) : (obsPay || null),
-      is_paid: isEval ? (isPeer ? 1 : 0) : 1,
-      evaluator_id: evaluatorId || null,
+      form_link: null,
       notes: notes || null,
     });
   };
@@ -305,7 +302,7 @@ function SessionRow({ session, professorId, professorName, qc }) {
           {!showForm && (
             <button type="button" onClick={() => setShowForm(true)}
               className="text-xs text-[#1e3a5f] hover:underline font-medium">
-              + Schedule
+              + Evaluate
             </button>
           )}
         </div>
@@ -315,30 +312,26 @@ function SessionRow({ session, professorId, professorName, qc }) {
         <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] text-gray-500">Type:</span>
-            <button type="button" onClick={() => { setObsType('evaluation'); setEvalSubType('fm'); setEvaluatorId(''); setObsPay('0'); }}
-              className={`px-2 py-1 rounded text-[11px] font-medium border ${obsType === 'evaluation' && evalSubType === 'fm' ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+            <button type="button" onClick={() => { setEvalSubType('fm'); setEvaluatorId(''); setObsPay('0'); }}
+              className={`px-2 py-1 rounded text-[11px] font-medium border ${evalSubType === 'fm' ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
               FM Evaluation
             </button>
-            <button type="button" onClick={() => { setObsType('evaluation'); setEvalSubType('peer_to_peer'); setEvaluatorId(''); }}
-              className={`px-2 py-1 rounded text-[11px] font-medium border ${obsType === 'evaluation' && evalSubType === 'peer_to_peer' ? 'bg-violet-700 text-white border-violet-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+            <button type="button" onClick={() => { setEvalSubType('peer_to_peer'); setEvaluatorId(''); }}
+              className={`px-2 py-1 rounded text-[11px] font-medium border ${evalSubType === 'peer_to_peer' ? 'bg-violet-700 text-white border-violet-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
               Peer to Peer
-            </button>
-            <button type="button" onClick={() => { setObsType('observation'); setEvalSubType(''); setEvaluatorId(''); }}
-              className={`px-2 py-1 rounded text-[11px] font-medium border ${obsType === 'observation' ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-              Observation
             </button>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {obsType === 'evaluation' && evalSubType === 'fm' && (
+            {evalSubType === 'fm' && (
               <select value={evaluatorId} onChange={e => setEvaluatorId(e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1 text-xs w-56">
                 <option value="">Select Field Manager…</option>
                 {fmUsers.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
               </select>
             )}
-            {obsType === 'evaluation' && evalSubType === 'peer_to_peer' && (
-              <select value={evaluatorId} onChange={e => { setEvaluatorId(e.target.value); const p = professorList.find(x => String(x.id) === e.target.value); if (p) setObsPay(p.base_pay || ''); }}
+            {evalSubType === 'peer_to_peer' && (
+              <select value={evaluatorId} onChange={e => setEvaluatorId(e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1 text-xs w-56">
                 <option value="">Select observing professor…</option>
                 {professorList.filter(p => String(p.id) !== String(professorId)).map(p => (
@@ -346,18 +339,8 @@ function SessionRow({ session, professorId, professorName, qc }) {
                 ))}
               </select>
             )}
-            {obsType === 'observation' && (
-              <span className="text-[10px] text-gray-500">{professorName} observes this class (paid)</span>
-            )}
-            {(obsType === 'observation' || evalSubType === 'peer_to_peer') && (
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-gray-500">Pay:</span>
-                <Input type="number" placeholder="$" value={obsPay} onChange={e => setObsPay(e.target.value)} className="w-20" />
-              </div>
-            )}
-            {evalSubType === 'fm' && <span className="text-[10px] text-gray-400">FM evaluations are unpaid</span>}
             <Input placeholder="Notes…" value={notes} onChange={e => setNotes(e.target.value)} className="w-32" />
-            <Button size="sm" type="button" onClick={handleSchedule} disabled={addMut.isPending || (obsType === 'evaluation' && !evaluatorId)}>
+            <Button size="sm" type="button" onClick={handleSchedule} disabled={addMut.isPending || !evaluatorId}>
               {addMut.isPending ? '…' : 'Schedule'}
             </Button>
             <button type="button" onClick={() => setShowForm(false)} className="text-[10px] text-gray-400 hover:text-gray-600">Cancel</button>

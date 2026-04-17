@@ -72,6 +72,18 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
           className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
       </td>
       <td className="px-2 py-1">
+        <select defaultValue={s.observer_id || ''} onChange={e => handleChange('observer_id', e.target.value)}
+          className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
+          <option value="">—</option>
+          {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
+        </select>
+      </td>
+      <td className="px-2 py-1">
+        <input type="number" step="0.01" defaultValue={s.observer_pay ?? ''}
+          onBlur={e => { if (e.target.value !== String(s.observer_pay ?? '')) handleChange('observer_pay', e.target.value); }}
+          className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
+      </td>
+      <td className="px-2 py-1">
         <div className="flex items-center gap-0.5">
           <select defaultValue={s.lesson_id || ''} onChange={e => handleChange('lesson_id', e.target.value)}
             className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
@@ -362,6 +374,8 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
                 <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>
                 <th className="text-left px-2 py-2 font-medium text-gray-600">Assistant</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>
+                <th className="text-left px-2 py-2 font-medium text-gray-600">Observer</th>
+                <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>
                 <th className="text-left px-2 py-2 font-medium text-gray-600">Lesson</th>
                 <th className="text-center px-1 py-2 font-medium text-gray-600 w-8" title="Billed">$</th>
                 <th className="w-8"></th>
@@ -369,7 +383,7 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sessions.length === 0 ? (
-                <tr><td colSpan={11} className="text-center py-8 text-gray-400">No sessions yet — click "Generate Sessions" or "+ Add Date"</td></tr>
+                <tr><td colSpan={13} className="text-center py-8 text-gray-400">No sessions yet — click "Generate Sessions" or "+ Add Date"</td></tr>
               ) : sessions.map((s, idx) => (
                 <SessionRow key={s.id} s={s} idx={idx}
                   professors={professors} allLessons={lessons} filteredLessons={filteredLessons}

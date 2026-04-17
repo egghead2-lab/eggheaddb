@@ -41,6 +41,24 @@ function formatTimeRange(startTime, lengthMin) {
   return `${st} – ${h12}:${String(em).padStart(2, '0')} ${ampm}`;
 }
 
+function ConflictBadge() {
+  const { data } = useQuery({
+    queryKey: ['schedule-conflicts'],
+    queryFn: () => api.get('/schedule-conflicts').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const count = data?.total || 0;
+  if (count === 0) return null;
+  return (
+    <Link to="/schedule-conflicts"
+      className="flex items-center gap-1.5 bg-red-50 border-b border-red-200 px-6 py-1.5 hover:bg-red-100 transition-colors">
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold">{count}</span>
+      <span className="text-xs text-red-700 font-medium">scheduling conflict{count !== 1 ? 's' : ''} need resolution</span>
+      <span className="text-xs text-red-500 ml-1">&rarr;</span>
+    </Link>
+  );
+}
+
 function ObsNeededBadge() {
   const { data } = useQuery({
     queryKey: ['observation-requirements'],
@@ -252,6 +270,7 @@ export default function AssignmentBoardPage() {
 
   return (
     <AppShell>
+      <ConflictBadge />
       <ObsNeededBadge />
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <h1 className="text-xl font-bold text-gray-900">Professor Assignment Board</h1>

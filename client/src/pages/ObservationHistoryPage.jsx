@@ -100,7 +100,7 @@ export default function ObservationHistoryPage() {
                   <th className="text-left px-2 py-2 font-medium text-gray-600">Submitted</th>
                   <th className="text-left px-2 py-2 font-medium text-gray-600">Professor</th>
                   <th className="text-left px-2 py-2 font-medium text-gray-600">Obs Date</th>
-                  <th className="text-left px-2 py-2 font-medium text-gray-600">Class</th>
+                  <th className="text-left px-2 py-2 font-medium text-gray-600">Observer</th>
                   <th className="text-left px-2 py-2 font-medium text-gray-600">Type</th>
                   <th className="text-center px-1 py-2 font-medium text-gray-600">Form</th>
                   <th className="text-center px-2 py-2 font-medium text-gray-600">Rating</th>
@@ -123,7 +123,7 @@ export default function ObservationHistoryPage() {
                         <Link to={`/professors/${r.professor_id}`} className="text-[#1e3a5f] hover:underline font-medium">{r.professor_name}</Link>
                       </td>
                       <td className="px-2 py-1.5 text-gray-600">{formatDate(r.evaluation_date)}</td>
-                      <td className="px-2 py-1.5 text-gray-600 truncate">{className}</td>
+                      <td className="px-2 py-1.5 text-gray-600 truncate">{r.evaluator_name || '—'}</td>
                       <td className="px-2 py-1.5">
                         <span className={`inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium ${TYPE_COLORS[obsType] || 'bg-gray-100 text-gray-600'}`}>
                           {TYPE_LABELS[obsType] || obsType || '—'}

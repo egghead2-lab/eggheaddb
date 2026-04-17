@@ -62,11 +62,14 @@ router.get('/professor/:profId', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `SELECT pe.*,
-              CONCAT(ep.professor_nickname, ' ', ep.last_name) AS evaluator_name,
-              CONCAT(u.first_name, ' ', u.last_name) AS logged_by_name
+              COALESCE(CONCAT(ep.professor_nickname, ' ', ep.last_name), CONCAT(u.first_name, ' ', u.last_name)) AS evaluator_name,
+              CONCAT(u.first_name, ' ', u.last_name) AS logged_by_name,
+              prog.program_nickname, loc.nickname AS location_nickname
        FROM professor_evaluation pe
        LEFT JOIN professor ep ON ep.id = pe.evaluator_professor_id
        LEFT JOIN user u ON u.id = pe.evaluator_user_id
+       LEFT JOIN program prog ON prog.id = pe.program_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
        WHERE pe.professor_id = ? AND pe.active = 1
        ORDER BY pe.evaluation_date DESC`,
       [req.params.profId]
@@ -79,13 +82,13 @@ router.get('/professor/:profId', async (req, res, next) => {
 router.post('/professor/:profId', async (req, res, next) => {
   try {
     const { profId } = req.params;
-    const { evaluation_date, evaluator_professor_id, evaluation_type, result, form_link, notes } = req.body;
+    const { evaluation_date, evaluator_professor_id, evaluator_user_id, evaluation_type, result, form_link, notes, program_id } = req.body;
     if (!evaluation_date) return res.status(400).json({ success: false, error: 'Date required' });
 
     const [insertResult] = await pool.query(
-      `INSERT INTO professor_evaluation (professor_id, evaluation_date, evaluator_professor_id, evaluator_user_id, evaluation_type, result, form_link, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [profId, evaluation_date, evaluator_professor_id || null, req.user.userId, evaluation_type || 'routine', result || null, form_link || null, notes || null]
+      `INSERT INTO professor_evaluation (professor_id, program_id, evaluation_date, evaluator_professor_id, evaluator_user_id, evaluation_type, result, form_link, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [profId, program_id || null, evaluation_date, evaluator_professor_id || null, evaluator_user_id || null, evaluation_type || 'routine', result || null, form_link || null, notes || null]
     );
 
     // Update professor's last evaluation date/result
@@ -125,6 +128,113 @@ router.put('/:id', async (req, res, next) => {
     }
 
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/evaluations/upcoming — scheduled evaluations with issue detection
+router.get('/upcoming', async (req, res, next) => {
+  try {
+    const { days = 14, area_id, fm } = req.query;
+    let areaWhere = '';
+    const params = [parseInt(days)];
+    if (area_id) {
+      areaWhere = 'AND p.geographic_area_id = ?';
+      params.push(area_id);
+    } else if (fm === 'my') {
+      // Get areas managed by current user (via FM responsibility or professor geographic_area)
+      const [fmAreas] = await pool.query(
+        `SELECT DISTINCT geographic_area_id FROM professor WHERE scheduling_coordinator_owner_id = ? AND active = 1 AND geographic_area_id IS NOT NULL
+         UNION SELECT DISTINCT geographic_area_id FROM professor WHERE field_manager_id = ? AND active = 1 AND geographic_area_id IS NOT NULL`,
+        [req.user.userId, req.user.userId]
+      );
+      if (fmAreas.length > 0) {
+        const areaIds = fmAreas.map(a => a.geographic_area_id);
+        areaWhere = `AND p.geographic_area_id IN (${areaIds.map(() => '?').join(',')})`;
+        params.push(...areaIds);
+      }
+    } else if (fm && fm !== 'all') {
+      // Specific FM — get their areas
+      const [fmAreas] = await pool.query(
+        `SELECT DISTINCT geographic_area_id FROM professor WHERE scheduling_coordinator_owner_id = ? AND active = 1 AND geographic_area_id IS NOT NULL
+         UNION SELECT DISTINCT geographic_area_id FROM professor WHERE field_manager_id = ? AND active = 1 AND geographic_area_id IS NOT NULL`,
+        [fm, fm]
+      );
+      if (fmAreas.length > 0) {
+        const areaIds = fmAreas.map(a => a.geographic_area_id);
+        areaWhere = `AND p.geographic_area_id IN (${areaIds.map(() => '?').join(',')})`;
+        params.push(...areaIds);
+      }
+    }
+
+    const [rows] = await pool.query(
+      `SELECT pe.id, pe.professor_id, pe.program_id, pe.evaluation_date, pe.evaluation_type,
+              pe.form_status, pe.notes,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              p.active AS professor_active,
+              ps.professor_status_name,
+              ga.geographic_area_name AS area,
+              prog.program_nickname, prog.start_time, prog.location_id,
+              loc.nickname AS location_nickname,
+              COALESCE(CONCAT(ep.professor_nickname, ' ', ep.last_name), CONCAT(eu.first_name, ' ', eu.last_name)) AS evaluator_name,
+              prog.lead_professor_id
+       FROM professor_evaluation pe
+       LEFT JOIN professor p ON p.id = pe.professor_id
+       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
+       LEFT JOIN professor ep ON ep.id = pe.evaluator_professor_id
+       LEFT JOIN user eu ON eu.id = pe.evaluator_user_id
+       LEFT JOIN program prog ON prog.id = pe.program_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE pe.active = 1
+         AND (pe.form_status = 'pending' OR pe.form_status IS NULL)
+         AND pe.evaluation_date >= CURDATE()
+         AND pe.evaluation_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
+         ${areaWhere}
+       ORDER BY pe.evaluation_date ASC`,
+      params
+    );
+
+    // Detect issues for each eval
+    for (const row of rows) {
+      row.has_issue = false;
+      row.issue_message = null;
+
+      // Check if professor is inactive or has a non-active status
+      if (!row.professor_active || row.professor_active === 0) {
+        row.has_issue = true;
+        row.issue_message = `Professor is no longer active${row.professor_status_name ? ' — status: ' + row.professor_status_name : ''}`;
+      }
+
+      if (row.program_id && !row.has_issue) {
+        // Check if the professor is still the lead on a session for that date
+        const [[session]] = await pool.query(
+          `SELECT s.id, COALESCE(s.professor_id, prog.lead_professor_id) AS actual_prof_id
+           FROM session s
+           JOIN program prog ON prog.id = s.program_id
+           WHERE s.program_id = ? AND s.session_date = ? AND s.active = 1
+           LIMIT 1`,
+          [row.program_id, row.evaluation_date]
+        );
+
+        if (!session) {
+          row.has_issue = true;
+          row.issue_message = 'No session exists on this date — class may have been cancelled or rescheduled';
+        } else if (session.actual_prof_id && session.actual_prof_id !== row.professor_id) {
+          // Professor was swapped out
+          const [[newProf]] = await pool.query('SELECT professor_nickname, last_name FROM professor WHERE id = ?', [session.actual_prof_id]);
+          row.has_issue = true;
+          row.issue_message = `Professor changed — ${newProf ? newProf.professor_nickname + ' ' + (newProf.last_name || '') : 'another professor'} is now teaching this session`;
+        }
+
+        // Also get session time for display
+        if (session) {
+          const [[sessTime]] = await pool.query('SELECT session_time FROM session WHERE id = ?', [session.id]);
+          if (sessTime?.session_time) row.session_time = sessTime.session_time;
+        }
+      }
+    }
+
+    res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 
@@ -385,17 +495,22 @@ router.get('/observations/outstanding', async (req, res, next) => {
 
     // Outstanding evaluations (from professor_evaluation table)
     const [evaluations] = await pool.query(
-      `SELECT pe.id, pe.professor_id, pe.evaluation_date AS observation_date, pe.evaluation_type AS observation_type,
-              pe.result, pe.form_status, pe.notes,
+      `SELECT pe.id, pe.professor_id, pe.program_id, pe.evaluation_date AS observation_date, pe.evaluation_type AS observation_type,
+              pe.result, pe.form_status, pe.notes, pe.form_link,
               'evaluation' AS record_type,
               CONCAT(p.professor_nickname, ' ', p.last_name) AS lead_professor_name,
               p.phone_number AS lead_professor_phone,
               ga.geographic_area_name,
-              CONCAT(ep.professor_nickname, ' ', ep.last_name) AS observer_name
+              prog.program_nickname,
+              loc.nickname AS location_nickname,
+              COALESCE(CONCAT(ep.professor_nickname, ' ', ep.last_name), CONCAT(eu.first_name, ' ', eu.last_name)) AS observer_name
        FROM professor_evaluation pe
        JOIN professor p ON p.id = pe.professor_id
        LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN professor ep ON ep.id = pe.evaluator_professor_id
+       LEFT JOIN user eu ON eu.id = pe.evaluator_user_id
+       LEFT JOIN program prog ON prog.id = pe.program_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
        WHERE pe.active = 1
          AND pe.evaluation_date <= CURDATE()
          AND (pe.form_status = 'pending' OR pe.form_status IS NULL)
@@ -449,10 +564,17 @@ router.post('/observations/:id/delete-with-reason', async (req, res, next) => {
     if (!delete_reason_id) return res.status(400).json({ success: false, error: 'Reason required' });
 
     const table = record_type === 'evaluation' ? 'professor_evaluation' : 'professor_observation';
-    await pool.query(
-      `UPDATE ${table} SET form_status = 'deleted', delete_reason_id = ?, delete_notes = ?, status = 'cancelled', ts_updated = NOW() WHERE id = ?`,
-      [delete_reason_id, delete_notes || null, id]
-    );
+    if (record_type === 'evaluation') {
+      await pool.query(
+        `UPDATE ${table} SET form_status = 'deleted', delete_reason_id = ?, delete_notes = ?, ts_updated = NOW() WHERE id = ?`,
+        [delete_reason_id, delete_notes || null, id]
+      );
+    } else {
+      await pool.query(
+        `UPDATE ${table} SET form_status = 'deleted', delete_reason_id = ?, delete_notes = ?, status = 'cancelled', ts_updated = NOW() WHERE id = ?`,
+        [delete_reason_id, delete_notes || null, id]
+      );
+    }
     res.json({ success: true });
   } catch (err) { next(err); }
 });
@@ -516,7 +638,7 @@ router.get('/observations/history', async (req, res, next) => {
   try {
     const { professor_id, evaluator, start_date, end_date, limit = 200 } = req.query;
 
-    let where = "WHERE pe.active = 1 AND pe.form_status = 'completed'";
+    let where = "WHERE pe.active = 1 AND pe.form_status IN ('completed', 'deleted')";
     const params = [];
 
     if (professor_id) { where += ' AND pe.professor_id = ?'; params.push(professor_id); }
@@ -525,38 +647,55 @@ router.get('/observations/history', async (req, res, next) => {
     if (end_date) { where += ' AND pe.evaluation_date <= ?'; params.push(end_date); }
 
     const [rows] = await pool.query(
-      `SELECT pe.id, pe.professor_id, pe.evaluation_date, pe.evaluation_type, pe.result,
-              pe.form_link, pe.form_data, pe.form_status, pe.notes,
+      `SELECT pe.id, pe.professor_id, pe.program_id, pe.evaluation_date, pe.evaluation_type, pe.result,
+              pe.form_link, pe.form_data, pe.form_status, pe.notes, pe.delete_notes,
               pe.evaluator_professor_id, pe.remediation_followup, pe.ts_inserted,
               CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
-              CONCAT(ep.professor_nickname, ' ', ep.last_name) AS evaluator_name,
-              CONCAT(u.first_name, ' ', u.last_name) AS logged_by_name
+              COALESCE(CONCAT(ep.professor_nickname, ' ', ep.last_name), CONCAT(u.first_name, ' ', u.last_name)) AS evaluator_name,
+              CONCAT(u.first_name, ' ', u.last_name) AS logged_by_name,
+              prog.program_nickname,
+              odr.reason_name AS delete_reason
        FROM professor_evaluation pe
        JOIN professor p ON p.id = pe.professor_id
        LEFT JOIN professor ep ON ep.id = pe.evaluator_professor_id
        LEFT JOIN user u ON u.id = pe.evaluator_user_id
+       LEFT JOIN program prog ON prog.id = pe.program_id
+       LEFT JOIN observation_delete_reason odr ON odr.id = pe.delete_reason_id
        ${where}
        ORDER BY pe.evaluation_date DESC
        LIMIT ?`,
       [...params, parseInt(limit)]
     );
 
-    // Attach previous rating for each row
+    // Attach ratings, class name, and previous rating
+    const remediationLabels = {
+      within_2_weeks: 'Within 2 Weeks',
+      within_4_weeks: 'Within 4 Weeks',
+      none: 'No',
+    };
     for (const row of rows) {
       const fd = typeof row.form_data === 'string' ? JSON.parse(row.form_data || '{}') : (row.form_data || {});
-      row.overall_rating = fd.overall_rating || fd.ratings ? Math.round(Object.values(fd.ratings || {}).filter(v => v > 0).reduce((a, b) => a + b, 0) / Math.max(Object.values(fd.ratings || {}).filter(v => v > 0).length, 1)) : null;
+      // Rating: prefer form_data overall_rating, then pe.result, then computed from form_data ratings
+      let rating = fd.overall_rating || null;
+      if (!rating && row.result && !['pass', 'needs_improvement', 'fail'].includes(row.result)) {
+        rating = row.result; // text label like 'excelling'
+      }
+      if (!rating && fd.ratings) {
+        const vals = Object.values(fd.ratings).filter(v => v > 0);
+        if (vals.length) rating = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+      }
+      row.overall_rating = rating;
       row.observation_type = fd.observation_type || row.evaluation_type || null;
-      row.remediation = fd.remediation || row.remediation_followup || null;
-      row.class_name = fd.location || null;
+      row.remediation = remediationLabels[fd.remediation || row.remediation_followup] || fd.remediation || row.remediation_followup || 'No';
+      row.class_name = row.program_nickname || fd.location || null;
 
       // Get previous rating for this professor before this date
       const [prev] = await pool.query(
-        "SELECT form_data, result FROM professor_evaluation WHERE professor_id = ? AND evaluation_date < ? AND form_status = 'completed' AND active = 1 ORDER BY evaluation_date DESC LIMIT 1",
+        "SELECT result FROM professor_evaluation WHERE professor_id = ? AND evaluation_date < ? AND active = 1 ORDER BY evaluation_date DESC LIMIT 1",
         [row.professor_id, row.evaluation_date]
       );
-      if (prev[0]) {
-        const pfd = typeof prev[0].form_data === 'string' ? JSON.parse(prev[0].form_data || '{}') : (prev[0].form_data || {});
-        row.previous_rating = pfd.overall_rating || (pfd.ratings ? Math.round(Object.values(pfd.ratings).filter(v => v > 0).reduce((a, b) => a + b, 0) / Math.max(Object.values(pfd.ratings).filter(v => v > 0).length, 1)) : null);
+      if (prev[0]?.result && !['pass', 'needs_improvement', 'fail'].includes(prev[0].result)) {
+        row.previous_rating = prev[0].result;
       } else {
         row.previous_rating = null;
       }

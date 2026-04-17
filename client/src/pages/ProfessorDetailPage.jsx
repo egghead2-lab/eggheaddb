@@ -172,10 +172,14 @@ function AvailabilitySection({ professorId, availability, availabilityNotes, qc 
 
 // Rating conversion: old pass/needs_improvement/fail → 1-5 scale
 function resultToRating(result) {
-  if (result === 'pass') return 4;
-  if (result === 'needs_improvement') return 3;
-  if (result === 'fail') return 1;
-  return null;
+  if (!result) return null;
+  // New scale: text labels map directly
+  if (['emerging', 'developing', 'performing', 'excelling', 'distinguished'].includes(result)) return result;
+  // Legacy mappings
+  if (result === 'pass') return 'excelling';
+  if (result === 'needs_improvement') return 'performing';
+  if (result === 'fail') return 'emerging';
+  return result;
 }
 
 const EVAL_TYPE_OPTIONS = [
