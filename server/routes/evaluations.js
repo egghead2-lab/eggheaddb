@@ -256,7 +256,7 @@ router.get('/dashboard', async (req, res, next) => {
         days_until_due: daysUntilDue,
         overdue_days: overdueDays,
         is_overdue: overdueDays !== null && overdueDays > 0,
-        current_rating: ratingMap[p.id] || null,
+        current_rating: ratingMap[p.id] || p.last_evaluation_result || null,
       };
     });
 

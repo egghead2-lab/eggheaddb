@@ -23,8 +23,15 @@ export function ratingColor(num) {
 
 export function RatingBadge({ rating, size = 'sm' }) {
   if (!rating && rating !== 0) return <span className="text-gray-300 text-xs">—</span>;
-  const r = Math.round(Number(rating));
-  const item = SCALE.find(s => s.value === r);
+  // Support both numeric (1-5) and text ('emerging', 'excelling', etc.)
+  let item;
+  const num = Number(rating);
+  if (!isNaN(num) && num >= 1 && num <= 5) {
+    item = SCALE.find(s => s.value === Math.round(num));
+  } else {
+    const text = String(rating).toLowerCase().trim();
+    item = SCALE.find(s => s.label.toLowerCase() === text);
+  }
   if (!item) return <span className="text-gray-300 text-xs">—</span>;
   const sizeClass = size === 'xs' ? 'text-[9px] px-1 py-0' : 'text-[10px] px-1.5 py-0.5';
   return (
