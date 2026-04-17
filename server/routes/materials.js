@@ -301,7 +301,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
     const [programs] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.lead_professor_id, prog.number_enrolled,
               prog.session_count, prog.first_session_date, prog.last_session_date, prog.class_length_minutes,
-              cl.class_name, cl.class_type_id, cl.has_id_card,
+              cl.class_name, cl.class_type_id, cl.has_id_card, cl.ship_lesson_kits,
               ct.class_type_name
        FROM program prog
        JOIN class cl ON cl.id = prog.class_id
@@ -392,12 +392,11 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
         const binTypeId = classTypeToBin[prog.class_type_id];
         if (binTypeId && !profBinSet.has(binTypeId)) neededBinTypes.add(binTypeId);
 
-        if (isRobotics) {
-          // Skip all lesson/start items for robotics
-          continue;
-        }
+        // Skip lesson kits if class is configured not to ship them (bins/starts/degrees still ship)
+        const skipLessonKits = !prog.ship_lesson_kits;
 
         // Lesson items — one per session, with proper kit packing
+        if (!skipLessonKits) {
         for (const sess of progSessions) {
           if (!sess.lesson_name) {
             warnings.push({ program: prog.program_nickname, issue: 'Session missing lesson', date: sess.session_date });
@@ -420,6 +419,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
             linesCreated++;
           }
         }
+        } // end skipLessonKits check
 
         // Start kit — if first session is in this window AND has_id_card AND session_count >= min weeks
         const firstSessionInWindow = prog.first_session_date &&
@@ -572,7 +572,7 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
     const [programs] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.lead_professor_id, prog.number_enrolled,
               prog.session_count, prog.first_session_date, prog.last_session_date,
-              cl.class_name, cl.class_type_id, cl.has_id_card, ct.class_type_name
+              cl.class_name, cl.class_type_id, cl.has_id_card, cl.ship_lesson_kits, ct.class_type_name
        FROM program prog
        JOIN class cl ON cl.id = prog.class_id
        JOIN class_type ct ON ct.id = cl.class_type_id
@@ -634,10 +634,10 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
       const progSessions = sessionsByProgram[prog.id] || [];
       const pfx = prefix[prog.class_type_id] || 'Sci';
 
-      if (isRobotics) continue;
+      const skipLessonKits = !prog.ship_lesson_kits;
 
-      // Lesson items
-      for (const sess of progSessions) {
+      // Lesson items (skip if class configured not to ship)
+      if (!skipLessonKits) for (const sess of progSessions) {
         if (!sess.lesson_name) continue;
         if (pack.standard > 0) {
           const key = coveredKey(profId, prog.id, sess.lesson_name, 'lesson');
@@ -1111,16 +1111,16 @@ router.get('/weekly-requirements', async (req, res, next) => {
       const wStartStr = wStart.toISOString().split('T')[0];
       const wEndStr = wEnd.toISOString().split('T')[0];
 
-      // Lesson kits (including robotics — warehouse needs to prep everything)
+      // Lesson kits (only classes with ship_lesson_kits = 1)
       const [lessonItems] = await pool.query(
         `SELECT l.lesson_name, ct.class_type_name, ct.id AS class_type_id,
                 SUM(CASE WHEN prog.number_enrolled > 15 THEN 1 ELSE 0 END) AS for_20_count,
-                SUM(CASE WHEN prog.number_enrolled <= 20 OR prog.number_enrolled IS NULL THEN 1 ELSE 0 END) AS standard_count
+                SUM(CASE WHEN prog.number_enrolled <= 15 OR prog.number_enrolled IS NULL THEN 1 ELSE 0 END) AS standard_count
          FROM session s
          JOIN program prog ON prog.id = s.program_id AND prog.active = 1 AND prog.live = 1
          JOIN class_status cs ON cs.id = prog.class_status_id AND cs.confirmed = 1
          JOIN lesson l ON l.id = s.lesson_id
-         LEFT JOIN class cl ON cl.id = prog.class_id
+         JOIN class cl ON cl.id = prog.class_id AND cl.ship_lesson_kits = 1
          LEFT JOIN class_type ct ON ct.id = cl.class_type_id
          WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
          GROUP BY l.lesson_name, ct.class_type_name, ct.id
@@ -1388,6 +1388,27 @@ router.get('/exclusion-rules', async (req, res, next) => {
        ORDER BY ser.rule_name`
     );
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// LESSON KIT SHIPPING CONFIG
+// ═══════════════════════════════════════════════════════════════════
+
+router.get('/class-kit-config', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT c.id, c.class_name, c.ship_lesson_kits, ct.class_type_name FROM class c LEFT JOIN class_type ct ON ct.id = c.class_type_id WHERE c.active = 1 ORDER BY ct.class_type_name, c.class_name'
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+router.patch('/class-kit-config/:id', async (req, res, next) => {
+  try {
+    const { ship_lesson_kits } = req.body;
+    await pool.query('UPDATE class SET ship_lesson_kits = ? WHERE id = ?', [ship_lesson_kits ? 1 : 0, req.params.id]);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

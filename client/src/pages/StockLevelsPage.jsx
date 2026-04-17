@@ -10,7 +10,7 @@ import { Spinner } from '../components/ui/Spinner';
 export default function StockLevelsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState('stock'); // stock, skus, id_cards, shipping
+  const [tab, setTab] = useState('stock'); // stock, skus, id_cards, kit_shipping, shipping
   const [editingId, setEditingId] = useState(null);
   const [editQty, setEditQty] = useState('');
 
@@ -61,6 +61,18 @@ export default function StockLevelsPage() {
     onSuccess: () => qc.invalidateQueries(['area-shipping']),
   });
 
+  // Kit shipping config
+  const { data: kitConfigData } = useQuery({
+    queryKey: ['class-kit-config'],
+    queryFn: () => api.get('/materials/class-kit-config').then(r => r.data),
+    enabled: tab === 'kit_shipping',
+  });
+
+  const updateKitConfig = useMutation({
+    mutationFn: ({ id, val }) => api.patch(`/materials/class-kit-config/${id}`, { ship_lesson_kits: val }),
+    onSuccess: () => qc.invalidateQueries(['class-kit-config']),
+  });
+
   const stock = (stockData?.data || []).filter(s => !search || s.item_name.toLowerCase().includes(search.toLowerCase()) || s.sku.toLowerCase().includes(search.toLowerCase()));
   const lessons = (skuData?.data || []).filter(l => !search || l.lesson_name.toLowerCase().includes(search.toLowerCase()));
   const classes = idCardData?.data || [];
@@ -69,7 +81,7 @@ export default function StockLevelsPage() {
     <AppShell>
       <PageHeader title="Stock & Configuration">
         <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-          {[['stock', 'Stock Levels'], ['skus', 'SKU Mapper'], ['id_cards', 'Start Kit Config'], ['shipping', 'Shipping Config']].map(([k, l]) => (
+          {[['stock', 'Stock Levels'], ['skus', 'SKU Mapper'], ['id_cards', 'Start Kit Config'], ['kit_shipping', 'Lesson Kit Shipping'], ['shipping', 'Shipping Config']].map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); setSearch(''); }}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                 tab === k ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500'
@@ -180,6 +192,36 @@ export default function StockLevelsPage() {
                     <td className="px-4 py-2.5 text-center">
                       <input type="checkbox" checked={!!c.has_id_card}
                         onChange={() => updateIdCard.mutate({ id: c.id, val: c.has_id_card ? 0 : 1 })}
+                        className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'kit_shipping' && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200">
+              <p className="text-xs text-gray-500">Toggle which classes ship weekly lesson kits. Bins, start kits, and degrees still ship for all classes regardless of this setting. Engineering and Robotics are off by default — enable specific ones that need weekly kits.</p>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Class</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Type</th>
+                  <th className="text-center px-4 py-3 font-semibold text-gray-700 w-36">Ship Lesson Kits</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(kitConfigData?.data || []).filter(c => !search || c.class_name.toLowerCase().includes(search.toLowerCase())).map(c => (
+                  <tr key={c.id} className={!c.ship_lesson_kits ? 'bg-gray-50/50' : ''}>
+                    <td className="px-4 py-2.5 text-gray-900">{c.class_name}</td>
+                    <td className="px-4 py-2.5 text-gray-600 text-xs">{c.class_type_name || '—'}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <input type="checkbox" checked={!!c.ship_lesson_kits}
+                        onChange={() => updateKitConfig.mutate({ id: c.id, val: c.ship_lesson_kits ? 0 : 1 })}
                         className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
                     </td>
                   </tr>
