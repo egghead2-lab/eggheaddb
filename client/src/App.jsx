@@ -61,6 +61,7 @@ import PartyCalendarPage from './pages/PartyCalendarPage';
 import PartyAssignPage from './pages/PartyAssignPage';
 import IncidentReportPage from './pages/IncidentReportPage';
 import NotificationsPage from './pages/NotificationsPage';
+import DailyTasksAdminPage from './pages/DailyTasksAdminPage';
 import ClientTemplatesPage from './pages/ClientTemplatesPage';
 import ClientEmailsPage from './pages/client-management/ClientEmailsPage';
 import FeedbackToolsPage from './pages/client-management/FeedbackToolsPage';
@@ -191,6 +192,7 @@ export default function App() {
       <Route path="/parties/assign" element={<ProtectedRoute><PartyAssignPage /></ProtectedRoute>} />
       <Route path="/incident-report" element={<ProtectedRoute><IncidentReportPage /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+      <Route path="/daily-tasks-admin" element={<ProtectedRoute><DailyTasksAdminPage /></ProtectedRoute>} />
       <Route path="/client-management/templates" element={<ProtectedRoute><ClientTemplatesPage /></ProtectedRoute>} />
       <Route path="/client-management/emails" element={<ProtectedRoute><ClientEmailsPage /></ProtectedRoute>} />
       <Route path="/client-management/feedback" element={<ProtectedRoute><FeedbackToolsPage /></ProtectedRoute>} />

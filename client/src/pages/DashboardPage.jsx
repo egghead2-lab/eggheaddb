@@ -182,6 +182,18 @@ function DailyTasksAndKpis() {
   const tasks = reports.filter(r => r.display_mode === 'task' || r.display_mode === 'both');
   const kpis = reports.filter(r => r.display_mode === 'kpi' || r.display_mode === 'both');
 
+  // Daily task definitions (page links, custom queries, etc.)
+  const { data: dtData, isLoading: dtLoading } = useQuery({
+    queryKey: ['my-daily-tasks'],
+    queryFn: () => api.get('/daily-tasks/my').then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+  const dailyTasks = dtData?.data?.tasks || [];
+  const delegationsActive = dtData?.data?.delegations_active || 0;
+
+  const allLoading = isLoading || dtLoading;
+  const hasTasks = tasks.length > 0 || dailyTasks.length > 0;
+
   return (
     <div className="grid grid-cols-3 gap-6">
       {/* Daily Tasks */}
@@ -190,19 +202,30 @@ function DailyTasksAndKpis() {
           <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-gray-800">Daily Task List</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Reports assigned to your role</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Tasks and reports assigned to you
+                {delegationsActive > 0 && <span className="text-amber-600 ml-1">· {delegationsActive} delegation(s) active</span>}
+              </p>
             </div>
-            <Link to="/report-builder" className="text-xs text-[#1e3a5f] hover:underline">Manage Reports</Link>
+            <div className="flex gap-3">
+              <Link to="/daily-tasks-admin" className="text-xs text-gray-400 hover:text-[#1e3a5f] hover:underline">Manage Tasks</Link>
+              <Link to="/report-builder" className="text-xs text-[#1e3a5f] hover:underline">Reports</Link>
+            </div>
           </div>
-          {isLoading ? (
+          {allLoading ? (
             <div className="p-8 text-center text-gray-400 text-sm">Loading…</div>
-          ) : tasks.length === 0 ? (
+          ) : !hasTasks ? (
             <div className="p-8 text-center text-gray-400">
               <p className="text-sm">No daily tasks assigned</p>
               <Link to="/report-builder" className="text-xs text-[#1e3a5f] hover:underline mt-1 inline-block">Create reports in Report Builder →</Link>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
+              {/* Task definition items (page links with counts) */}
+              {dailyTasks.map(t => (
+                <DailyTaskRow key={`dt-${t.id}`} task={t} />
+              ))}
+              {/* Report-based items */}
               {tasks.map(r => (
                 <TaskRow key={r.id} report={r} />
               ))}
@@ -244,6 +267,28 @@ function DailyTasksAndKpis() {
         </div>
       </div>
     </div>
+  );
+}
+
+function DailyTaskRow({ task }) {
+  return (
+    <Link to={task.page_path || '#'} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
+      <div>
+        <span className="text-sm font-medium text-gray-800">{task.name}</span>
+        {task.delegated_from && (
+          <span className="text-xs text-amber-600 ml-2">covering for {task.delegated_from}</span>
+        )}
+        {task.description && <p className="text-xs text-gray-400 mt-0.5">{task.description}</p>}
+      </div>
+      <div className="flex items-center gap-2">
+        {task.count != null && (
+          <span className={`text-sm font-bold px-2 py-0.5 rounded ${task.count > 0 ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'text-gray-300'}`}>
+            {task.count}{task.count_label && task.count > 0 ? ` ${task.count_label}` : ''}
+          </span>
+        )}
+        <span className="text-gray-300 text-xs">→</span>
+      </div>
+    </Link>
   );
 }
 
