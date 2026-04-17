@@ -58,7 +58,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, p.phone_number,
-              p.base_pay, p.rating, p.virtus, p.tb_test, ga.geographic_area_name AS geographic_area,
+              p.base_pay, p.rating, p.virtus, p.tb_test, ga.geographic_area_name AS geographic_area_name,
               p.science_trained_id, p.engineering_trained_id, p.robotics_trained_id,
               p.show_party_trained_id, p.studysmart_trained_id, p.camp_trained_id,
               ps.professor_status_name,
