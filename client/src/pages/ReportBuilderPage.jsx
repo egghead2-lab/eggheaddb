@@ -236,8 +236,28 @@ export default function ReportBuilderPage() {
                           <option value="not_sent">Not Sent</option>
                         </select>
                       ) : fieldDef?.type === 'date' ? (
-                        <input type="date" value={f.value || ''} onChange={e => updateFilter(i, 'value', e.target.value)}
-                          className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" />
+                        <div className="flex gap-1 flex-1">
+                          <select value={f.value?.startsWith('DYNAMIC:') ? f.value : 'custom'}
+                            onChange={e => updateFilter(i, 'value', e.target.value === 'custom' ? '' : e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 text-sm w-44">
+                            <option value="custom">Specific date…</option>
+                            <option value="DYNAMIC:today">Today</option>
+                            <option value="DYNAMIC:7_days_ago">7 days ago</option>
+                            <option value="DYNAMIC:14_days_ago">14 days ago</option>
+                            <option value="DYNAMIC:30_days_ago">30 days ago</option>
+                            <option value="DYNAMIC:60_days_ago">60 days ago</option>
+                            <option value="DYNAMIC:90_days_ago">90 days ago</option>
+                            <option value="DYNAMIC:180_days_ago">6 months ago</option>
+                            <option value="DYNAMIC:365_days_ago">1 year ago</option>
+                            <option value="DYNAMIC:7_days_from_now">7 days from now</option>
+                            <option value="DYNAMIC:30_days_from_now">30 days from now</option>
+                            <option value="DYNAMIC:60_days_from_now">60 days from now</option>
+                          </select>
+                          {!f.value?.startsWith('DYNAMIC:') && (
+                            <input type="date" value={f.value || ''} onChange={e => updateFilter(i, 'value', e.target.value)}
+                              className="rounded border border-gray-300 px-2 py-1 text-sm flex-1" />
+                          )}
+                        </div>
                       ) : (
                         <DynamicValueInput entity={form.entity} field={f.field} value={f.value}
                           onChange={val => updateFilter(i, 'value', val)} />

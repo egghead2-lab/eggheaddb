@@ -330,7 +330,19 @@ function buildFilterClause(fieldDef, f, runtimeContext = {}) {
 
   if (fieldDef.type === 'date') {
     const ops = { '=': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=' };
-    params.push(f.value);
+    // Resolve dynamic date values
+    let dateValue = f.value;
+    if (typeof dateValue === 'string' && dateValue.startsWith('DYNAMIC:')) {
+      const dynamic = dateValue.replace('DYNAMIC:', '');
+      if (dynamic === 'today') return { clause: `${col} ${ops[op] || '='} CURDATE()`, params };
+      const match = dynamic.match(/^(\d+)_days_(ago|from_now)$/);
+      if (match) {
+        const days = parseInt(match[1]);
+        const dir = match[2] === 'ago' ? '-' : '+';
+        return { clause: `${col} ${ops[op] || '='} DATE_ADD(CURDATE(), INTERVAL ${dir}${days} DAY)`, params };
+      }
+    }
+    params.push(dateValue);
     return { clause: `${col} ${ops[op] || '='} ?`, params };
   }
 
