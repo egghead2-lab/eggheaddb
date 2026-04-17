@@ -33,9 +33,9 @@ export function ProtectedRoute({ children }) {
 
   // Professors can access their tools only
   if (role === 'Professor') {
-    const profAllowed = ['/schedule', '/my-today', '/my-attendance', '/my-pay', '/incident-report', '/bug-bounty'];
-    if (profAllowed.some(p => location.pathname.startsWith(p)) || location.pathname.match(/^\/programs\/\d+\/classroom/) || location.pathname.match(/^\/locations\/\d+\/info-sheet/)) return children;
-    return <Navigate to="/my-today" replace />;
+    const profAllowed = ['/', '/schedule', '/my-today', '/my-attendance', '/my-pay', '/incident-report', '/bug-bounty'];
+    if (location.pathname === '/' || profAllowed.some(p => p !== '/' && location.pathname.startsWith(p)) || location.pathname.match(/^\/programs\/\d+\/classroom/) || location.pathname.match(/^\/locations\/\d+\/info-sheet/)) return children;
+    return <Navigate to="/" replace />;
   }
 
   // Admin/CEO always pass
