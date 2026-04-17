@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import api from '../api/client';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { useAuth } from '../hooks/useAuth';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Select } from '../components/ui/Select';
+import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate } from '../lib/utils';
@@ -35,6 +37,7 @@ function LeadTimeWarning({ item }) {
 export default function ResolutionCenterPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const [tab, setTab] = useState('resolutions');
   const [selectedCycle, setSelectedCycle] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
   const [myOnly, setMyOnly] = useState(false);
@@ -106,8 +109,21 @@ export default function ResolutionCenterPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Mid-Cycle Resolution Center" />
-      <div className="p-6">
+      <div className="bg-white border-b border-gray-200 px-6 pt-4 pb-0">
+        <h1 className="text-xl font-bold text-gray-900 mb-3">Resolutions & Shipments</h1>
+        <div className="flex gap-1">
+          {[['resolutions', 'Mid-Cycle Resolutions'], ['lookup', 'Shipment Lookup']].map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                tab === k ? 'border-[#1e3a5f] text-[#1e3a5f]' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'lookup' && <ShipmentLookup />}
+
+      {tab === 'resolutions' && <div className="p-6">
         {/* Controls */}
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <Select value={selectedCycle} onChange={e => setSelectedCycle(e.target.value)} className="w-56">
@@ -300,8 +316,140 @@ export default function ResolutionCenterPage() {
             )}
           </div>
         )}
-      </div>
+      </div>}
     </AppShell>
+  );
+}
+
+// Shipment Lookup tab
+function ShipmentLookup() {
+  const [search, setSearch] = useState('');
+  const [selectedProfId, setSelectedProfId] = useState(null);
+
+  const { data: searchData, isLoading: searchLoading } = useQuery({
+    queryKey: ['prof-search-shipments', search],
+    queryFn: () => api.get('/professors', { params: { search, status: 'Active', limit: 20 } }).then(r => r.data),
+    enabled: search.length >= 2,
+  });
+  const searchResults = searchData?.data || [];
+
+  const { data: shipmentsData, isLoading: shipmentsLoading } = useQuery({
+    queryKey: ['prof-shipments', selectedProfId],
+    queryFn: () => api.get(`/materials/shipments/professor/${selectedProfId}`).then(r => r.data),
+    enabled: !!selectedProfId,
+  });
+  const shipments = shipmentsData?.data || [];
+  const selectedProf = searchResults.find(p => p.id === selectedProfId);
+
+  return (
+    <div className="p-6">
+      <div className="flex items-end gap-4 mb-6">
+        <div className="flex-1 max-w-sm">
+          <Input label="Search Professor" placeholder="Type a name..." value={search}
+            onChange={e => { setSearch(e.target.value); setSelectedProfId(null); }} />
+        </div>
+      </div>
+
+      {/* Search results */}
+      {search.length >= 2 && !selectedProfId && (
+        <div className="bg-white rounded-lg border border-gray-200 mb-6 max-w-sm">
+          {searchLoading ? (
+            <div className="p-4 text-center"><Spinner className="w-5 h-5" /></div>
+          ) : searchResults.length === 0 ? (
+            <div className="p-4 text-sm text-gray-400">No professors found</div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {searchResults.map(p => (
+                <button key={p.id} onClick={() => setSelectedProfId(p.id)}
+                  className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                  <div className="text-sm font-medium text-gray-900">{p.professor_nickname} {p.last_name}</div>
+                  <div className="text-xs text-gray-400">{p.geographic_area_name || 'No area'}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Shipment history */}
+      {selectedProfId && (
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <h3 className="text-sm font-semibold text-gray-700">
+              Shipments for {selectedProf?.professor_nickname || 'Professor'}
+            </h3>
+            <Link to={`/professors/${selectedProfId}`} className="text-xs text-[#1e3a5f] hover:underline">View Profile</Link>
+            <button onClick={() => { setSelectedProfId(null); setSearch(''); }} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">Clear</button>
+          </div>
+
+          {shipmentsLoading ? (
+            <div className="flex justify-center py-8"><Spinner className="w-6 h-6" /></div>
+          ) : shipments.length === 0 ? (
+            <div className="bg-white rounded-lg border p-8 text-center text-gray-400 text-sm">No shipments found for this professor</div>
+          ) : (
+            <div className="space-y-3">
+              {shipments.map(o => (
+                <div key={o.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-200">
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{o.order_name}</span>
+                      {o.cycle_start && (
+                        <span className="text-xs text-gray-400 ml-3">Week of {formatDate(o.cycle_start)}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                        o.status === 'shipped' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      }`}>{o.status}</span>
+                      {o.shipped_at && <span className="text-xs text-gray-400">Shipped {formatDate(o.shipped_at)}</span>}
+                    </div>
+                  </div>
+                  <div className="px-4 py-2">
+                    {/* Tracking */}
+                    <div className="mb-2">
+                      {o.tracking_number ? (
+                        <div className="text-xs">
+                          <span className="text-gray-500 font-medium">Tracking: </span>
+                          {o.tracking_number.split(',').map((t, i) => (
+                            <span key={i} className="font-mono text-[#1e3a5f]">
+                              {i > 0 && ', '}{t.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-amber-500 font-medium">No Tracking Data</span>
+                      )}
+                    </div>
+                    {/* Items */}
+                    {o.lines && o.lines.length > 0 && (
+                      <table className="w-full text-xs">
+                        <tbody className="divide-y divide-gray-100">
+                          {o.lines.map((l, i) => (
+                            <tr key={i}>
+                              <td className="py-1 text-gray-800">{l.item_name}</td>
+                              <td className="py-1 w-20">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                  l.item_type === 'lesson' ? 'bg-blue-100 text-blue-700' :
+                                  l.item_type === 'start_kit' ? 'bg-green-100 text-green-700' :
+                                  l.item_type === 'degree' ? 'bg-purple-100 text-purple-700' :
+                                  l.item_type === 'bin' ? 'bg-orange-100 text-orange-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>{l.item_type.replace('_', ' ')}</span>
+                              </td>
+                              <td className="py-1 w-10 text-center text-gray-500">x{l.quantity}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

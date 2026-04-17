@@ -832,6 +832,32 @@ router.get('/shipments', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Shipment lookup by professor — returns orders with line items and tracking
+router.get('/shipments/professor/:profId', async (req, res, next) => {
+  try {
+    const [orders] = await pool.query(
+      `SELECT so.*, sc.start_date AS cycle_start, sc.end_date AS cycle_end,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              ga.geographic_area_name AS area
+       FROM shipment_order so
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
+       LEFT JOIN shipment_cycle sc ON sc.id = so.cycle_id
+       WHERE so.professor_id = ? AND so.status != 'cancelled'
+       ORDER BY so.created_at DESC`,
+      [req.params.profId]
+    );
+    for (const order of orders) {
+      const [lines] = await pool.query(
+        'SELECT item_name, item_type, quantity, notes FROM shipment_order_line WHERE order_id = ? AND skip_flag = 0 ORDER BY item_type, item_name',
+        [order.id]
+      );
+      order.lines = lines;
+    }
+    res.json({ success: true, data: orders });
+  } catch (err) { next(err); }
+});
+
 // Unship — revert shipped order back to pending (allowed until tracking CSV imported)
 router.patch('/orders/:id/unship', async (req, res, next) => {
   try {
