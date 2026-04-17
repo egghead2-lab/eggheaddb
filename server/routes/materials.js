@@ -678,13 +678,16 @@ router.get('/cycles/:id/mid-cycle-flags', async (req, res, next) => {
               (SELECT MIN(s.session_date) FROM session s WHERE s.program_id = sol.program_id AND s.active = 1
                 AND s.session_date BETWEEN ? AND ?) AS earliest_session_date,
               sr.id AS resolution_id, sr.resolution, sr.quantity_resolved, sr.notes AS resolution_notes,
-              sr.resolved_at
+              sr.resolved_at, sr.acknowledged_at, sr.shipped_at,
+              CONCAT(rb.first_name, ' ', rb.last_name) AS resolved_by_name,
+              p.scheduling_coordinator_owner_id AS sc_owner_id
        FROM shipment_order_line sol
        JOIN shipment_order so ON so.id = sol.order_id
        JOIN professor p ON p.id = so.professor_id
        LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN program prog ON prog.id = sol.program_id
        LEFT JOIN shipment_resolution sr ON sr.order_line_id = sol.id
+       LEFT JOIN user rb ON rb.id = sr.resolved_by_user_id
        WHERE so.cycle_id = ? AND sol.source = 'mid_cycle' AND so.status != 'cancelled'
        ORDER BY ga.geographic_area_name, p.professor_nickname, sol.item_name`,
       [cycleStart, cycleEnd, id]
@@ -862,56 +865,79 @@ router.post('/orders/bulk-unship', async (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// RESOLUTIONS — acknowledge and ship mid-cycle flagged items
+// RESOLUTIONS — two-step: schedulers resolve → warehouse acknowledges/ships
 // ═══════════════════════════════════════════════════════════════════
 
-// Acknowledge a flagged item (scheduler confirms they've seen it)
-router.post('/resolutions/acknowledge', async (req, res, next) => {
+// Step 1: Scheduler submits a resolution (type + optional qty + notes)
+router.post('/resolutions/resolve', async (req, res, next) => {
   try {
-    const { order_line_id, notes } = req.body;
-    if (!order_line_id) return res.status(400).json({ success: false, error: 'order_line_id required' });
+    const { order_line_id, resolution, quantity_resolved, notes } = req.body;
+    if (!order_line_id || !resolution) return res.status(400).json({ success: false, error: 'order_line_id and resolution required' });
     await pool.query(
-      `INSERT INTO shipment_resolution (order_line_id, resolution, notes, resolved_by_user_id)
-       VALUES (?, 'acknowledged', ?, ?)
-       ON DUPLICATE KEY UPDATE resolution = 'acknowledged', notes = VALUES(notes),
-         resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW()`,
-      [order_line_id, notes || null, req.user.userId]
+      `INSERT INTO shipment_resolution (order_line_id, resolution, quantity_resolved, notes, resolved_by_user_id)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE resolution = VALUES(resolution), quantity_resolved = VALUES(quantity_resolved),
+         notes = VALUES(notes), resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW(),
+         acknowledged_at = NULL, acknowledged_by = NULL, shipped_at = NULL, shipped_by = NULL`,
+      [order_line_id, resolution, quantity_resolved || null, notes || null, req.user.userId]
     );
     res.json({ success: true });
   } catch (err) { next(err); }
 });
 
-// Mark individual flagged item as shipped
+// Step 2a: Warehouse acknowledges a resolved item
+router.post('/resolutions/acknowledge', async (req, res, next) => {
+  try {
+    const { order_line_id } = req.body;
+    if (!order_line_id) return res.status(400).json({ success: false, error: 'order_line_id required' });
+    await pool.query(
+      'UPDATE shipment_resolution SET acknowledged_at = NOW(), acknowledged_by = ? WHERE order_line_id = ?',
+      [req.user.userId, order_line_id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Undo acknowledge
+router.post('/resolutions/unacknowledge', async (req, res, next) => {
+  try {
+    const { order_line_id } = req.body;
+    if (!order_line_id) return res.status(400).json({ success: false, error: 'order_line_id required' });
+    await pool.query(
+      'UPDATE shipment_resolution SET acknowledged_at = NULL, acknowledged_by = NULL WHERE order_line_id = ? AND shipped_at IS NULL',
+      [order_line_id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Step 2b: Warehouse marks item as shipped
 router.post('/resolutions/ship', async (req, res, next) => {
   try {
     const { order_line_id } = req.body;
     if (!order_line_id) return res.status(400).json({ success: false, error: 'order_line_id required' });
-    // Update the resolution to 'shipped'
     await pool.query(
-      `INSERT INTO shipment_resolution (order_line_id, resolution, resolved_by_user_id)
-       VALUES (?, 'shipped', ?)
-       ON DUPLICATE KEY UPDATE resolution = 'shipped', resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW()`,
-      [order_line_id, req.user.userId]
+      'UPDATE shipment_resolution SET shipped_at = NOW(), shipped_by = ?, acknowledged_at = COALESCE(acknowledged_at, NOW()), acknowledged_by = COALESCE(acknowledged_by, ?) WHERE order_line_id = ?',
+      [req.user.userId, req.user.userId, order_line_id]
     );
     res.json({ success: true });
   } catch (err) { next(err); }
 });
 
-// Bulk mark flagged items as shipped
+// Bulk ship
 router.post('/resolutions/bulk-ship', async (req, res, next) => {
   try {
     const { order_line_ids } = req.body;
     if (!Array.isArray(order_line_ids) || order_line_ids.length === 0) {
       return res.status(400).json({ success: false, error: 'No items selected' });
     }
-    for (const lineId of order_line_ids) {
-      await pool.query(
-        `INSERT INTO shipment_resolution (order_line_id, resolution, resolved_by_user_id)
-         VALUES (?, 'shipped', ?)
-         ON DUPLICATE KEY UPDATE resolution = 'shipped', resolved_by_user_id = VALUES(resolved_by_user_id), resolved_at = NOW()`,
-        [lineId, req.user.userId]
-      );
-    }
+    const placeholders = order_line_ids.map(() => '?').join(',');
+    await pool.query(
+      `UPDATE shipment_resolution SET shipped_at = NOW(), shipped_by = ?,
+        acknowledged_at = COALESCE(acknowledged_at, NOW()), acknowledged_by = COALESCE(acknowledged_by, ?)
+       WHERE order_line_id IN (${placeholders})`,
+      [req.user.userId, req.user.userId, ...order_line_ids]
+    );
     res.json({ success: true, shipped: order_line_ids.length });
   } catch (err) { next(err); }
 });
