@@ -514,7 +514,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
               cs.class_status_name,
               loc.nickname AS location_nickname, loc.school_name, loc.address,
               loc.point_of_contact AS location_contact,
-              cl.class_name, cl.class_code,
+              cl.class_name, cl.class_code, prog.grade_range,
               pt.program_type_name,
               ct.class_type_name
        FROM program prog

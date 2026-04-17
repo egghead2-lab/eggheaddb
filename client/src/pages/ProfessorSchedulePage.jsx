@@ -78,7 +78,7 @@ function ProgramTable({ programs, profId, isLead, viewOnly, sessions, subDateSet
                       <Link to={`/locations/${p.location_id}/info-sheet`} className="text-[#1e3a5f] hover:underline">{p.location_nickname}</Link>
                     ) : p.location_nickname || '—'}
                   </td>
-                  <td className="px-3 py-2 text-gray-600">{p.class_name || '—'}</td>
+                  <td className="px-3 py-2 text-gray-600">{p.class_name || '—'}{p.grade_range ? <span className="ml-1 text-xs text-gray-400">({p.grade_range})</span> : ''}</td>
                   <td className="px-3 py-2 text-gray-600">{getDayString(p)}</td>
                   <td className="px-3 py-2 text-gray-600">{p.start_time ? formatTime(p.start_time) : '—'}</td>
                   <td className="px-3 py-2 text-xs text-gray-500">

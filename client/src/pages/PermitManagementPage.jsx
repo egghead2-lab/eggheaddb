@@ -232,13 +232,13 @@ function PermitCard({ pr, stage, cfg, onAdvance, onRevert }) {
           {confirming ? (
             <div className="flex items-center gap-1">
               <Button size="sm" onClick={() => { onAdvance(); setConfirming(false); }}>
-                {stage === 'needs_permit' ? 'Yes, Mark Sent' : 'Yes, Approve'}
+                {stage === 'needs_permit' ? 'Yes, Mark Sent' : 'Yes, Permit Approved'}
               </Button>
               <button onClick={() => setConfirming(false)} className="text-xs text-gray-400">Cancel</button>
             </div>
           ) : (
             <Button size="sm" onClick={() => setConfirming(true)}>
-              {stage === 'needs_permit' ? 'Mark Sent' : 'Approve Permit'}
+              {stage === 'needs_permit' ? 'Mark Sent' : 'Permit Approved'}
             </Button>
           )}
         </div>
