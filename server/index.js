@@ -39,6 +39,7 @@ const plannerRoutes = require('./routes/planner');
 const curriculumRoutes = require('./routes/curriculum');
 const quickbooksRoutes = require('./routes/quickbooks');
 const labFeesRoutes = require('./routes/lab-fees');
+const trainualRoutes = require('./routes/trainual');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -167,6 +168,7 @@ app.use('/api/planner', plannerRoutes);
 app.use('/api/curriculum', curriculumRoutes);
 app.use('/api/quickbooks', quickbooksRoutes);
 app.use('/api/lab-fees', labFeesRoutes);
+app.use('/api/trainual', trainualRoutes);
 
 // Error handler
 app.use(errorHandler);

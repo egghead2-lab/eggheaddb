@@ -122,7 +122,8 @@ export default function CandidatePortalPage() {
         {/* Tentative Schedule */}
         {(portal.schedule || []).length > 0 && (
           <CandidateScheduleView schedule={portal.schedule} scheduleReady={portal.schedule_ready}
-            scheduleConfirmedAt={portal.schedule_confirmed_at} scheduleChanged={portal.schedule_changed_since_confirm} />
+            scheduleConfirmedAt={portal.schedule_confirmed_at} scheduleChanged={portal.schedule_changed_since_confirm}
+            portal={portal} />
         )}
 
         {/* Requirements checklist */}
@@ -356,7 +357,7 @@ const SCHED_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday
 const SCHED_DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function getSchedDays(p) { return SCHED_DAYS.map((d, i) => p[d] ? SCHED_DAY_ABBR[i] : null).filter(Boolean).join(', '); }
 
-function CandidateScheduleView({ schedule, scheduleReady, scheduleConfirmedAt, scheduleChanged }) {
+function CandidateScheduleView({ schedule, scheduleReady, scheduleConfirmedAt, scheduleChanged, portal }) {
   const qc = useQueryClient();
 
   const confirmMutation = useMutation({

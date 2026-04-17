@@ -52,13 +52,15 @@ router.get('/candidates', async (req, res, next) => {
               IF(c.user_id IS NOT NULL, 1, 0) AS has_login,
               cu.user_name AS login_username,
               cu.last_login_at,
-              (SELECT COUNT(*) FROM candidate_message cm WHERE cm.candidate_id = c.id AND cm.is_from_candidate = 1) AS candidate_messages
+              (SELECT COUNT(*) FROM candidate_message cm WHERE cm.candidate_id = c.id AND cm.is_from_candidate = 1) AS candidate_messages,
+              tu.avg_completion AS trainual_completion, tu.status AS trainual_status
        FROM candidate c
        LEFT JOIN user cu ON cu.id = c.user_id
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN user onb ON onb.id = c.onboarder_user_id
        LEFT JOIN user tr ON tr.id = c.trainer_user_id
        LEFT JOIN user rec ON rec.id = c.recruiter_user_id
+       LEFT JOIN trainual_user tu ON tu.trainual_user_id = c.trainual_user_id
        ${where}
        ORDER BY ${sortCol} ${sortDir}
        LIMIT ? OFFSET ?`,
@@ -89,7 +91,8 @@ router.get('/candidates/:id', async (req, res, next) => {
               cu.user_name AS login_username,
               cu.password_plain AS login_password,
               cu.active AS login_active,
-              r.role_name AS login_role
+              r.role_name AS login_role,
+              tu.avg_completion AS trainual_completion, tu.status AS trainual_status
        FROM candidate c
        LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
        LEFT JOIN user onb ON onb.id = c.onboarder_user_id
@@ -99,6 +102,7 @@ router.get('/candidates/:id', async (req, res, next) => {
        LEFT JOIN user fm ON fm.id = c.field_manager_user_id
        LEFT JOIN user cu ON cu.id = c.user_id
        LEFT JOIN role r ON r.id = cu.role_id
+       LEFT JOIN trainual_user tu ON tu.trainual_user_id = c.trainual_user_id
        WHERE c.id = ?`, [id]
     );
     if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
@@ -446,6 +450,25 @@ router.post('/candidates/:id/hire', async (req, res, next) => {
             [profResult.insertId, ap.program_id]);
         }
       }
+    }
+
+    // If candidate is in Trainual, swap "In Training" → "Sci & Eng Professor"
+    if (candidate.trainual_user_id) {
+      try {
+        const { isConfigured, trainualPut } = require('../lib/trainual');
+        if (isConfigured()) {
+          const inTrainingRoleId = parseInt(process.env.TRAINUAL_ROLE_IN_TRAINING);
+          const sciEngRoleId = parseInt(process.env.TRAINUAL_ROLE_SCI_ENG_PROFESSOR);
+          if (inTrainingRoleId) {
+            try { await trainualPut(`/users/${candidate.trainual_user_id}/unassign_roles`, { role_ids: [inTrainingRoleId] }); }
+            catch (e) { console.warn('Trainual unassign In Training failed:', e.message); }
+          }
+          if (sciEngRoleId) {
+            try { await trainualPut(`/users/${candidate.trainual_user_id}/assign_roles`, { role_ids: [sciEngRoleId] }); }
+            catch (e) { console.warn('Trainual assign Sci & Eng Professor failed:', e.message); }
+          }
+        }
+      } catch (e) { console.warn('Trainual role swap failed:', e.message); }
     }
 
     res.json({ success: true, professor_id: profResult.insertId });

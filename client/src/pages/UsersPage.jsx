@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getUsers } from '../api/users';
 import { getRoles, createRole, updateRole, deleteRole } from '../api/reference';
+import { syncTrainual } from '../api/trainual';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Badge } from '../components/ui/Badge';
@@ -43,6 +44,12 @@ export default function UsersPage() {
   const roleDeleteMutation = useMutation({
     mutationFn: (id) => deleteRole(id),
     onSuccess: () => { qc.invalidateQueries(['roles']); qc.invalidateQueries(['users']); },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: syncTrainual,
+    onSuccess: (res) => { qc.invalidateQueries(['users']); alert(`Synced ${res.synced} Trainual users`); },
+    onError: (err) => alert('Sync failed: ' + (err?.response?.data?.error || err.message)),
   });
 
   const handleSort = (col) => {
@@ -92,6 +99,10 @@ export default function UsersPage() {
               <Button variant="secondary" onClick={() => setShowNewRole(true)}>+ New Role</Button>
             </>
           )}
+          <button type="button" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}
+            className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">
+            {syncMutation.isPending ? 'Syncing…' : 'Sync Trainual'}
+          </button>
           <Link to="/users/new"><Button>+ New User</Button></Link>
         </div>
       }>
@@ -163,12 +174,13 @@ export default function UsersPage() {
                     <SortTh col="username" sort={sort} dir={dir} onSort={handleSort}>Username</SortTh>
                     <SortTh col="email" sort={sort} dir={dir} onSort={handleSort}>Email</SortTh>
                     {viewType === 'staff' && <SortTh col="role" sort={sort} dir={dir} onSort={handleSort}>Role</SortTh>}
+                    {viewType === 'staff' && <th className="text-center px-3 py-3 font-semibold text-gray-700">Trainual %</th>}
                     <SortTh col="last_login" sort={sort} dir={dir} onSort={handleSort}>Last Login</SortTh>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {users.length === 0 ? (
-                    <tr><td colSpan={viewType === 'staff' ? 5 : 4} className="text-center py-12 text-gray-400">No users found</td></tr>
+                    <tr><td colSpan={viewType === 'staff' ? 6 : 4} className="text-center py-12 text-gray-400">No users found</td></tr>
                   ) : users.map((u, i) => (
                     <tr key={u.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className="px-4 py-2.5">
@@ -179,6 +191,15 @@ export default function UsersPage() {
                       <td className="px-4 py-2.5 text-gray-600">{u.user_name}</td>
                       <td className="px-4 py-2.5 text-gray-600">{u.email}</td>
                       {viewType === 'staff' && <td className="px-4 py-2.5"><Badge status={u.role_name} /></td>}
+                      {viewType === 'staff' && <td className="px-3 py-2.5 text-center">
+                        {u.trainual_completion != null ? (
+                          (() => {
+                            const n = Number(u.trainual_completion);
+                            const cls = n >= 80 ? 'text-green-600' : n >= 50 ? 'text-amber-600' : 'text-red-600';
+                            return <span className={`text-xs font-semibold ${cls}`}>{Math.round(n)}%</span>;
+                          })()
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>}
                       <td className="px-3 py-2.5 text-xs text-gray-500">
                         {u.last_login_at ? formatDate(u.last_login_at) : <span className="text-gray-300">Never</span>}
                       </td>

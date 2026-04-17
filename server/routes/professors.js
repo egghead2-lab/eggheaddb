@@ -51,7 +51,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const sortMap = {
       nickname: 'p.professor_nickname', status: 'ps.professor_status_name',
       area: 'ga.geographic_area_name', base_pay: 'p.base_pay', rating: 'p.rating',
-      programs: 'active_program_count',
+      programs: 'active_program_count', trainual: 'tu.avg_completion',
     };
     const sortCol = sortMap[sort] || 'p.professor_nickname';
     const sortDir = dir === 'desc' ? 'DESC' : 'ASC';
@@ -67,12 +67,14 @@ router.get('/', authenticate, async (req, res, next) => {
               (SELECT COUNT(*) FROM livescan l WHERE l.professor_id = p.id AND l.active = 1) AS livescan_count,
               (SELECT COUNT(*) FROM availability a WHERE a.professor_id = p.id AND a.active = 1) AS availability_count,
               (SELECT COUNT(*) FROM program pr LEFT JOIN class_status cs2 ON cs2.id = pr.class_status_id WHERE pr.active = 1 AND (pr.lead_professor_id = p.id OR pr.assistant_professor_id = p.id) AND cs2.class_status_name NOT LIKE 'Cancelled%' AND (pr.last_session_date >= CURDATE() OR pr.last_session_date IS NULL)) AS active_program_count,
-              p.last_evaluation_date, p.last_evaluation_result, p.hire_date
+              p.last_evaluation_date, p.last_evaluation_result, p.hire_date,
+              tu.trainual_user_id, tu.avg_completion AS trainual_completion, tu.status AS trainual_status
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
        LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN user sc_user ON sc_user.id = p.scheduling_coordinator_owner_id
+       LEFT JOIN trainual_user tu ON tu.email = LOWER(p.email)
        ${where}
        ORDER BY ${sortCol} ${sortDir}, p.last_name ASC
        LIMIT ? OFFSET ?`,

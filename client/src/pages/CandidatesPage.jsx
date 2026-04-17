@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
+import { syncTrainualCandidates } from '../api/trainual';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -15,6 +16,7 @@ import { SortTh } from '../components/ui/SortTh';
 const STATUS_LABELS = { pending: 'Pending', in_progress: 'In Progress', complete: 'Complete', rejected: 'Rejected', hired: 'Hired' };
 
 export default function CandidatesPage() {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [area, setArea] = useState('');
@@ -25,6 +27,18 @@ export default function CandidatesPage() {
 
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
+
+  const syncMutation = useMutation({
+    mutationFn: syncTrainualCandidates,
+    onSuccess: (res) => {
+      qc.invalidateQueries(['candidates']);
+      const parts = [`${res.synced} synced`];
+      if (res.cleared) parts.push(`${res.cleared} cleared (deleted in Trainual)`);
+      if (res.failed) parts.push(`${res.failed} failed`);
+      alert(parts.join(', '));
+    },
+    onError: (err) => alert('Sync failed: ' + (err?.response?.data?.error || err.message)),
+  });
 
   const handleSort = (col) => {
     if (sort === col) setDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -82,6 +96,10 @@ export default function CandidatesPage() {
               All
             </button>
           </div>
+          <button type="button" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}
+            className="text-xs text-gray-400 hover:text-[#1e3a5f] py-2">
+            {syncMutation.isPending ? 'Syncing…' : 'Sync Trainual'}
+          </button>
           <Link to="/candidates/new"><Button>+ New Candidate</Button></Link>
         </div>
       }>
@@ -131,6 +149,7 @@ export default function CandidatesPage() {
                     <SortTh col="area" sort={sort} dir={dir} onSort={handleSort}>Area</SortTh>
                     <SortTh col="status" sort={sort} dir={dir} onSort={handleSort}>Status</SortTh>
                     <th className="text-left px-4 py-3 font-semibold text-gray-700">Onboarder / Trainer</th>
+                    <th className="text-center px-3 py-3 font-semibold text-gray-700 w-20">Trainual %</th>
                     <th className="text-center px-3 py-3 font-semibold text-gray-700 w-24">Checklist</th>
                     <th className="text-center px-3 py-3 font-semibold text-gray-700 w-20">Tasks</th>
                     <th className="text-center px-3 py-3 font-semibold text-gray-700 w-20">Login</th>
@@ -140,7 +159,7 @@ export default function CandidatesPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {candidates.length === 0 ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-gray-400">No candidates found</td></tr>
+                    <tr><td colSpan={11} className="text-center py-12 text-gray-400">No candidates found</td></tr>
                   ) : candidates.map((c, i) => {
                     const progress = c.total_reqs > 0 ? Math.round(((c.total_reqs - c.open_reqs) / c.total_reqs) * 100) : 0;
                     return (
@@ -155,6 +174,15 @@ export default function CandidatesPage() {
                           {c.onboarder_name && <div>{c.onboarder_name}</div>}
                           {c.trainer_name && <div className="text-gray-400">{c.trainer_name}</div>}
                           {!c.onboarder_name && !c.trainer_name && '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {c.trainual_completion != null ? (
+                            (() => {
+                              const n = Number(c.trainual_completion);
+                              const cls = n >= 80 ? 'text-green-600' : n >= 50 ? 'text-amber-600' : 'text-red-600';
+                              return <span className={`text-xs font-semibold ${cls}`}>{Math.round(n)}%</span>;
+                            })()
+                          ) : <span className="text-[10px] text-gray-400">Not Invited</span>}
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           {c.total_reqs > 0 ? (

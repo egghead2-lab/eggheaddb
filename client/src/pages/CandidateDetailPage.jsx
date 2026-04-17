@@ -13,6 +13,7 @@ import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
+import { inviteCandidate } from '../api/trainual';
 
 const STATUS_LABELS = { pending: 'Pending', in_progress: 'In Progress', complete: 'Complete', rejected: 'Rejected', hired: 'Hired' };
 const STATUS_OPTIONS = ['pending', 'in_progress', 'complete', 'rejected'];
@@ -160,6 +161,12 @@ export default function CandidateDetailPage() {
     onSuccess: () => qc.invalidateQueries(['candidate', id]),
   });
 
+  const inviteTrainualMutation = useMutation({
+    mutationFn: () => inviteCandidate(id),
+    onSuccess: () => qc.invalidateQueries(['candidate', id]),
+    onError: (err) => alert('Trainual invite failed: ' + (err?.response?.data?.error || err.message)),
+  });
+
   const hireMutation = useMutation({
     mutationFn: () => {
       const schedule = candidate.schedule || [];
@@ -222,6 +229,18 @@ export default function CandidateDetailPage() {
                   className="text-[10px] text-gray-400 hover:text-gray-600 underline">Back to Onboarding</button>
               )}
               {!isNew && <Link to={`/candidates/${id}/profile`} className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">Profile & Settings</Link>}
+              {!isNew && candidate.status !== 'hired' && !candidate.trainual_user_id && candidate.email && (
+                <button type="button" onClick={() => inviteTrainualMutation.mutate()}
+                  disabled={inviteTrainualMutation.isPending}
+                  className="px-3 py-1.5 text-xs text-violet-700 border border-violet-200 rounded-lg hover:bg-violet-50 disabled:opacity-50">
+                  {inviteTrainualMutation.isPending ? 'Inviting…' : 'Invite to Trainual'}
+                </button>
+              )}
+              {!isNew && candidate.trainual_user_id && (
+                <span className="text-[10px] px-2 py-1 rounded-lg bg-violet-100 text-violet-700 font-medium" title={`Trainual ${candidate.trainual_status || 'invited'}`}>
+                  Trainual: {candidate.trainual_completion != null ? `${Math.round(Number(candidate.trainual_completion))}%` : (candidate.trainual_status || 'pending')}
+                </span>
+              )}
               {!isNew && candidate.status !== 'hired' && (
                 <>
                   <button type="button" onClick={() => setShowDeactivate(v => !v)}

@@ -40,9 +40,11 @@ router.get('/', async (req, res, next) => {
 
     const [rows] = await pool.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.user_name,
-              r.role_name, u.last_login_at, u.ts_inserted, u.ts_updated
+              r.role_name, u.last_login_at, u.ts_inserted, u.ts_updated,
+              tu.avg_completion AS trainual_completion, tu.status AS trainual_status
        FROM user u
        LEFT JOIN role r ON r.id = u.role_id
+       LEFT JOIN trainual_user tu ON tu.email = LOWER(u.email)
        ${where}
        ORDER BY ${sortCol} ${sortDir}
        LIMIT ? OFFSET ?`,
