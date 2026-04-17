@@ -729,10 +729,12 @@ router.get('/bug-reports', authenticate, async (req, res, next) => {
 
 router.put('/bug-reports/:id', authenticate, async (req, res, next) => {
   try {
-    const { status, admin_notes } = req.body;
+    const { status, admin_notes, fixed } = req.body;
     const sets = []; const vals = [];
     if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
     if (admin_notes !== undefined) { sets.push('admin_notes = ?'); vals.push(admin_notes); }
+    if (fixed === true) { sets.push('fixed_at = NOW()'); }
+    if (fixed === false) { sets.push('fixed_at = NULL'); }
     if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     await pool.query(`UPDATE bug_report SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
     res.json({ success: true });

@@ -55,10 +55,10 @@ export default function BugBountyPage() {
     onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); setConfirmPay(false); },
   });
 
-  // Split active vs closed
-  const activeBugs = allBugs.filter(b => !['fixed', 'rejected'].includes(b.status));
-  const closedBugs = allBugs.filter(b => ['fixed', 'rejected'].includes(b.status));
-  const unpaidCount = allBugs.filter(b => ['approved_minor', 'approved_major', 'fixed'].includes(b.status) && !b.paid_at).length;
+  // Split active vs closed — fixed is now a separate flag, not a status
+  const activeBugs = allBugs.filter(b => !b.fixed_at && b.status !== 'rejected');
+  const closedBugs = allBugs.filter(b => b.fixed_at || b.status === 'rejected');
+  const unpaidCount = allBugs.filter(b => ['approved_minor', 'approved_major'].includes(b.status) && !b.paid_at).length;
 
   return (
     <AppShell>
@@ -183,7 +183,7 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
             <span>{formatDate(b.ts_inserted)}</span>
             {b.page_name && <span className="font-mono text-[10px] bg-gray-100 px-1 rounded">{b.page_name}</span>}
             {b.paid_at && <span className="text-green-600 font-medium">Paid {formatDate(b.paid_at)}</span>}
-            {!b.paid_at && ['approved_minor', 'approved_major', 'fixed'].includes(b.status) && (
+            {!b.paid_at && ['approved_minor', 'approved_major'].includes(b.status) && (
               <span className="text-amber-500 font-medium">Unpaid</span>
             )}
           </div>
@@ -192,6 +192,7 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
           <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${STATUS_COLORS[b.status]}`}>
             {STATUS_LABELS[b.status]}
           </span>
+          {b.fixed_at && <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700">Fixed</span>}
           {isAdmin && (
             <div className="flex gap-1">
               {b.status !== 'approved_minor' && (
@@ -206,9 +207,12 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
                 <button onClick={() => onUpdate.mutate({ id: b.id, status: 'rejected' })}
                   className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Reject</button>
               )}
-              {(b.status === 'approved_minor' || b.status === 'approved_major') && b.status !== 'fixed' && (
-                <button onClick={() => onUpdate.mutate({ id: b.id, status: 'fixed' })}
+              {!b.fixed_at ? (
+                <button onClick={() => onUpdate.mutate({ id: b.id, fixed: true })}
                   className="text-[10px] text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded hover:bg-emerald-50">Fixed</button>
+              ) : (
+                <button onClick={() => onUpdate.mutate({ id: b.id, fixed: false })}
+                  className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Unfixed</button>
               )}
               {b.status !== 'new' && (
                 <button onClick={() => onUpdate.mutate({ id: b.id, status: 'new' })}
