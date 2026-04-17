@@ -1023,7 +1023,13 @@ export default function ProfessorDetailPage() {
   const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
 
   useEffect(() => {
-    if (profData?.data) reset(toFormData(profData.data));
+    if (profData?.data) {
+      const fd = toFormData(profData.data);
+      fd._city_name = profData.data.city_name || '';
+      fd._state_code = profData.data.state_code || '';
+      fd._zip_code = profData.data.zip_code || '';
+      reset(fd);
+    }
   }, [profData]);
 
   const [saveStatus, setSaveStatus] = useState(null);
