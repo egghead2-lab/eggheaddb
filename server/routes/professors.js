@@ -224,7 +224,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
               prog.program_nickname, prog.location_id,
               prog.lead_professor_id, prog.assistant_professor_id,
               cs.class_status_name,
-              loc.nickname AS location_nickname
+              loc.nickname AS location_nickname, prog.party_city
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
@@ -238,7 +238,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
     const [activePrograms] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.last_session_date,
-              prog.session_count, cs.class_status_name, loc.nickname AS location_nickname,
+              prog.session_count, cs.class_status_name, loc.nickname AS location_nickname, prog.party_city,
               CASE WHEN prog.lead_professor_id = ? THEN 'Lead' ELSE 'Assist' END AS role
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
