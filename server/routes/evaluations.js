@@ -187,8 +187,51 @@ router.get('/dashboard', async (req, res, next) => {
       [...areaParams]
     );
 
-    // Bulk fetch last rating for all professors
+    // Bulk fetch first upcoming session date per professor (for "never evaluated" due date)
     const profIds = professors.map(p => p.id);
+    const firstSessionMap = {};
+    if (profIds.length > 0) {
+      const [firstSessions] = await pool.query(
+        `SELECT prof_id, MIN(session_date) AS first_date FROM (
+           SELECT COALESCE(s.professor_id, p.lead_professor_id) AS prof_id, s.session_date
+           FROM session s
+           JOIN program p ON p.id = s.program_id AND p.active = 1
+           LEFT JOIN class_status cs ON cs.id = p.class_status_id
+           WHERE s.active = 1 AND s.session_date >= CURDATE()
+             AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
+             AND (s.professor_id IN (?) OR s.assistant_id IN (?) OR p.lead_professor_id IN (?) OR p.assistant_professor_id IN (?))
+         ) AS all_sessions
+         WHERE prof_id IS NOT NULL
+         GROUP BY prof_id`,
+        [profIds, profIds, profIds, profIds]
+      );
+      firstSessions.forEach(r => {
+        const d = r.first_date instanceof Date ? r.first_date.toISOString().split('T')[0] : r.first_date;
+        firstSessionMap[r.prof_id] = d;
+      });
+      // Also check historical first session (for professors who've taught before) as fallback
+      const missing = profIds.filter(id => !firstSessionMap[id]);
+      if (missing.length > 0) {
+        const [pastFirst] = await pool.query(
+          `SELECT prof_id, MIN(session_date) AS first_date FROM (
+             SELECT COALESCE(s.professor_id, p.lead_professor_id) AS prof_id, s.session_date
+             FROM session s
+             JOIN program p ON p.id = s.program_id AND p.active = 1
+             WHERE s.active = 1
+               AND (s.professor_id IN (?) OR s.assistant_id IN (?) OR p.lead_professor_id IN (?) OR p.assistant_professor_id IN (?))
+           ) AS all_sessions
+           WHERE prof_id IS NOT NULL
+           GROUP BY prof_id`,
+          [missing, missing, missing, missing]
+        );
+        pastFirst.forEach(r => {
+          const d = r.first_date instanceof Date ? r.first_date.toISOString().split('T')[0] : r.first_date;
+          firstSessionMap[r.prof_id] = d;
+        });
+      }
+    }
+
+    // Bulk fetch last rating for all professors
     const ratingMap = {};
     if (profIds.length > 0) {
       const [ratings] = await pool.query(
@@ -230,12 +273,20 @@ router.get('/dashboard', async (req, res, next) => {
 
       let daysUntilDue = null;
       let overdueDays = null;
+      let firstDueDate = null;
       if (neverEvaluated) {
-        // Due immediately if hired
-        if (hireDate) {
-          // First eval due after frequency_days from hire
+        // First eval due on the date of the professor's first class
+        const firstSessionDateStr = firstSessionMap[p.id];
+        if (firstSessionDateStr) {
+          const firstDue = new Date(firstSessionDateStr + 'T00:00:00');
+          firstDueDate = firstSessionDateStr;
+          daysUntilDue = Math.floor((firstDue - today) / 86400000);
+          if (daysUntilDue < 0) overdueDays = Math.abs(daysUntilDue);
+        } else if (hireDate) {
+          // Fallback: if no sessions, use hire date + tier frequency (capped at 45d)
           const firstDue = new Date(hireDate);
           firstDue.setDate(firstDue.getDate() + Math.min(frequencyDays, 45));
+          firstDueDate = firstDue.toISOString().split('T')[0];
           daysUntilDue = Math.floor((firstDue - today) / 86400000);
           if (daysUntilDue < 0) overdueDays = Math.abs(daysUntilDue);
         }
@@ -256,6 +307,8 @@ router.get('/dashboard', async (req, res, next) => {
         days_until_due: daysUntilDue,
         overdue_days: overdueDays,
         is_overdue: overdueDays !== null && overdueDays > 0,
+        first_due_date: firstDueDate,
+        first_session_date: firstSessionMap[p.id] || null,
         current_rating: ratingMap[p.id] || p.last_evaluation_result || null,
       };
     });
@@ -510,6 +563,81 @@ router.get('/observations/history', async (req, res, next) => {
     }
 
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// GET /api/evaluations/professor/:id/upcoming-sessions
+// Returns the professor's next N sessions with existing observer/evaluator info
+// ═══════════════════════════════════════════════════════════════════
+router.get('/professor/:id/upcoming-sessions', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(parseInt(req.query.limit || '3'), 20);
+
+    const [sessions] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.session_time,
+              s.professor_id AS session_prof_id, s.assistant_id AS session_assist_id,
+              p.id AS program_id, p.program_nickname, p.start_time, p.class_length_minutes,
+              p.lead_professor_id, p.assistant_professor_id,
+              loc.id AS location_id, loc.nickname AS location_nickname, loc.address,
+              p.party_city,
+              lp.professor_nickname AS lead_professor_name, lp.phone_number AS lead_professor_phone,
+              ap.professor_nickname AS assistant_professor_name,
+              ct.class_type_name, l.lesson_name,
+              ga.geographic_area_name
+       FROM session s
+       JOIN program p ON p.id = s.program_id AND p.active = 1
+       LEFT JOIN class_status cs ON cs.id = p.class_status_id
+       LEFT JOIN location loc ON loc.id = p.location_id
+       LEFT JOIN professor lp ON lp.id = p.lead_professor_id
+       LEFT JOIN professor ap ON ap.id = p.assistant_professor_id
+       LEFT JOIN class cl ON cl.id = p.class_id
+       LEFT JOIN class_type ct ON ct.id = cl.class_type_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
+       WHERE s.active = 1 AND s.session_date >= CURDATE()
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
+         AND (s.professor_id = ? OR s.assistant_id = ? OR p.lead_professor_id = ? OR p.assistant_professor_id = ?)
+       ORDER BY s.session_date ASC, s.session_time ASC
+       LIMIT ?`,
+      [id, id, id, id, limit]
+    );
+
+    if (sessions.length === 0) return res.json({ success: true, data: [] });
+
+    // Find existing observations/evaluations for this professor on these dates
+    const dates = [...new Set(sessions.map(s => (s.session_date instanceof Date ? s.session_date.toISOString().split('T')[0] : s.session_date)))];
+
+    const [existingObs] = await pool.query(
+      `SELECT po.id, po.professor_id, po.program_id, po.observation_date, po.observation_type,
+              po.status, po.evaluator_professor_id,
+              ep.professor_nickname AS evaluator_professor_name,
+              u.first_name AS evaluator_user_first, u.last_name AS evaluator_user_last
+       FROM professor_observation po
+       LEFT JOIN professor ep ON ep.id = po.evaluator_professor_id
+       LEFT JOIN user u ON u.id = po.assigned_by_user_id
+       WHERE po.active = 1 AND po.status != 'cancelled'
+         AND po.professor_id = ?
+         AND po.observation_date IN (${dates.map(() => '?').join(',')})`,
+      [id, ...dates]
+    );
+
+    // Attach existing observations to each session by date
+    const byDate = {};
+    existingObs.forEach(o => {
+      const d = o.observation_date instanceof Date ? o.observation_date.toISOString().split('T')[0] : o.observation_date;
+      if (!byDate[d]) byDate[d] = [];
+      byDate[d].push(o);
+    });
+
+    sessions.forEach(s => {
+      const d = s.session_date instanceof Date ? s.session_date.toISOString().split('T')[0] : s.session_date;
+      s.existing_observations = byDate[d] || [];
+      s.is_lead = s.lead_professor_id == id || s.session_prof_id == id;
+    });
+
+    res.json({ success: true, data: sessions });
   } catch (err) { next(err); }
 });
 
