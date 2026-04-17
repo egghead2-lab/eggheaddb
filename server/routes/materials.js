@@ -331,9 +331,9 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
       byProfessor[prog.lead_professor_id].push(prog);
     }
 
-    // Format ship date as M/D/YY to match Inflow's order naming
-    const shipD = new Date(cycle.ship_date instanceof Date ? cycle.ship_date : cycle.ship_date + 'T12:00:00');
-    const shipDateInflow = `${shipD.getMonth() + 1}/${shipD.getDate()}/${String(shipD.getFullYear()).slice(2)}`;
+    // Format ship date as M/D/YY to match Inflow's order naming (use UTC to avoid timezone shift)
+    const shipD = new Date(cycle.ship_date instanceof Date ? cycle.ship_date : cycle.ship_date + 'T12:00:00Z');
+    const shipDateInflow = `${shipD.getUTCMonth() + 1}/${shipD.getUTCDate()}/${String(shipD.getUTCFullYear()).slice(2)}`;
     const shipDateStr = cycle.ship_date instanceof Date
       ? cycle.ship_date.toISOString().split('T')[0]
       : String(cycle.ship_date).split('T')[0];
