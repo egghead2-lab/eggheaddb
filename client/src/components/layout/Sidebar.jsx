@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
@@ -139,6 +139,19 @@ export function Sidebar() {
 
   const pinnedTools = allTools.filter(t => pins.includes(t.path));
 
+  const navRef = useRef(null);
+  const scrollPos = useRef(0);
+
+  // Save scroll position before navigation
+  const saveScroll = useCallback(() => {
+    if (navRef.current) scrollPos.current = navRef.current.scrollTop;
+  }, []);
+
+  // Restore scroll position after render
+  useEffect(() => {
+    if (navRef.current) navRef.current.scrollTop = scrollPos.current;
+  });
+
   const [openGroups, setOpenGroups] = useState(() => {
     const initial = new Set(['Operations']);
     navGroups.forEach(g => {
@@ -220,7 +233,7 @@ export function Sidebar() {
       )}
 
       {/* Nav groups */}
-      <nav className="flex-1 py-2 px-1 overflow-y-auto">
+      <nav ref={navRef} onClickCapture={saveScroll} className="flex-1 py-2 px-1 overflow-y-auto">
         {!compact && reordering && <div className="text-[9px] text-amber-400 px-2 mb-1">Drag groups to reorder</div>}
         {navGroups.map((group, idx) => (
           <div key={group.label}
