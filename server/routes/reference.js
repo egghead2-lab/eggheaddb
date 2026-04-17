@@ -767,6 +767,16 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Mark unpaid approved/fixed bugs as paid
+router.post('/bug-reports/mark-paid', authenticate, async (req, res, next) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE bug_report SET paid_at = NOW() WHERE status IN ('approved_minor', 'approved_major', 'fixed') AND paid_at IS NULL"
+    );
+    res.json({ success: true, marked: result.affectedRows });
+  } catch (err) { next(err); }
+});
+
 // ============================================================
 // USER RESPONSIBILITIES (party_scheduler, etc.)
 // ============================================================

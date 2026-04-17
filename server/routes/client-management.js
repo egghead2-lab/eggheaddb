@@ -522,7 +522,7 @@ router.get('/rebooking/locations', authenticate, async (req, res, next) => {
        LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, loc.city_id)
        LEFT JOIN city c ON c.id = loc.city_id
        LEFT JOIN geographic_area ga2 ON ga2.id = c.geographic_area_id
-       WHERE loc.active = 1${areaWhere}
+       WHERE loc.active = 1 AND (loc.location_type_id IS NULL OR loc.location_type_id NOT IN (2, 5))${areaWhere}
        HAVING future_program_count = 0
        ORDER BY loc.school_name`,
       params

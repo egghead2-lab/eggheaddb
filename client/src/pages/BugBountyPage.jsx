@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Select } from '../components/ui/Select';
+import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { formatDate } from '../lib/utils';
@@ -23,6 +24,8 @@ export default function BugBountyPage() {
   const isAdmin = ['Admin', 'CEO'].includes(user?.role);
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
+  const [showClosed, setShowClosed] = useState(false);
+  const [confirmPay, setConfirmPay] = useState(false);
 
   const { data: lbData } = useQuery({
     queryKey: ['bug-leaderboard'],
@@ -35,7 +38,7 @@ export default function BugBountyPage() {
     queryKey: ['bug-reports', statusFilter],
     queryFn: () => api.get('/bug-reports', { params: { status: statusFilter || undefined } }).then(r => r.data),
   });
-  const bugs = data?.data || [];
+  const allBugs = data?.data || [];
 
   const updateMutation = useMutation({
     mutationFn: ({ id, status, admin_notes }) => api.put(`/bug-reports/${id}`, { status, admin_notes }),
@@ -47,17 +50,43 @@ export default function BugBountyPage() {
     onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); },
   });
 
+  const markPaidMutation = useMutation({
+    mutationFn: () => api.post('/bug-reports/mark-paid'),
+    onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); setConfirmPay(false); },
+  });
+
+  // Split active vs closed
+  const activeBugs = allBugs.filter(b => !['fixed', 'rejected'].includes(b.status));
+  const closedBugs = allBugs.filter(b => ['fixed', 'rejected'].includes(b.status));
+  const unpaidCount = allBugs.filter(b => ['approved_minor', 'approved_major', 'fixed'].includes(b.status) && !b.paid_at).length;
+
   return (
     <AppShell>
       <PageHeader title="Bug Bounty" action={
-        <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36">
-          <option value="">All</option>
-          <option value="new">New</option>
-          <option value="approved_minor">Minor</option>
-          <option value="approved_major">Major</option>
-          <option value="fixed">Fixed</option>
-          <option value="rejected">Rejected</option>
-        </Select>
+        <div className="flex items-center gap-2">
+          {isAdmin && unpaidCount > 0 && (
+            confirmPay ? (
+              <div className="flex items-center gap-1">
+                <Button size="sm" onClick={() => markPaidMutation.mutate()} disabled={markPaidMutation.isPending}>
+                  {markPaidMutation.isPending ? 'Marking...' : `Yes, Mark ${unpaidCount} Paid`}
+                </Button>
+                <button onClick={() => setConfirmPay(false)} className="text-xs text-gray-400">Cancel</button>
+              </div>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => setConfirmPay(true)}>
+                Mark All Paid ({unpaidCount})
+              </Button>
+            )
+          )}
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36">
+            <option value="">All</option>
+            <option value="new">New</option>
+            <option value="approved_minor">Minor</option>
+            <option value="approved_major">Major</option>
+            <option value="fixed">Fixed</option>
+            <option value="rejected">Rejected</option>
+          </Select>
+        </div>
       } />
 
       <div className="p-6">
@@ -94,18 +123,41 @@ export default function BugBountyPage() {
           </div>
         </div>
 
-        {/* Bug list */}
+        {/* Active bugs */}
         {isLoading ? (
           <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>
-        ) : bugs.length === 0 ? (
+        ) : activeBugs.length === 0 && closedBugs.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-sm">No bug reports</div>
         ) : (
-          <div className="space-y-2">
-            {bugs.map(b => (
-              <BugCard key={b.id} bug={b} isAdmin={isAdmin}
-                onUpdate={updateMutation} onDelete={deleteMutation} />
-            ))}
-          </div>
+          <>
+            {activeBugs.length > 0 && (
+              <div className="space-y-2 mb-6">
+                {activeBugs.map(b => (
+                  <BugCard key={b.id} bug={b} isAdmin={isAdmin}
+                    onUpdate={updateMutation} onDelete={deleteMutation} />
+                ))}
+              </div>
+            )}
+
+            {/* Closed bugs — collapsible */}
+            {closedBugs.length > 0 && (
+              <div>
+                <button onClick={() => setShowClosed(!showClosed)}
+                  className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 mb-2">
+                  <span>{showClosed ? '▾' : '▸'}</span>
+                  <span>{closedBugs.length} fixed/rejected bug{closedBugs.length !== 1 ? 's' : ''}</span>
+                </button>
+                {showClosed && (
+                  <div className="space-y-2 opacity-60">
+                    {closedBugs.map(b => (
+                      <BugCard key={b.id} bug={b} isAdmin={isAdmin}
+                        onUpdate={updateMutation} onDelete={deleteMutation} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </AppShell>
@@ -130,6 +182,10 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
             <span>{b.submitted_by_name}</span>
             <span>{formatDate(b.ts_inserted)}</span>
             {b.page_name && <span className="font-mono text-[10px] bg-gray-100 px-1 rounded">{b.page_name}</span>}
+            {b.paid_at && <span className="text-green-600 font-medium">Paid {formatDate(b.paid_at)}</span>}
+            {!b.paid_at && ['approved_minor', 'approved_major', 'fixed'].includes(b.status) && (
+              <span className="text-amber-500 font-medium">Unpaid</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -169,14 +225,12 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
         </div>
       </div>
 
-      {/* Admin notes display (visible to everyone if notes exist) */}
       {b.admin_notes && !responding && (
         <div className="mt-2 px-3 py-2 bg-gray-50 rounded border border-gray-100 text-xs text-gray-600">
           <span className="font-medium text-gray-500">Admin response:</span> {b.admin_notes}
         </div>
       )}
 
-      {/* Admin response form */}
       {isAdmin && responding && (
         <div className="mt-2">
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
@@ -190,10 +244,6 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
             </button>
             <button onClick={() => { setResponding(false); setNotes(b.admin_notes || ''); }}
               className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
-            {b.admin_notes && (
-              <button onClick={() => { setNotes(''); onUpdate.mutate({ id: b.id, admin_notes: '' }); setResponding(false); }}
-                className="text-xs text-red-400 hover:text-red-600">Clear response</button>
-            )}
           </div>
         </div>
       )}
