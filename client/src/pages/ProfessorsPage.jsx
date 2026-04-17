@@ -202,7 +202,7 @@ export default function ProfessorsPage() {
                             <div className="text-xs text-gray-600 mb-0.5">{formatDate(p.last_evaluation_date)}</div>
                             <RatingBadge rating={p.rating} size="xs" />
                           </div>
-                        ) : <span className="text-[10px] text-red-500 font-medium">Never</span>}
+                        ) : p.active_program_count > 0 ? <span className="text-[10px] text-red-500 font-medium">Never</span> : <span className="text-gray-300">—</span>}
                       </td>}
                       {v('compliance') && <td className="px-4 py-2.5 text-center text-xs font-medium">
                         <span className={`mr-1.5 ${p.tb_test ? 'text-green-600' : 'text-gray-300'}`}>TB</span>

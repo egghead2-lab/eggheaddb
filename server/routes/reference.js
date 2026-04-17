@@ -133,7 +133,11 @@ router.get('/dashboard-kpis', authenticate, async (req, res, next) => {
       `SELECT COUNT(*) as cnt FROM professor p
        JOIN professor_status ps ON ps.id = p.professor_status_id
        WHERE p.active = 1 AND ps.professor_status_name IN ('Active', 'Training')
-         AND (p.last_evaluation_date IS NULL OR p.last_evaluation_date < DATE_SUB(CURDATE(), INTERVAL 120 DAY))`
+         AND (p.last_evaluation_date IS NULL OR p.last_evaluation_date < DATE_SUB(CURDATE(), INTERVAL 120 DAY))
+         AND EXISTS (SELECT 1 FROM program prog LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+           WHERE (prog.lead_professor_id = p.id OR prog.assistant_professor_id = p.id)
+           AND prog.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
+           AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL))`
     );
     res.json({ success: true, data: {
       activePrograms: active.cnt,
