@@ -1186,12 +1186,12 @@ export default function ProfessorDetailPage() {
               <Input label="Email" type="email" required {...register('email', { required: 'Required' })} error={errors.email?.message} />
               <Input label="Phone Number" required {...register('phone_number', { required: 'Required' })} error={errors.phone_number?.message} />
               <div className="col-span-2">
-                <Input label="Street Address" {...register('address')} />
+                <Input label="Street Address" required {...register('address', { required: 'Required' })} error={errors.address?.message} />
               </div>
-              <Input label="City" {...register('_city_name')} />
+              <Input label="City" required value={watch('_city_name') || ''} onChange={e => setValue('_city_name', e.target.value, { shouldDirty: true })} error={errors._city_name?.message} />
               <div className="grid grid-cols-2 gap-4">
-                <Input label="State" {...register('_state_code')} maxLength={2} />
-                <Input label="Zip" {...register('_zip_code')} />
+                <Input label="State" required value={watch('_state_code') || ''} onChange={e => setValue('_state_code', e.target.value, { shouldDirty: true })} maxLength={2} error={errors._state_code?.message} />
+                <Input label="Zip" required value={watch('_zip_code') || ''} onChange={e => setValue('_zip_code', e.target.value, { shouldDirty: true })} error={errors._zip_code?.message} />
               </div>
               <Select label="Geographic Area" required {...register('geographic_area_id', { required: 'Required' })} error={errors.geographic_area_id?.message}>
                 <option value="">Select...</option>
