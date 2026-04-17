@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from './layout/AppShell';
@@ -24,15 +24,21 @@ function getDays(p) { return DAYS.map((d,i) => p[d] ? DAY_SHORT[i] : null).filte
  */
 export function ClientEmailTool({ title, category, endpoint, columns, getRecipient, getMergeData, idField = 'program_id', rowId, extraFilters, tabs, tabParam, defaultRange = 'week', toolSelector }) {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Date range based on defaultRange prop
+  // Date range — persist in URL params so it survives refresh
   const now = new Date();
   const today = now.toISOString().split('T')[0];
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
 
-  const [dateFrom, setDateFrom] = useState(defaultRange === 'today' ? today : weekStart.toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState(defaultRange === 'today' ? today : weekEnd.toISOString().split('T')[0]);
+  const defaultFrom = defaultRange === 'today' ? today : weekStart.toISOString().split('T')[0];
+  const defaultTo = defaultRange === 'today' ? today : weekEnd.toISOString().split('T')[0];
+  const dateFrom = searchParams.get('from') || defaultFrom;
+  const dateTo = searchParams.get('to') || defaultTo;
+
+  const setDateFrom = (v) => { const p = new URLSearchParams(searchParams); p.set('from', v); setSearchParams(p); };
+  const setDateTo = (v) => { const p = new URLSearchParams(searchParams); p.set('to', v); setSearchParams(p); };
   const [activeTab, setActiveTab] = useState(tabs?.[0]?.key || '');
 
   // Selected row for preview

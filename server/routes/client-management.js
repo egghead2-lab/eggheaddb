@@ -194,7 +194,7 @@ router.get('/starting-emails', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1
+       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
          AND prog.lead_professor_id IS NOT NULL
          AND prog.first_session_date BETWEEN ? AND ?
        ORDER BY prog.first_session_date ASC`,
@@ -227,7 +227,7 @@ router.get('/first-day-parent', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
-       WHERE prog.active = 1 AND prog.live = 1
+       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
          AND prog.first_session_date BETWEEN ? AND ?
        ORDER BY prog.first_session_date ASC`,
       [date_from || '2000-01-01', date_to || '2099-12-31']
@@ -253,7 +253,7 @@ router.get('/second-week', authenticate, async (req, res, next) => {
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1
+       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
        HAVING second_session_date BETWEEN ? AND ?
        ORDER BY second_session_date ASC`,
       [date_from || '2000-01-01', date_to || '2099-12-31']
@@ -312,7 +312,7 @@ router.get('/new-professor', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1
+       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
          AND prog.lead_professor_id IS NOT NULL
          AND prog.first_session_date BETWEEN ? AND ?
          AND NOT EXISTS (
@@ -350,7 +350,7 @@ router.get('/last-day', authenticate, async (req, res, next) => {
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1
+       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
        HAVING last_session_date BETWEEN ? AND ?
        ORDER BY last_session_date ASC`,
       [date_from || '2000-01-01', date_to || '2099-12-31']
@@ -390,7 +390,7 @@ router.get('/parent-feedback', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
-       WHERE prog.active = 1 AND prog.live = 1
+       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
        HAVING fourth_session_date BETWEEN ? AND ?
        ORDER BY fourth_session_date ASC`,
       [date_from || '2000-01-01', date_to || '2099-12-31']
@@ -489,7 +489,7 @@ router.get('/roster-emails', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
-       WHERE prog.active = 1 AND prog.live = 1
+       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
          AND prog.payment_through_us = 0
          AND prog.first_session_date BETWEEN ? AND ?
        HAVING roster_count != prog.number_enrolled OR (roster_count > 0 AND prog.number_enrolled IS NULL)
