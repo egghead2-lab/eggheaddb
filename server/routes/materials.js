@@ -331,6 +331,9 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
       byProfessor[prog.lead_professor_id].push(prog);
     }
 
+    // Format ship date as M/D/YY to match Inflow's order naming
+    const shipD = new Date(cycle.ship_date instanceof Date ? cycle.ship_date : cycle.ship_date + 'T12:00:00');
+    const shipDateInflow = `${shipD.getMonth() + 1}/${shipD.getDate()}/${String(shipD.getFullYear()).slice(2)}`;
     const shipDateStr = cycle.ship_date instanceof Date
       ? cycle.ship_date.toISOString().split('T')[0]
       : String(cycle.ship_date).split('T')[0];
@@ -346,7 +349,7 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
       );
       if (!prof) continue;
 
-      const orderName = `${prof.professor_nickname} - ${shipDateStr.replace(/-/g, '/').slice(5)}`;
+      const orderName = `${prof.professor_nickname} - ${shipDateInflow}`;
 
       const [orderResult] = await pool.query(
         'INSERT INTO shipment_order (cycle_id, professor_id, order_name) VALUES (?, ?, ?)',
@@ -467,14 +470,25 @@ router.get('/cycles/:id/export-csv', async (req, res, next) => {
         [order.id]
       );
 
+      // Consolidate identical items into qty > 1
+      const consolidated = {};
       for (const line of lines) {
         const qty = line.quantity_override ?? line.quantity;
-        const remarks = line.notes || '';
+        const key = line.item_name;
+        if (!consolidated[key]) {
+          consolidated[key] = { item_name: line.item_name, qty: 0, remarks: [] };
+        }
+        consolidated[key].qty += qty;
+        if (line.notes) consolidated[key].remarks.push(line.notes);
+      }
+
+      for (const item of Object.values(consolidated)) {
+        const remarks = item.remarks.join('; ');
         const row = [
           `"${order.order_name}"`,
           `"${order.professor_nickname}"`,
-          `"${line.item_name}"`,
-          qty,
+          `"${item.item_name}"`,
+          item.qty,
           `"${remarks.replace(/"/g, '""')}"`,
           `"${shipDateStr}"`,
           `"${(order.first_name || '') + ' ' + (order.last_name || '')}"`,
@@ -1148,30 +1162,70 @@ router.get('/bin-types', async (req, res, next) => {
 
 router.post('/tracking/import', async (req, res, next) => {
   try {
-    const { rows } = req.body; // [{OrderNumber, TrackingNumber}]
+    const { rows } = req.body; // [{OrderNumber, TrackingNumber/ShippingTrackingNumber, ...}]
     if (!Array.isArray(rows)) return res.status(400).json({ success: false, error: 'Rows array required' });
+
+    // Group by OrderNumber — Inflow CSV has multiple rows per order (one per product)
+    const byOrder = {};
+    for (const row of rows) {
+      const orderNum = row.OrderNumber;
+      const tracking = row.ShippingTrackingNumber || row.TrackingNumber || '';
+      if (!orderNum) continue;
+      if (!byOrder[orderNum]) byOrder[orderNum] = { tracking: '', products: [] };
+      if (tracking && !byOrder[orderNum].tracking) byOrder[orderNum].tracking = tracking;
+      if (row.ProductName) {
+        byOrder[orderNum].products.push({
+          name: row.ProductName,
+          qty: parseFloat(row.ProductQuantity) || 1,
+          sku: row.ProductSKU || '',
+        });
+      }
+    }
+
     let matched = 0, skipped = 0, notFound = 0;
     const notFoundOrders = [];
     const skippedOrders = [];
-    for (const row of rows) {
-      if (!row.OrderNumber || !row.TrackingNumber) continue;
-      // Check if order exists
-      const [[order]] = await pool.query('SELECT id, tracking_number FROM shipment_order WHERE order_name = ?', [row.OrderNumber]);
-      if (!order) {
+    const matchedOrders = [];
+
+    for (const [orderNum, data] of Object.entries(byOrder)) {
+      // Find all shipment_orders with this order_name
+      const [orders] = await pool.query('SELECT id, tracking_number, order_name FROM shipment_order WHERE order_name = ?', [orderNum]);
+      if (orders.length === 0) {
         notFound++;
-        notFoundOrders.push(row.OrderNumber);
-      } else if (order.tracking_number) {
-        skipped++;
-        skippedOrders.push(row.OrderNumber);
-      } else {
+        notFoundOrders.push(orderNum);
+        continue;
+      }
+
+      // Parse comma-separated tracking numbers
+      const trackingNumbers = data.tracking
+        ? data.tracking.split(',').map(t => t.trim()).filter(Boolean)
+        : [];
+      const trackingStr = trackingNumbers.join(', ');
+
+      let anyUpdated = false;
+      for (const order of orders) {
+        if (order.tracking_number) {
+          // Already has tracking — skip
+          continue;
+        }
         await pool.query(
           'UPDATE shipment_order SET tracking_number = ?, tracking_imported_at = NOW(), status = ? WHERE id = ?',
-          [row.TrackingNumber, 'shipped', order.id]
+          [trackingStr, 'shipped', order.id]
         );
+        anyUpdated = true;
+      }
+
+      if (anyUpdated) {
         matched++;
+        matchedOrders.push({ orderNum, trackingCount: trackingNumbers.length, productCount: data.products.length });
+      } else {
+        skipped++;
+        skippedOrders.push(orderNum);
       }
     }
-    res.json({ success: true, matched, skipped, notFound, notFoundOrders, skippedOrders });
+
+    res.json({ success: true, matched, skipped, notFound, notFoundOrders, skippedOrders, matchedOrders,
+      totalOrders: Object.keys(byOrder).length });
   } catch (err) { next(err); }
 });
 
