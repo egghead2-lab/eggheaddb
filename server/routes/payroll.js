@@ -213,17 +213,22 @@ router.patch('/session-pay/:id', authenticate, async (req, res, next) => {
 // ============================================================
 router.get('/misc-pay', authenticate, async (req, res, next) => {
   try {
-    const { reviewed } = req.query;
-    let where = '1=1';
-    if (reviewed === 'false') where = 'mp.is_reviewed = 0';
-    if (reviewed === 'true') where = 'mp.is_reviewed = 1';
+    const { reviewed, professor_id, start, end } = req.query;
+    let where = ['1=1'];
+    const params = [];
+    if (reviewed === 'false') where.push('mp.is_reviewed = 0');
+    if (reviewed === 'true') where.push('mp.is_reviewed = 1');
+    if (professor_id) { where.push('mp.professor_id = ?'); params.push(professor_id); }
+    if (start) { where.push('mp.pay_date >= ?'); params.push(start); }
+    if (end) { where.push('mp.pay_date <= ?'); params.push(end); }
     const [rows] = await pool.query(
       `SELECT mp.*, CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
               prog.program_nickname AS class_name
        FROM misc_pay_entries mp
        LEFT JOIN professor p ON p.id = mp.professor_id
        LEFT JOIN program prog ON prog.id = mp.program_id
-       WHERE ${where} ORDER BY mp.pay_date DESC`
+       WHERE ${where.join(' AND ')} ORDER BY mp.pay_date DESC`,
+      params
     );
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
@@ -777,7 +782,10 @@ router.get('/missing-gusto-codes', authenticate, async (req, res, next) => {
 router.get('/runs/rocketology/:id/csv-preview', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM payroll_summary_rocketology WHERE payroll_run_id = ? ORDER BY last_name`,
+      `SELECT ps.*, p.professor_nickname
+       FROM payroll_summary_rocketology ps
+       LEFT JOIN professor p ON p.id = ps.professor_id
+       WHERE ps.payroll_run_id = ? ORDER BY ps.last_name`,
       [req.params.id]
     );
     res.json({ success: true, data: rows });

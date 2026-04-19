@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../components/layout/AppShell';
 import { PayrollTabBar } from './PayrollDashboardPage';
@@ -20,6 +21,7 @@ export default function PayrollRunsPage() {
   const [confirmCommit, setConfirmCommit] = useState(null);
   const [calcSuccess, setCalcSuccess] = useState(null);
   const [commitError, setCommitError] = useState(null);
+  const [detailProfId, setDetailProfId] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['payroll-runs'],
@@ -34,6 +36,22 @@ export default function PayrollRunsPage() {
     enabled: !!previewRunId,
   });
   const previewRows = previewData?.data || [];
+
+  // Find the run for date range
+  const activeRun = runs.find(r => r.id === previewRunId);
+  const detailStart = activeRun?.start_date?.split?.('T')?.[0] || activeRun?.start_date;
+  const detailEnd = activeRun?.end_date?.split?.('T')?.[0] || activeRun?.end_date;
+
+  const { data: detailData } = useQuery({
+    queryKey: ['payroll-detail', detailProfId, detailStart, detailEnd],
+    queryFn: () => api.get('/payroll/session-pay', { params: { professor_id: detailProfId, start: detailStart, end: detailEnd } }).then(r => r.data),
+    enabled: !!detailProfId && !!detailStart,
+  });
+  const { data: detailMiscData } = useQuery({
+    queryKey: ['payroll-detail-misc', detailProfId, detailStart, detailEnd],
+    queryFn: () => api.get('/payroll/misc-pay', { params: { professor_id: detailProfId, start: detailStart, end: detailEnd } }).then(r => r.data),
+    enabled: !!detailProfId && !!detailStart,
+  });
 
   const createMutation = useMutation({
     mutationFn: (d) => api.post('/payroll/runs/rocketology', d).then(r => r.data),
@@ -211,7 +229,7 @@ export default function PayrollRunsPage() {
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">Name</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Preferred Name</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-600">Gusto ID</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-600">Session Pay</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-600">Party Pay</th>
@@ -226,8 +244,9 @@ export default function PayrollRunsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {previewRows.map(r => (
-                    <tr key={r.id} className={r.missing_gusto ? 'bg-amber-50/40' : r.has_missing_assist_pay ? 'bg-red-50/30' : ''}>
-                      <td className="px-3 py-1.5 font-medium">{r.first_name} {r.last_name}</td>
+                    <><tr key={r.id} onClick={() => setDetailProfId(detailProfId === r.professor_id ? null : r.professor_id)}
+                      className={`cursor-pointer hover:bg-gray-50 ${detailProfId === r.professor_id ? 'bg-blue-50/50' : r.missing_gusto ? 'bg-amber-50/40' : r.has_missing_assist_pay ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-3 py-1.5 font-medium text-[#1e3a5f]">{r.professor_nickname || `${r.first_name} ${r.last_name}`}</td>
                       <td className="px-3 py-1.5 font-mono text-gray-500">{r.gusto_employee_id || <span className="text-red-500 text-[10px] font-bold">NONE</span>}</td>
                       <td className="px-3 py-1.5 text-right">{formatCurrency(r.live_program_pay)}</td>
                       <td className="px-3 py-1.5 text-right">{formatCurrency(r.party_pay)}</td>
@@ -242,6 +261,17 @@ export default function PayrollRunsPage() {
                         {r.has_missing_assist_pay ? <span className="text-red-500 text-[10px] font-bold">MISSING PAY</span> : null}
                       </td>
                     </tr>
+                    {detailProfId === r.professor_id && (
+                      <tr key={`detail-${r.id}`}>
+                        <td colSpan={11} className="bg-gray-50/80 px-4 py-3">
+                          <ProfessorPayDetail
+                            sessions={detailData?.data || []}
+                            miscEntries={detailMiscData?.data || []}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </>
                   ))}
                 </tbody>
                 <tfoot className="bg-gray-50 border-t border-gray-200">
@@ -264,5 +294,73 @@ export default function PayrollRunsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function ProfessorPayDetail({ sessions, miscEntries }) {
+  // Group sessions by program
+  const byProgram = {};
+  sessions.forEach(s => {
+    const key = s.program_nickname || `Program #${s.program_id}`;
+    if (!byProgram[key]) byProgram[key] = [];
+    byProgram[key].push(s);
+  });
+
+  return (
+    <div className="space-y-3">
+      {/* Session pay grouped by program */}
+      {Object.keys(byProgram).length > 0 && (
+        <div>
+          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Session Pay</div>
+          {Object.entries(byProgram).map(([progName, items]) => {
+            const progTotal = items.reduce((s, i) => s + parseFloat(i.pay_amount || 0), 0);
+            const progHours = items.reduce((s, i) => s + parseFloat(i.class_hours || 0), 0);
+            return (
+              <div key={progName} className="mb-2">
+                <div className="flex items-center justify-between text-xs font-medium text-gray-700 mb-0.5">
+                  <Link to={`/programs/${items[0].program_id}`} className="text-[#1e3a5f] hover:underline">{progName}</Link>
+                  <span>{progHours}h — {formatCurrency(progTotal)}</span>
+                </div>
+                <div className="pl-3 space-y-0.5">
+                  {items.map(s => (
+                    <div key={s.id} className="flex items-center gap-3 text-[11px] text-gray-500">
+                      <span className="w-14">{formatDate(s.session_date)}</span>
+                      <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${s.role === 'Lead' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>{s.role}</span>
+                      <span className="w-10 text-right">{s.class_hours}h</span>
+                      <span className="w-16 text-right font-medium text-gray-700">{formatCurrency(s.pay_amount)}</span>
+                      {s.is_substitute ? <span className="text-amber-600 text-[9px] font-bold">SUB</span> : null}
+                      {s.assist_pay_flag === 'MISSING' ? <span className="text-red-500 text-[9px] font-bold">MISSING</span> : null}
+                      <span className="text-gray-400 text-[9px]">{s.pay_source}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Misc pay */}
+      {miscEntries.length > 0 && (
+        <div>
+          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Misc Pay</div>
+          <div className="pl-3 space-y-0.5">
+            {miscEntries.map(m => (
+              <div key={m.id} className="flex items-center gap-3 text-[11px] text-gray-500">
+                <span className="w-14">{formatDate(m.pay_date)}</span>
+                <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-gray-200 text-gray-700">{m.pay_type}</span>
+                <span className="text-gray-600 truncate max-w-[200px]">{m.description || '—'}</span>
+                <span className="w-16 text-right font-medium text-gray-700 ml-auto">{formatCurrency(m.manual_total_override || m.total_pay || (parseFloat(m.hourly_pay || 0) * parseFloat(m.hours || 0)))}</span>
+                {!m.is_reviewed ? <span className="text-amber-500 text-[9px] font-bold">UNREVIEWED</span> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sessions.length === 0 && miscEntries.length === 0 && (
+        <div className="text-xs text-gray-400 text-center py-2">No pay records found for this period</div>
+      )}
+    </div>
   );
 }
