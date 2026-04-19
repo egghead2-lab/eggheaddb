@@ -1045,7 +1045,9 @@ router.post('/nightly-job/backfill', authenticate, async (req, res, next) => {
 
     for (const s of sessions) {
       try {
-        const classHours = (s.class_length_minutes || 60) / 60;
+        // 45+ minutes counts as a full hour for pay
+        const mins = s.class_length_minutes || 60;
+        const classHours = mins >= 45 ? Math.ceil(mins / 60) : mins / 60;
 
         // === LEAD ===
         const leadProfId = s.session_professor_id || s.lead_professor_id;
