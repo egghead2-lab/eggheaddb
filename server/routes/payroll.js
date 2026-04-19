@@ -683,8 +683,17 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
         [professor_id, run.start_date, run.end_date]
       );
 
-      const totalGross = sessionPay.total_pay + partyPay.total_pay + miscPay.total_pay + onboardPay.total_pay;
-      const totalReimb = sessionPay.total_reimb + partyPay.total_reimb + miscPay.total_reimb + mileage.total_reimb;
+      // parseFloat all MySQL decimal strings to avoid string concatenation
+      const pf = (v) => parseFloat(v) || 0;
+      const spPay = pf(sessionPay.total_pay), spReimb = pf(sessionPay.total_reimb), spHours = pf(sessionPay.total_hours);
+      const spBonus = pf(sessionPay.total_bonus);
+      const ppPay = pf(partyPay.total_pay), ppReimb = pf(partyPay.total_reimb);
+      const mpPay = pf(miscPay.total_pay), mpReimb = pf(miscPay.total_reimb);
+      const opPay = pf(onboardPay.total_pay);
+      const mlReimb = pf(mileage.total_reimb);
+
+      const totalGross = spPay + ppPay + mpPay + opPay;
+      const totalReimb = spReimb + ppReimb + mpReimb + mlReimb;
 
       if (totalGross === 0 && totalReimb === 0) continue;
 
@@ -697,8 +706,8 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
          hasGusto ? gc.gusto_last_name : prof.last_name,
          hasGusto ? gc.gusto_first_name : (prof.first_name || prof.professor_nickname),
          'Live Teaching (Primary)',
-         sessionPay.total_hours, sessionPay.total_bonus + miscPay.total_pay + onboardPay.total_pay + partyPay.total_pay,
-         totalReimb, sessionPay.total_pay, partyPay.total_pay, miscPay.total_pay, onboardPay.total_pay,
+         spHours, spBonus + mpPay + opPay + ppPay,
+         totalReimb, spPay, ppPay, mpPay, opPay,
          totalGross, totalReimb, sessionPay.has_missing ? 1 : 0, hasGusto ? 0 : 1]
       );
     }
