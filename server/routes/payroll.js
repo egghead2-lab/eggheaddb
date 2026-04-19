@@ -52,13 +52,42 @@ router.put('/gusto-codes/:id', authenticate, async (req, res, next) => {
 // ============================================================
 // PAYROLL RUNS
 // ============================================================
+// Biweekly anchor: 3/23/26. Every period is 14 days from this anchor.
+const BIWEEKLY_ANCHOR = new Date('2026-03-23');
+
+function getBiweeklyPeriods(count = 10) {
+  const periods = [];
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  // Find the current period: how many 14-day cycles since anchor
+  const msPerDay = 86400000;
+  const daysSinceAnchor = Math.floor((now - BIWEEKLY_ANCHOR) / msPerDay);
+  const currentCycle = Math.floor(daysSinceAnchor / 14);
+  // Generate periods around current (a few past + future)
+  for (let i = currentCycle - count + 1; i <= currentCycle + 2; i++) {
+    if (i < 0) continue;
+    const start = new Date(BIWEEKLY_ANCHOR.getTime() + i * 14 * msPerDay);
+    const end = new Date(start.getTime() + 13 * msPerDay);
+    periods.push({
+      start_date: start.toISOString().split('T')[0],
+      end_date: end.toISOString().split('T')[0],
+    });
+  }
+  return periods;
+}
+
 function payrollRunRoutes(tableName, summaryTable) {
   const r = express.Router();
 
+  // GET / — list runs + available biweekly periods
   r.get('/', authenticate, async (req, res, next) => {
     try {
       const [rows] = await pool.query(`SELECT * FROM ${tableName} ORDER BY start_date DESC`);
-      res.json({ success: true, data: rows });
+      const periods = getBiweeklyPeriods();
+      // Filter out periods that already have a run
+      const existingPeriods = new Set(rows.map(r => `${r.start_date?.toISOString?.()?.split('T')[0] || r.start_date}`));
+      const available = periods.filter(p => !existingPeriods.has(p.start_date));
+      res.json({ success: true, data: rows, availablePeriods: available });
     } catch (err) { next(err); }
   });
 
@@ -88,13 +117,45 @@ function payrollRunRoutes(tableName, summaryTable) {
 
   r.patch('/:id', authenticate, async (req, res, next) => {
     try {
-      const { status, notes, processed_by } = req.body;
-      const fields = [], values = [];
-      if (status) { fields.push('status = ?'); values.push(status); }
-      if (notes !== undefined) { fields.push('notes = ?'); values.push(notes); }
-      if (processed_by) { fields.push('processed_by = ?'); values.push(processed_by); }
-      if (!fields.length) return res.status(400).json({ success: false, error: 'No fields' });
-      await pool.query(`UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = ?`, [...values, req.params.id]);
+      const { notes } = req.body;
+      // Only allow notes update (status changes via /commit)
+      if (notes === undefined) return res.status(400).json({ success: false, error: 'No fields' });
+      await pool.query(`UPDATE ${tableName} SET notes = ? WHERE id = ?`, [notes, req.params.id]);
+      res.json({ success: true });
+    } catch (err) { next(err); }
+  });
+
+  // POST /:id/commit — lock the run permanently
+  r.post('/:id/commit', authenticate, async (req, res, next) => {
+    try {
+      const [[run]] = await pool.query(`SELECT status FROM ${tableName} WHERE id = ?`, [req.params.id]);
+      if (!run) return res.status(404).json({ success: false, error: 'Run not found' });
+      if (run.status === 'Committed') return res.status(400).json({ success: false, error: 'Already committed' });
+      // Must have summary data
+      const [[{ cnt }]] = await pool.query(`SELECT COUNT(*) as cnt FROM ${summaryTable} WHERE payroll_run_id = ?`, [req.params.id]);
+      if (cnt === 0) return res.status(400).json({ success: false, error: 'Calculate payroll before committing' });
+      // Block if any professors are missing Gusto codes
+      const [missingGusto] = await pool.query(`SELECT first_name, last_name FROM ${summaryTable} WHERE payroll_run_id = ? AND missing_gusto = 1`, [req.params.id]);
+      if (missingGusto.length > 0) {
+        const names = missingGusto.map(m => `${m.first_name} ${m.last_name}`).join(', ');
+        return res.status(400).json({ success: false, error: `Cannot commit — missing Gusto codes for: ${names}` });
+      }
+      await pool.query(
+        `UPDATE ${tableName} SET status = 'Committed', committed_at = NOW(), committed_by = ? WHERE id = ?`,
+        [req.user?.name || 'admin', req.params.id]
+      );
+      res.json({ success: true });
+    } catch (err) { next(err); }
+  });
+
+  // DELETE /:id — only if not committed
+  r.delete('/:id', authenticate, async (req, res, next) => {
+    try {
+      const [[run]] = await pool.query(`SELECT status FROM ${tableName} WHERE id = ?`, [req.params.id]);
+      if (!run) return res.status(404).json({ success: false, error: 'Run not found' });
+      if (run.status === 'Committed') return res.status(400).json({ success: false, error: 'Cannot delete a committed payroll run' });
+      await pool.query(`DELETE FROM ${summaryTable} WHERE payroll_run_id = ?`, [req.params.id]);
+      await pool.query(`DELETE FROM ${tableName} WHERE id = ?`, [req.params.id]);
       res.json({ success: true });
     } catch (err) { next(err); }
   });
@@ -531,23 +592,45 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
     const { id } = req.params;
     const [[run]] = await pool.query(`SELECT * FROM payroll_runs_rocketology WHERE id = ?`, [id]);
     if (!run) return res.status(404).json({ success: false, error: 'Run not found' });
+    if (run.status === 'Committed') return res.status(400).json({ success: false, error: 'Cannot recalculate a committed payroll run' });
 
     // Clear existing summary for recalculation
     await pool.query(`DELETE FROM payroll_summary_rocketology WHERE payroll_run_id = ?`, [id]);
 
-    // Get all professors with Gusto codes for Rocketology
-    const [gustoCodes] = await pool.query(
-      `SELECT * FROM gusto_employee_codes WHERE company = 'Rocketology' AND is_active = 1`
+    // Find ALL professors who have any pay in this period (session pay, misc, onboarding, party, mileage)
+    const [profIds] = await pool.query(
+      `SELECT DISTINCT professor_id FROM (
+        SELECT professor_id FROM program_session_pay WHERE session_date BETWEEN ? AND ?
+        UNION SELECT professor_id FROM misc_pay_entries WHERE pay_date BETWEEN ? AND ?
+        UNION SELECT professor_id FROM onboarding_pay_entries WHERE training_date BETWEEN ? AND ?
+        UNION SELECT professor_id FROM party_session_pay WHERE created_at BETWEEN ? AND ?
+        UNION SELECT professor_id FROM mileage_submissions WHERE submission_date BETWEEN ? AND ?
+      ) AS all_profs WHERE professor_id IS NOT NULL`,
+      [run.start_date, run.end_date, run.start_date, run.end_date, run.start_date, run.end_date,
+       run.start_date, run.end_date, run.start_date, run.end_date]
     );
+
+    // Get Gusto codes lookup
+    const [gustoCodes] = await pool.query(
+      `SELECT * FROM gusto_employee_codes WHERE is_active = 1`
+    );
+    const gustoByProfessor = {};
+    gustoCodes.forEach(gc => { gustoByProfessor[gc.professor_id] = gc; });
 
     // Get FM user IDs to exclude their class/party pay from payroll
     const [fmUsers] = await pool.query("SELECT u.id FROM user u JOIN role r ON r.id = u.role_id WHERE r.role_name = 'Field Manager'");
     const fmUserIds = new Set(fmUsers.map(u => u.id));
 
-    for (const gc of gustoCodes) {
-      // Check if this professor is linked to an FM user — if so, skip class and party pay
-      const [[profUser]] = await pool.query('SELECT user_id FROM professor WHERE id = ?', [gc.professor_id]);
-      const isFM = profUser?.user_id && fmUserIds.has(profUser.user_id);
+    for (const { professor_id } of profIds) {
+      const gc = gustoByProfessor[professor_id];
+
+      // Get professor info for name display
+      const [[prof]] = await pool.query(
+        'SELECT professor_nickname, last_name, first_name, user_id FROM professor WHERE id = ?',
+        [professor_id]
+      );
+      if (!prof) continue;
+      const isFM = prof.user_id && fmUserIds.has(prof.user_id);
 
       // Session pay (skip for Field Managers — they are not paid for class sessions)
       const sessionPay = isFM
@@ -561,7 +644,7 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
                 MAX(assist_pay_flag = 'MISSING') AS has_missing
          FROM program_session_pay
          WHERE professor_id = ? AND session_date BETWEEN ? AND ?`,
-        [gc.professor_id, run.start_date, run.end_date]
+        [professor_id, run.start_date, run.end_date]
       ))[0][0];
 
       // Party pay (skip for Field Managers)
@@ -572,7 +655,7 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
                 COALESCE(SUM(total_reimbursement), 0) AS total_reimb
          FROM party_session_pay
          WHERE professor_id = ? AND created_at BETWEEN ? AND ?`,
-        [gc.professor_id, run.start_date, run.end_date]
+        [professor_id, run.start_date, run.end_date]
       ))[0][0];
 
       // Misc pay
@@ -581,7 +664,7 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
                 COALESCE(SUM(total_reimbursement), 0) AS total_reimb
          FROM misc_pay_entries
          WHERE professor_id = ? AND pay_date BETWEEN ? AND ? AND is_reviewed = 1`,
-        [gc.professor_id, run.start_date, run.end_date]
+        [professor_id, run.start_date, run.end_date]
       );
 
       // Onboarding pay
@@ -589,7 +672,7 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
         `SELECT COALESCE(SUM(total_training_pay), 0) AS total_pay
          FROM onboarding_pay_entries
          WHERE professor_id = ? AND training_date BETWEEN ? AND ? AND is_reviewed = 1`,
-        [gc.professor_id, run.start_date, run.end_date]
+        [professor_id, run.start_date, run.end_date]
       );
 
       // Mileage
@@ -597,25 +680,30 @@ router.post('/runs/rocketology/:id/calculate', authenticate, async (req, res, ne
         `SELECT COALESCE(SUM(reimbursement_total), 0) AS total_reimb
          FROM mileage_submissions
          WHERE professor_id = ? AND submission_date BETWEEN ? AND ?`,
-        [gc.professor_id, run.start_date, run.end_date]
+        [professor_id, run.start_date, run.end_date]
       );
 
       const totalGross = sessionPay.total_pay + partyPay.total_pay + miscPay.total_pay + onboardPay.total_pay;
       const totalReimb = sessionPay.total_reimb + partyPay.total_reimb + miscPay.total_reimb + mileage.total_reimb;
 
-      if (totalGross === 0 && totalReimb === 0) continue; // Skip professors with no pay
+      if (totalGross === 0 && totalReimb === 0) continue;
 
+      const hasGusto = !!gc;
       await pool.query(
-        `INSERT INTO payroll_summary_rocketology (payroll_run_id, professor_id, gusto_employee_id, last_name, first_name, employment_title, regular_hours, bonus, reimbursement, live_program_pay, party_pay, misc_pay, onboarding_pay, total_gross_pay, total_reimbursement, has_missing_assist_pay)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, gc.professor_id, gc.gusto_employee_id, gc.gusto_last_name, gc.gusto_first_name, 'Live Teaching (Primary)',
+        `INSERT INTO payroll_summary_rocketology (payroll_run_id, professor_id, gusto_employee_id, last_name, first_name, employment_title, regular_hours, bonus, reimbursement, live_program_pay, party_pay, misc_pay, onboarding_pay, total_gross_pay, total_reimbursement, has_missing_assist_pay, missing_gusto)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, professor_id,
+         hasGusto ? gc.gusto_employee_id : null,
+         hasGusto ? gc.gusto_last_name : prof.last_name,
+         hasGusto ? gc.gusto_first_name : (prof.first_name || prof.professor_nickname),
+         'Live Teaching (Primary)',
          sessionPay.total_hours, sessionPay.total_bonus + miscPay.total_pay + onboardPay.total_pay + partyPay.total_pay,
          totalReimb, sessionPay.total_pay, partyPay.total_pay, miscPay.total_pay, onboardPay.total_pay,
-         totalGross, totalReimb, sessionPay.has_missing ? 1 : 0]
+         totalGross, totalReimb, sessionPay.has_missing ? 1 : 0, hasGusto ? 0 : 1]
       );
     }
 
-    await pool.query(`UPDATE payroll_runs_rocketology SET status = 'Processing' WHERE id = ?`, [id]);
+    await pool.query(`UPDATE payroll_runs_rocketology SET status = 'Calculated' WHERE id = ?`, [id]);
     res.json({ success: true, message: 'Summary calculated' });
   } catch (err) { next(err); }
 });
@@ -757,6 +845,148 @@ router.post('/seed-test-data', authenticate, async (req, res, next) => {
 });
 
 // ============================================================
+// PAYROLL RECONCILIATION CHECKS
+// ============================================================
+router.get('/reconciliation', authenticate, async (req, res, next) => {
+  try {
+    const { start, end } = req.query;
+    // Default to current pay period or last 14 days
+    const endDate = end || new Date().toISOString().split('T')[0];
+    const startDate = start || (() => { const d = new Date(); d.setDate(d.getDate() - 14); return d.toISOString().split('T')[0]; })();
+
+    // 1. MISSING PAY: Professor assigned to a session but pay resolves to $0 or NULL
+    const [missingPay] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.session_time,
+              prog.id AS program_id, prog.program_nickname,
+              'Lead' AS role,
+              COALESCE(s.professor_id, prog.lead_professor_id) AS professor_id,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              s.professor_pay AS session_pay, prog.lead_professor_pay AS program_pay, p.base_pay
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
+       LEFT JOIN professor p ON p.id = COALESCE(s.professor_id, prog.lead_professor_id)
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
+         AND s.not_billed != 1
+         AND COALESCE(s.professor_id, prog.lead_professor_id) IS NOT NULL
+         AND COALESCE(s.professor_pay, 0) = 0
+         AND COALESCE(prog.lead_professor_pay, 0) = 0
+         AND COALESCE(p.base_pay, 0) = 0
+       UNION ALL
+       SELECT s.id AS session_id, s.session_date, s.session_time,
+              prog.id AS program_id, prog.program_nickname,
+              'Assistant' AS role,
+              COALESCE(s.assistant_id, prog.assistant_professor_id) AS professor_id,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              s.assistant_pay AS session_pay, prog.assistant_professor_pay AS program_pay, p.assist_pay AS base_pay
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
+       LEFT JOIN professor p ON p.id = COALESCE(s.assistant_id, prog.assistant_professor_id)
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
+         AND s.not_billed != 1
+         AND COALESCE(s.assistant_id, prog.assistant_professor_id) IS NOT NULL
+         AND COALESCE(s.assistant_pay, 0) = 0
+         AND COALESCE(prog.assistant_professor_pay, 0) = 0
+         AND COALESCE(p.assist_pay, 0) = 0
+       ORDER BY session_date, program_nickname`,
+      [startDate, endDate, startDate, endDate]
+    );
+
+    // 2. ORPHAN PAY: Session has pay set but no professor (someone deleted?)
+    const [orphanPay] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.session_time,
+              prog.id AS program_id, prog.program_nickname,
+              'Lead' AS role,
+              s.professor_pay AS pay_amount
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
+         AND s.not_billed != 1
+         AND COALESCE(s.professor_pay, 0) > 0
+         AND s.professor_id IS NULL AND prog.lead_professor_id IS NULL
+       UNION ALL
+       SELECT s.id AS session_id, s.session_date, s.session_time,
+              prog.id AS program_id, prog.program_nickname,
+              'Assistant' AS role,
+              s.assistant_pay AS pay_amount
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
+         AND s.not_billed != 1
+         AND COALESCE(s.assistant_pay, 0) > 0
+         AND s.assistant_id IS NULL AND prog.assistant_professor_id IS NULL
+       ORDER BY session_date, program_nickname`,
+      [startDate, endDate, startDate, endDate]
+    );
+
+    // 3. GHOST SESSIONS: Billable session with no professor AND no pay — needs a teacher
+    const [ghostSessions] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.session_time,
+              prog.id AS program_id, prog.program_nickname,
+              loc.nickname AS location_nickname
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
+         AND s.not_billed != 1
+         AND s.professor_id IS NULL AND prog.lead_professor_id IS NULL
+         AND COALESCE(s.professor_pay, 0) = 0
+       ORDER BY s.session_date, prog.program_nickname`,
+      [startDate, endDate]
+    );
+
+    // 4. SUM TOTALS: Category sums for the date range (from source tables)
+    const [[sessionSums]] = await pool.query(
+      `SELECT COALESCE(SUM(CASE WHEN role = 'Lead' THEN pay_amount ELSE 0 END), 0) AS lead_pay,
+              COALESCE(SUM(CASE WHEN role = 'Assistant' THEN pay_amount ELSE 0 END), 0) AS assist_pay,
+              COALESCE(SUM(pay_amount), 0) AS total_session_pay
+       FROM program_session_pay WHERE session_date BETWEEN ? AND ?`,
+      [startDate, endDate]
+    );
+
+    const [[miscSums]] = await pool.query(
+      `SELECT COALESCE(SUM(COALESCE(manual_total_override, total_pay)), 0) AS total_misc_pay
+       FROM misc_pay_entries WHERE pay_date BETWEEN ? AND ?`,
+      [startDate, endDate]
+    );
+
+    const [[onboardSums]] = await pool.query(
+      `SELECT COALESCE(SUM(total_training_pay), 0) AS total_onboarding_pay
+       FROM onboarding_pay_entries WHERE training_date BETWEEN ? AND ?`,
+      [startDate, endDate]
+    );
+
+    const [[partySums]] = await pool.query(
+      `SELECT COALESCE(SUM(pay_amount), 0) AS total_party_pay
+       FROM party_session_pay WHERE created_at BETWEEN ? AND ?`,
+      [startDate, endDate]
+    );
+
+    res.json({
+      success: true,
+      dateRange: { start: startDate, end: endDate },
+      issues: {
+        missingPay,
+        orphanPay,
+        ghostSessions,
+      },
+      totals: {
+        leadPay: parseFloat(sessionSums.lead_pay),
+        assistPay: parseFloat(sessionSums.assist_pay),
+        totalSessionPay: parseFloat(sessionSums.total_session_pay),
+        miscPay: parseFloat(miscSums.total_misc_pay),
+        onboardingPay: parseFloat(onboardSums.total_onboarding_pay),
+        partyPay: parseFloat(partySums.total_party_pay),
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
 // NIGHTLY JOB — Manual trigger + logs
 // ============================================================
 router.post('/nightly-job/run', authenticate, async (req, res, next) => {
@@ -771,6 +1001,120 @@ router.get('/nightly-job/logs', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query(`SELECT * FROM nightly_job_logs ORDER BY run_date DESC LIMIT 30`);
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /nightly-job/backfill — run nightly job logic for a historical date range
+router.post('/nightly-job/backfill', authenticate, async (req, res, next) => {
+  try {
+    const { start_date, end_date } = req.body;
+    if (!start_date || !end_date) return res.status(400).json({ success: false, error: 'start_date and end_date required' });
+
+    const STANDARD_HOURLY = 25.00;
+    let totalWritten = 0;
+    let totalSkipped = 0;
+    let errors = 0;
+    const errorDetails = [];
+
+    // Get all sessions in the date range
+    const [sessions] = await pool.query(
+      `SELECT s.id AS session_id, s.program_id, s.session_date, s.session_time,
+              s.professor_id AS session_professor_id, s.professor_pay AS session_professor_pay,
+              s.assistant_id AS session_assistant_id, s.assistant_pay AS session_assistant_pay,
+              s.not_billed,
+              prog.program_nickname, prog.class_length_minutes,
+              prog.lead_professor_id, prog.lead_professor_pay,
+              prog.assistant_professor_id, prog.assistant_professor_pay,
+              l.lesson_name
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?`,
+      [start_date, end_date]
+    );
+
+    for (const s of sessions) {
+      try {
+        const classHours = (s.class_length_minutes || 60) / 60;
+
+        // === LEAD ===
+        const leadProfId = s.session_professor_id || s.lead_professor_id;
+        if (leadProfId) {
+          let payAmount = 0, paySource = 'professor_base';
+          if (s.session_professor_pay && s.session_professor_pay > 0) {
+            payAmount = parseFloat(s.session_professor_pay); paySource = 'session';
+          } else if (s.lead_professor_pay && s.lead_professor_pay > 0) {
+            payAmount = parseFloat(s.lead_professor_pay); paySource = 'professor_base';
+          } else {
+            const [[prof]] = await pool.query('SELECT base_pay FROM professor WHERE id = ?', [leadProfId]);
+            if (prof?.base_pay) { payAmount = parseFloat(prof.base_pay); paySource = 'professor_base'; }
+          }
+
+          if (payAmount > 0) {
+            const isSubstitute = s.session_professor_id && s.session_professor_id !== s.lead_professor_id;
+            const regularPay = Math.round(classHours * STANDARD_HOURLY * 100) / 100;
+            const bonus = Math.round((payAmount - regularPay) * 100) / 100;
+
+            const [[existing]] = await pool.query(
+              `SELECT id FROM program_session_pay WHERE program_id = ? AND session_date = ? AND role = 'Lead' AND professor_id = ?`,
+              [s.program_id, s.session_date, leadProfId]
+            );
+            if (!existing) {
+              await pool.query(
+                `INSERT INTO program_session_pay (program_id, session_id, session_date, lesson_name, role, professor_id, is_substitute, pay_amount, pay_source, class_hours, regular_pay_component, bonus_component)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+                [s.program_id, s.session_id, s.session_date, s.lesson_name || null, 'Lead', leadProfId, isSubstitute ? 1 : 0, payAmount, paySource, classHours, regularPay, bonus]
+              );
+              totalWritten++;
+            } else { totalSkipped++; }
+          }
+        }
+
+        // === ASSISTANT ===
+        const asstProfId = s.session_assistant_id || s.assistant_professor_id;
+        if (asstProfId) {
+          let payAmount = 0, paySource = 'professor_base', assistFlag = 'OK';
+          if (s.session_assistant_pay && s.session_assistant_pay > 0) {
+            payAmount = parseFloat(s.session_assistant_pay); paySource = 'session';
+          } else if (s.assistant_professor_pay && s.assistant_professor_pay > 0) {
+            payAmount = parseFloat(s.assistant_professor_pay); paySource = 'professor_base';
+          } else {
+            const [[prof]] = await pool.query('SELECT assist_pay FROM professor WHERE id = ?', [asstProfId]);
+            if (prof?.assist_pay) { payAmount = parseFloat(prof.assist_pay); paySource = 'professor_base'; }
+            else { assistFlag = 'MISSING'; }
+          }
+
+          const regularPay = Math.round(classHours * STANDARD_HOURLY * 100) / 100;
+          const bonus = Math.round((payAmount - regularPay) * 100) / 100;
+
+          const [[existing]] = await pool.query(
+            `SELECT id FROM program_session_pay WHERE program_id = ? AND session_date = ? AND role = 'Assistant' AND professor_id = ?`,
+            [s.program_id, s.session_date, asstProfId]
+          );
+          if (!existing) {
+            await pool.query(
+              `INSERT INTO program_session_pay (program_id, session_id, session_date, lesson_name, role, professor_id, is_substitute, pay_amount, pay_source, assist_pay_flag, class_hours, regular_pay_component, bonus_component)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              [s.program_id, s.session_id, s.session_date, s.lesson_name || null, 'Assistant', asstProfId, 0, payAmount, paySource, assistFlag, classHours, regularPay, Math.max(0, bonus)]
+            );
+            totalWritten++;
+          } else { totalSkipped++; }
+        }
+      } catch (err) {
+        errors++;
+        errorDetails.push(`Session ${s.session_id} (${s.program_nickname}): ${err.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      sessionsFound: sessions.length,
+      recordsWritten: totalWritten,
+      skipped: totalSkipped,
+      errors,
+      errorDetails: errorDetails.length ? errorDetails : undefined,
+    });
   } catch (err) { next(err); }
 });
 

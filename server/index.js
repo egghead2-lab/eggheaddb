@@ -181,10 +181,10 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Professor Egghead server running on port ${PORT}`);
 
-  // Nightly payroll job — runs at midnight
+  // Nightly payroll job — runs at 7 AM UTC (11 PM PST / midnight EST)
   const cron = require('node-cron');
   const { runNightlyPayJob } = require('./services/payrollNightlyJob');
-  cron.schedule('0 0 * * *', async () => {
+  cron.schedule('0 7 * * *', async () => {
     console.log('[Cron] Running nightly payroll job…');
     try {
       const result = await runNightlyPayJob();
@@ -193,7 +193,7 @@ app.listen(PORT, () => {
       console.error('[Cron] Nightly job error:', err.message);
     }
   });
-  console.log('[Cron] Nightly payroll job scheduled for midnight');
+  console.log('[Cron] Nightly payroll job scheduled for 7 AM UTC (11 PM PST)');
 });
 
 module.exports = app;

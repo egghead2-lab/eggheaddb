@@ -43,7 +43,7 @@ async function runNightlyPayJob() {
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
        LEFT JOIN lesson l ON l.id = s.lesson_id
-       WHERE s.active = 1 AND s.session_date = CURDATE()`
+       WHERE s.active = 1 AND s.session_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`
     );
 
     const processedPrograms = new Set();
@@ -157,7 +157,7 @@ async function runNightlyPayJob() {
   const duration = Date.now() - startTime;
   await pool.query(
     `INSERT INTO nightly_job_logs (run_date, programs_processed, sessions_written, errors, error_details, duration_ms)
-     VALUES (CURDATE(), ?, ?, ?, ?, ?)`,
+     VALUES (DATE_SUB(CURDATE(), INTERVAL 1 DAY), ?, ?, ?, ?, ?)`,
     [programsProcessed, sessionsWritten, errors, errorDetails.length ? errorDetails.join('\n') : null, duration]
   );
 

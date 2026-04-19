@@ -1,61 +1,195 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getRunsRocketology, createRunRocketology, calculateRunRocketology, exportCsvRocketology, getCsvPreview } from '../api/payroll';
 import { AppShell } from '../components/layout/AppShell';
 import { PayrollTabBar } from './PayrollDashboardPage';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
 import { formatDate, formatCurrency } from '../lib/utils';
+import api from '../api/client';
+
+const STATUS_STYLES = {
+  Draft: 'bg-gray-100 text-gray-700',
+  Calculated: 'bg-blue-100 text-blue-700',
+  Committed: 'bg-green-100 text-green-700',
+};
 
 export default function PayrollRunsPage() {
   const qc = useQueryClient();
-  const [newStart, setNewStart] = useState('');
-  const [newEnd, setNewEnd] = useState('');
   const [previewRunId, setPreviewRunId] = useState(null);
-  const [previewData, setPreviewData] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmCommit, setConfirmCommit] = useState(null);
+  const [calcSuccess, setCalcSuccess] = useState(null);
+  const [commitError, setCommitError] = useState(null);
 
-  const { data, isLoading } = useQuery({ queryKey: ['payroll-runs'], queryFn: getRunsRocketology });
+  const { data, isLoading } = useQuery({
+    queryKey: ['payroll-runs'],
+    queryFn: () => api.get('/payroll/runs/rocketology').then(r => r.data),
+  });
   const runs = data?.data || [];
-  const createMutation = useMutation({ mutationFn: (d) => createRunRocketology(d), onSuccess: () => { qc.invalidateQueries(['payroll-runs']); setNewStart(''); setNewEnd(''); } });
-  const calcMutation = useMutation({ mutationFn: (id) => calculateRunRocketology(id), onSuccess: () => qc.invalidateQueries(['payroll-runs']) });
+  const availablePeriods = data?.availablePeriods || [];
 
-  const handlePreview = async (runId) => {
-    if (previewRunId === runId) { setPreviewRunId(null); return; }
-    const res = await getCsvPreview(runId);
-    setPreviewData(res.data || []); setPreviewRunId(runId);
+  const { data: previewData, isLoading: previewLoading } = useQuery({
+    queryKey: ['payroll-preview', previewRunId],
+    queryFn: () => api.get(`/payroll/runs/rocketology/${previewRunId}/csv-preview`).then(r => r.data),
+    enabled: !!previewRunId,
+  });
+  const previewRows = previewData?.data || [];
+
+  const createMutation = useMutation({
+    mutationFn: (d) => api.post('/payroll/runs/rocketology', d).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries(['payroll-runs']),
+  });
+
+  const calcMutation = useMutation({
+    mutationFn: (id) => api.post(`/payroll/runs/rocketology/${id}/calculate`).then(r => r.data),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries(['payroll-runs']);
+      qc.invalidateQueries(['payroll-preview', id]);
+      setCalcSuccess(id);
+      setTimeout(() => setCalcSuccess(null), 3000);
+    },
+  });
+
+  const commitMutation = useMutation({
+    mutationFn: (id) => api.post(`/payroll/runs/rocketology/${id}/commit`).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries(['payroll-runs']); setConfirmCommit(null); setCommitError(null); },
+    onError: (err) => { setCommitError(err.response?.data?.error || 'Commit failed'); setConfirmCommit(null); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/payroll/runs/rocketology/${id}`).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries(['payroll-runs']); setConfirmDelete(null); setPreviewRunId(null); },
+  });
+
+  const handleCsvDownload = async (runId) => {
+    try {
+      const res = await api.get(`/payroll/runs/rocketology/${runId}/csv`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(res.data);
+      const a = document.createElement('a'); a.href = url;
+      a.download = `payroll_rocketology_${runId}.csv`;
+      a.click(); window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV download failed:', err);
+    }
   };
 
   return (
     <AppShell>
       <PayrollTabBar />
       <div className="p-6 space-y-4">
-        <div className="flex gap-3 items-end">
-          <div className="flex flex-col gap-0.5"><label className="text-xs font-medium text-gray-700">Start</label><input type="date" value={newStart} onChange={e => setNewStart(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" /></div>
-          <div className="flex flex-col gap-0.5"><label className="text-xs font-medium text-gray-700">End</label><input type="date" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" /></div>
-          <Button onClick={() => newStart && newEnd && createMutation.mutate({ start_date: newStart, end_date: newEnd })} disabled={!newStart || !newEnd || createMutation.isPending}>Create Run</Button>
-        </div>
+        {/* Create new period */}
+        {availablePeriods.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-2">Create Payroll Run</div>
+            <div className="flex flex-wrap gap-2">
+              {availablePeriods.map(p => (
+                <button key={p.start_date}
+                  onClick={() => createMutation.mutate({ start_date: p.start_date, end_date: p.end_date })}
+                  disabled={createMutation.isPending}
+                  className="text-xs px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 hover:border-[#1e3a5f] transition-colors">
+                  {formatDate(p.start_date)} — {formatDate(p.end_date)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {commitError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center justify-between">
+            <span className="text-sm text-red-700">{commitError}</span>
+            <button onClick={() => setCommitError(null)} className="text-xs text-red-400 hover:text-red-600">Dismiss</button>
+          </div>
+        )}
 
         {isLoading ? <Spinner className="w-6 h-6" /> : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200"><tr>
-                <th className="text-left px-4 py-2 font-medium text-gray-600">Period</th>
-                <th className="text-center px-3 py-2 font-medium text-gray-600">Status</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Notes</th>
-                <th className="text-center px-3 py-2 font-medium text-gray-600 w-40">Actions</th>
-              </tr></thead>
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-2 font-medium text-gray-600">Period</th>
+                  <th className="text-center px-3 py-2 font-medium text-gray-600 w-24">Status</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Notes</th>
+                  <th className="text-center px-3 py-2 font-medium text-gray-600 w-64">Actions</th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-gray-100">
-                {runs.length === 0 ? <tr><td colSpan={4} className="text-center py-8 text-gray-400">No runs</td></tr> : runs.map(r => (
-                  <tr key={r.id}>
+                {runs.length === 0 ? (
+                  <tr><td colSpan={4} className="text-center py-8 text-gray-400">No payroll runs yet</td></tr>
+                ) : runs.map(r => (
+                  <tr key={r.id} className={calcSuccess === r.id ? 'bg-green-50' : ''}>
                     <td className="px-4 py-2 font-medium">{formatDate(r.start_date)} — {formatDate(r.end_date)}</td>
-                    <td className="px-3 py-2 text-center"><Badge status={r.status} /></td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${STATUS_STYLES[r.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {r.status}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 text-gray-500 text-xs">{r.notes || '—'}</td>
-                    <td className="px-3 py-2 text-center"><div className="flex gap-2 justify-center">
-                      <button onClick={() => calcMutation.mutate(r.id)} className="text-xs text-[#1e3a5f] hover:underline">Calculate</button>
-                      <button onClick={() => handlePreview(r.id)} className="text-xs text-[#1e3a5f] hover:underline">{previewRunId === r.id ? 'Hide' : 'Preview'}</button>
-                      <a href={exportCsvRocketology(r.id)} className="text-xs text-[#1e3a5f] hover:underline">CSV</a>
-                    </div></td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-2 justify-center items-center">
+                        {/* Calculate — only if not committed */}
+                        {r.status !== 'Committed' && (
+                          <button onClick={() => calcMutation.mutate(r.id)}
+                            disabled={calcMutation.isPending}
+                            className="text-xs text-[#1e3a5f] hover:underline disabled:opacity-50">
+                            {calcMutation.isPending && calcMutation.variables === r.id ? 'Calculating...'
+                              : calcSuccess === r.id ? 'Done!' : r.status === 'Calculated' ? 'Recalculate' : 'Calculate'}
+                          </button>
+                        )}
+
+                        {/* Preview */}
+                        <button onClick={() => setPreviewRunId(previewRunId === r.id ? null : r.id)}
+                          className="text-xs text-[#1e3a5f] hover:underline">
+                          {previewRunId === r.id ? 'Hide' : 'Preview'}
+                        </button>
+
+                        {/* CSV — only if calculated or committed */}
+                        {r.status !== 'Draft' && (
+                          <button onClick={() => handleCsvDownload(r.id)}
+                            className="text-xs text-[#1e3a5f] hover:underline">CSV</button>
+                        )}
+
+                        {/* Commit — only if Calculated */}
+                        {r.status === 'Calculated' && (
+                          confirmCommit === r.id ? (
+                            <span className="flex items-center gap-1">
+                              <button onClick={() => commitMutation.mutate(r.id)}
+                                disabled={commitMutation.isPending}
+                                className="text-xs px-2 py-0.5 bg-green-600 text-white rounded hover:bg-green-700 font-medium">
+                                {commitMutation.isPending ? 'Committing...' : 'Yes, Commit'}
+                              </button>
+                              <button onClick={() => setConfirmCommit(null)} className="text-xs text-gray-400">Cancel</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => setConfirmCommit(r.id)}
+                              className="text-xs px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 font-medium">
+                              Commit
+                            </button>
+                          )
+                        )}
+
+                        {/* Committed label */}
+                        {r.status === 'Committed' && r.committed_by && (
+                          <span className="text-[10px] text-gray-400">by {r.committed_by}</span>
+                        )}
+
+                        {/* Delete — only if not committed */}
+                        {r.status !== 'Committed' && (
+                          confirmDelete === r.id ? (
+                            <span className="flex items-center gap-1">
+                              <button onClick={() => deleteMutation.mutate(r.id)}
+                                disabled={deleteMutation.isPending}
+                                className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600 font-medium">
+                                {deleteMutation.isPending ? 'Deleting...' : 'Yes, Delete'}
+                              </button>
+                              <button onClick={() => setConfirmDelete(null)} className="text-xs text-gray-400">Cancel</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => setConfirmDelete(r.id)}
+                              className="text-xs text-red-500 hover:underline">Delete</button>
+                          )
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -63,33 +197,69 @@ export default function PayrollRunsPage() {
           </div>
         )}
 
-        {previewRunId && previewData && (
+        {/* Preview table */}
+        {previewRunId && (
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-            <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">CSV Preview — {previewData.length} professors</div>
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b border-gray-200"><tr>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Name</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Gusto ID</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Hours</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Bonus</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Reimb</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600 font-bold">Total</th>
-                <th className="text-center px-2 py-2 font-medium text-gray-600">Flags</th>
-              </tr></thead>
-              <tbody className="divide-y divide-gray-100">
-                {previewData.map(r => (
-                  <tr key={r.id} className={r.has_missing_assist_pay ? 'bg-red-50/30' : ''}>
-                    <td className="px-3 py-1.5 font-medium">{r.first_name} {r.last_name}</td>
-                    <td className="px-3 py-1.5 font-mono text-gray-500">{r.gusto_employee_id}</td>
-                    <td className="px-3 py-1.5 text-right">{r.regular_hours}</td>
-                    <td className="px-3 py-1.5 text-right">{formatCurrency(r.bonus)}</td>
-                    <td className="px-3 py-1.5 text-right">{formatCurrency(r.reimbursement)}</td>
-                    <td className="px-3 py-1.5 text-right font-bold text-green-700">{formatCurrency(r.total_gross_pay)}</td>
-                    <td className="px-2 py-1.5 text-center">{r.has_missing_assist_pay && <span className="text-red-500 text-[10px] font-bold">MISSING</span>}</td>
+            <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
+              CSV Preview — {previewLoading ? '...' : `${previewRows.length} professors`}
+            </div>
+            {previewLoading ? (
+              <div className="flex justify-center py-8"><Spinner className="w-6 h-6" /></div>
+            ) : previewRows.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-sm">No data — click Calculate first to generate the summary</div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Name</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Gusto ID</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Session Pay</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Party Pay</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Misc Pay</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Onboard Pay</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Hours</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Bonus</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Reimb</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600 font-bold">Total</th>
+                    <th className="text-center px-2 py-2 font-medium text-gray-600">Flags</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {previewRows.map(r => (
+                    <tr key={r.id} className={r.missing_gusto ? 'bg-amber-50/40' : r.has_missing_assist_pay ? 'bg-red-50/30' : ''}>
+                      <td className="px-3 py-1.5 font-medium">{r.first_name} {r.last_name}</td>
+                      <td className="px-3 py-1.5 font-mono text-gray-500">{r.gusto_employee_id || <span className="text-red-500 text-[10px] font-bold">NONE</span>}</td>
+                      <td className="px-3 py-1.5 text-right">{formatCurrency(r.live_program_pay)}</td>
+                      <td className="px-3 py-1.5 text-right">{formatCurrency(r.party_pay)}</td>
+                      <td className="px-3 py-1.5 text-right">{formatCurrency(r.misc_pay)}</td>
+                      <td className="px-3 py-1.5 text-right">{formatCurrency(r.onboarding_pay)}</td>
+                      <td className="px-3 py-1.5 text-right">{r.regular_hours}</td>
+                      <td className="px-3 py-1.5 text-right">{formatCurrency(r.bonus)}</td>
+                      <td className="px-3 py-1.5 text-right">{formatCurrency(r.reimbursement)}</td>
+                      <td className="px-3 py-1.5 text-right font-bold text-green-700">{formatCurrency(r.total_gross_pay)}</td>
+                      <td className="px-2 py-1.5 text-center">
+                        {r.missing_gusto ? <span className="text-amber-600 text-[10px] font-bold">NO GUSTO</span> : null}
+                        {r.has_missing_assist_pay ? <span className="text-red-500 text-[10px] font-bold">MISSING PAY</span> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50 border-t border-gray-200">
+                  <tr className="font-bold text-xs">
+                    <td className="px-3 py-2" colSpan={2}>Totals</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(previewRows.reduce((s, r) => s + parseFloat(r.live_program_pay || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(previewRows.reduce((s, r) => s + parseFloat(r.party_pay || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(previewRows.reduce((s, r) => s + parseFloat(r.misc_pay || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(previewRows.reduce((s, r) => s + parseFloat(r.onboarding_pay || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right">{previewRows.reduce((s, r) => s + parseFloat(r.regular_hours || 0), 0).toFixed(1)}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(previewRows.reduce((s, r) => s + parseFloat(r.bonus || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(previewRows.reduce((s, r) => s + parseFloat(r.reimbursement || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right text-green-700">{formatCurrency(previewRows.reduce((s, r) => s + parseFloat(r.total_gross_pay || 0), 0))}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
           </div>
         )}
       </div>
