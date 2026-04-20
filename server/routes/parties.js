@@ -3,6 +3,52 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
+// Auto-generate party nickname from current data
+// Format: M/D/YY - H:MM AM/PM - Professor [name] - [contact name] - [format] - [theme]
+async function regeneratePartyNickname(partyId) {
+  const [[p]] = await pool.query(
+    `SELECT prog.first_session_date, prog.start_time,
+            CONCAT(lp.professor_nickname) AS lead_name,
+            CONCAT(par.first_name, IF(par.last_name IS NOT NULL AND par.last_name != '', CONCAT(' ', par.last_name), '')) AS contact_name,
+            pf.party_format_name,
+            cl.class_name AS theme_name
+     FROM program prog
+     LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+     LEFT JOIN parent par ON par.id = prog.parent_id
+     LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+     LEFT JOIN class cl ON cl.id = prog.class_id
+     WHERE prog.id = ?`, [partyId]
+  );
+  if (!p) return;
+
+  const parts = [];
+  // Date M/D/YY
+  if (p.first_session_date) {
+    const d = p.first_session_date instanceof Date ? p.first_session_date : new Date(p.first_session_date);
+    parts.push(`${d.getUTCMonth() + 1}/${d.getUTCDate()}/${String(d.getUTCFullYear()).slice(-2)}`);
+  }
+  // Time H:MM AM/PM
+  if (p.start_time) {
+    const t = String(p.start_time);
+    const m = t.match(/^(\d{1,2}):(\d{2})/);
+    if (m) {
+      let h = parseInt(m[1]);
+      const mins = m[2];
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12; if (h === 0) h = 12;
+      parts.push(`${h}:${mins} ${ampm}`);
+    }
+  }
+  if (p.lead_name) parts.push(`Professor ${p.lead_name}`);
+  if (p.contact_name && p.contact_name.trim()) parts.push(p.contact_name.trim());
+  if (p.party_format_name) parts.push(p.party_format_name);
+  if (p.theme_name) parts.push(p.theme_name);
+
+  if (parts.length === 0) return;
+  const nickname = parts.join(' - ').substring(0, 255);
+  await pool.query('UPDATE program SET program_nickname = ? WHERE id = ?', [nickname, partyId]);
+}
+
 // GET /api/parties/professors — professors with current/future parties
 router.get('/professors', authenticate, async (req, res, next) => {
   try {
@@ -82,7 +128,7 @@ router.get('/', authenticate, async (req, res, next) => {
               prog.start_time AS party_start,
               prog.class_length_minutes,
               prog.party_location_text, prog.party_address, prog.party_city, prog.party_state, prog.party_zip, prog.geographic_area_id,
-              prog.total_party_cost, prog.total_kids_attended,
+              prog.total_party_cost, prog.total_kids_attended, prog.maximum_students AS kids_expected,
               prog.charge_confirmed,
               cs.class_status_name,
               loc.nickname AS location_nickname,
@@ -352,11 +398,21 @@ router.post('/', authenticate, async (req, res, next) => {
     const insertFields = fields.filter(f => data[f] !== undefined);
     const values = insertFields.map(f => data[f] === '' ? null : data[f]);
 
+    // program_nickname is NOT NULL — insert a placeholder if the client didn't supply one;
+    // regeneratePartyNickname overwrites it after insert with the proper auto-generated value.
+    if (!insertFields.includes('program_nickname')) {
+      insertFields.push('program_nickname');
+      values.push(`Party (pending) ${Date.now()}`);
+    }
+
     const [result] = await pool.query(
       `INSERT INTO program (${insertFields.join(', ')}, active, ts_inserted, ts_updated)
        VALUES (${insertFields.map(() => '?').join(', ')}, 1, NOW(), NOW())`,
       values
     );
+
+    // Auto-generate the nickname from current fields
+    try { await regeneratePartyNickname(result.insertId); } catch (e) { console.warn('regeneratePartyNickname failed:', e.message); }
 
     res.json({ success: true, id: result.insertId });
   } catch (err) {
@@ -387,11 +443,14 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'invoice_needed', 'invoice_notes',
     ];
 
-    const updateFields = fields.filter(f => data[f] !== undefined);
+    // Skip program_nickname from updates — it's auto-regenerated below; never let it be set to empty/null
+    const updateFields = fields.filter(f => data[f] !== undefined && f !== 'program_nickname');
     const values = updateFields.map(f => data[f] === '' ? null : data[f]);
 
     if (updateFields.length === 0) {
-      return res.status(400).json({ success: false, error: 'No fields to update' });
+      // Still regenerate nickname so a no-op PUT doesn't fail
+      try { await regeneratePartyNickname(id); } catch (e) { console.warn('regeneratePartyNickname failed:', e.message); }
+      return res.json({ success: true });
     }
 
     await pool.query(
@@ -399,6 +458,9 @@ router.put('/:id', authenticate, async (req, res, next) => {
        WHERE id = ?`,
       [...values, id]
     );
+
+    // Auto-regenerate the nickname from current fields
+    try { await regeneratePartyNickname(id); } catch (e) { console.warn('regeneratePartyNickname failed:', e.message); }
 
     res.json({ success: true });
   } catch (err) {
@@ -550,7 +612,7 @@ const { addPartyToCalendar, syncPartyCalendarEvent, deletePartyCalendarEvent } =
 // POST /api/parties/:id/calendar — create calendar event
 router.post('/:id/calendar', authenticate, async (req, res, next) => {
   try {
-    const dryRun = req.query.dry_run === 'true' || req.body.dry_run === true;
+    const dryRun = req.query.dry_run === 'true' || req.body?.dry_run === true;
     const result = await addPartyToCalendar(req.params.id, { dryRun });
     res.json({ success: true, ...result });
   } catch (err) {

@@ -21,6 +21,8 @@ const CHARGE_TYPES = ['Credit Card', 'Check', 'Stripe Link', 'Cash', 'Venmo', 'O
 function fillTemplate(template, party) {
   const vars = {
     '{{contact_name}}': party.contact_name || 'there',
+    '{{contact_email}}': party.contact_email || '',
+    '{{contact_phone}}': party.contact_phone || '',
     '{{party_date}}': party.first_session_date ? formatDate(party.first_session_date) : '',
     '{{party_time}}': party.start_time ? formatTime(party.start_time) : '',
     '{{party_format}}': party.party_format_name || 'Science',
@@ -31,11 +33,19 @@ function fillTemplate(template, party) {
     '{{lead_phone}}': party.lead_phone || '',
     '{{program_name}}': party.program_nickname || '',
     '{{duration}}': party.class_length_minutes ? `${party.class_length_minutes} minutes` : '',
+    '{{birthday_kid_name}}': party.birthday_kid_name || '',
+    '{{birthday_kid_age}}': party.birthday_kid_age ? String(party.birthday_kid_age) : '',
+    '{{kids_expected}}': party.kids_expected != null ? String(party.kids_expected) : '',
     '{{total_party_cost}}': party.total_party_cost ? formatCurrency(party.total_party_cost) : '',
+    '{{base_party_price}}': party.base_party_price ? formatCurrency(party.base_party_price) : '',
     '{{deposit_amount}}': party.deposit_amount ? formatCurrency(party.deposit_amount) : '',
+    '{{deposit_date}}': party.deposit_date ? formatDate(party.deposit_date) : '',
+    '{{drive_fee}}': party.drive_fee ? formatCurrency(party.drive_fee) : '',
     '{{remaining_balance}}': (party.total_party_cost && party.deposit_amount)
       ? formatCurrency(Number(party.total_party_cost) - Number(party.deposit_amount))
       : (party.total_party_cost ? formatCurrency(party.total_party_cost) : ''),
+    '{{final_charge_date}}': party.final_charge_date ? formatDate(party.final_charge_date) : '',
+    '{{final_charge_type}}': party.final_charge_type || '',
   };
   let result = template;
   for (const [key, val] of Object.entries(vars)) result = result.replaceAll(key, val);

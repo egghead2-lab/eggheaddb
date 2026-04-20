@@ -9,6 +9,6 @@ export function UnsavedChangesModal({ when }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [when]);
 
-  // No in-app navigation blocking for now — beforeunload covers browser close/refresh
+  // No in-app navigation blocking yet — would require migrating to data router (createBrowserRouter)
   return null;
 }

@@ -207,7 +207,7 @@ export default function PartiesPage() {
                       {v('email') && <td className="px-4 py-2.5 text-gray-600 text-xs">{p.contact_email || '—'}</td>}
                       {v('format') && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_format_name || '—'}</td>}
                       {v('theme') && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{p.party_theme || p.class_name || '—'}</td>}
-                      {v('kids') && <td className="px-4 py-2.5 text-right text-gray-700">{p.total_kids_attended ?? '—'}</td>}
+                      {v('kids') && <td className="px-4 py-2.5 text-right text-gray-700">{p.kids_expected ?? '—'}</td>}
                       {v('total') && <td className="px-4 py-2.5 text-right text-gray-700">{formatCurrency(p.total_party_cost)}</td>}
                       {v('charged') && <td className="px-4 py-2.5 text-center">
                         {p.charge_confirmed ? <span className="text-green-600 font-medium">✓</span> : <span className="text-gray-300">—</span>}

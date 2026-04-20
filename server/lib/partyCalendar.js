@@ -57,12 +57,18 @@ function buildCalendarEvent(party) {
     'REMINDER: YOU MUST ARRIVE 20 MINUTES PRIOR TO THE PARTY START TIME AT THE LATEST!',
   ].filter(v => v !== null).join('\n');
 
-  const attendees = [{ email: party.lead_email }];
+  const attendees = [];
+  if (party.lead_email) attendees.push({ email: party.lead_email });
   if (party.asst_email) attendees.push({ email: party.asst_email });
+
+  // Build address from structured fields, falling back to party_location_text only if empty
+  const cityStateZip = [party.party_city, party.party_state].filter(Boolean).join(', ') + (party.party_zip ? ` ${party.party_zip}` : '');
+  const fullAddress = [party.party_address, cityStateZip.trim()].filter(Boolean).join(', ').trim();
+  const location = fullAddress || party.party_location_text || '';
 
   return {
     summary: `Professor Egghead ${party.class_name || 'Party'}`,
-    location: party.party_location_text || '',
+    location,
     description: lines,
     start: { dateTime: startDateTime.toISOString(), timeZone: 'America/Los_Angeles' },
     end: { dateTime: endDateTime.toISOString(), timeZone: 'America/Los_Angeles' },
@@ -73,7 +79,8 @@ function buildCalendarEvent(party) {
 async function fetchPartyRow(partyId) {
   const [[row]] = await pool.query(
     `SELECT p.id, p.program_nickname, p.first_session_date, p.start_time, p.class_length_minutes,
-            p.party_location_text, p.lead_professor_pay, p.lead_professor_drive_fee,
+            p.party_location_text, p.party_address, p.party_city, p.party_state, p.party_zip,
+            p.lead_professor_pay, p.lead_professor_drive_fee,
             p.assistant_professor_pay, p.total_kids_attended AS kids_expected,
             p.shirt_size, p.general_notes, p.glow_slime_amount_needed,
             p.birthday_kid_name, p.birthday_kid_age, p.calendar_event_id,

@@ -321,6 +321,14 @@ router.post('/', authenticate, async (req, res, next) => {
     const insertFields = fields.filter(f => data[f] !== undefined);
     const values = insertFields.map(f => data[f] === '' ? null : data[f]);
 
+    // program_nickname is NOT NULL UNIQUE — supply a unique placeholder if missing
+    const idx = insertFields.indexOf('program_nickname');
+    if (idx === -1 || !values[idx]) {
+      const placeholder = `New Program ${Date.now()}`;
+      if (idx === -1) { insertFields.push('program_nickname'); values.push(placeholder); }
+      else values[idx] = placeholder;
+    }
+
     const [result] = await pool.query(
       `INSERT INTO program (${insertFields.join(', ')}, active, ts_inserted, ts_updated)
        VALUES (${insertFields.map(() => '?').join(', ')}, 1, NOW(), NOW())`,

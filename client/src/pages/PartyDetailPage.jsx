@@ -107,6 +107,11 @@ export default function PartyDetailPage() {
                 </span>
               )}
             </div>
+            {!isNew && party.program_nickname && (
+              <div className="text-xs text-gray-500 mt-1 font-mono break-all" title="Auto-generated party nickname">
+                {party.program_nickname}
+              </div>
+            )}
           </div>
         </div>
 
@@ -140,21 +145,38 @@ export default function PartyDetailPage() {
               <Input label="Birthday Kid" placeholder="Name" {...register('birthday_kid_name')} />
               <Input label="Turning Age" type="number" {...register('birthday_kid_age')} />
               <div className="col-span-3">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Quick Address</label>
-                <input placeholder="Paste full address: 123 Main St, Los Angeles, CA 90001"
+                <label className="text-xs font-medium text-gray-700 block mb-1">Quick Address <span className="text-gray-400 font-normal">— paste any format, auto-fills the fields below</span></label>
+                <input placeholder="123 Main St, Los Angeles, CA 90001 (or paste from Google Maps)"
                   className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-gray-50"
                   onBlur={e => {
-                    const text = e.target.value.trim();
-                    if (!text) return;
-                    // Parse: address, city, state zip  OR  address, city, state, zip
-                    const m = text.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2}),?\s*(\d{5}(?:-\d{4})?)$/i)
+                    const raw = e.target.value;
+                    if (!raw.trim()) return;
+                    // Normalize: replace newlines/tabs/semicolons with commas, strip trailing "USA"/"United States" + periods
+                    let text = raw.replace(/[\r\n\t;]+/g, ', ').replace(/,?\s*(United States|USA)\.?\s*$/i, '').replace(/\s+/g, ' ').trim();
+                    // Try comma-separated formats first
+                    let m = text.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2}),?\s*(\d{5}(?:-\d{4})?)$/i)
                       || text.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2})$/i);
+                    // Fall back: state+zip glued at the end (no comma before state)
+                    if (!m) m = text.match(/^(.+?),\s*([^,]+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+                    // Last resort: split by commas and try to detect state/zip
+                    if (!m) {
+                      const parts = text.split(',').map(s => s.trim()).filter(Boolean);
+                      if (parts.length >= 2) {
+                        const last = parts[parts.length - 1];
+                        const stateZip = last.match(/^([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/i);
+                        if (stateZip && parts.length >= 3) {
+                          m = [text, parts.slice(0, -2).join(', '), parts[parts.length - 2], stateZip[1], stateZip[2]];
+                        }
+                      }
+                    }
                     if (m) {
                       setValue('party_address', m[1].trim(), { shouldDirty: true });
                       setValue('party_city', m[2].trim(), { shouldDirty: true });
                       setValue('party_state', m[3].trim().toUpperCase(), { shouldDirty: true });
                       if (m[4]) setValue('party_zip', m[4].trim(), { shouldDirty: true });
                       e.target.value = '';
+                    } else {
+                      alert(`Couldn't parse address. Expected format like:\n  123 Main St, Los Angeles, CA 90001\n\nFill in the fields below manually.`);
                     }
                   }} />
               </div>

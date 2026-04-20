@@ -308,8 +308,9 @@ async function main() {
     const glowSlime = null;
     // CSV "Calendar Event ID" is really "has calendar event been created" flag
     const calendarEvent = yn(getVal(row, 'Calendar Event ID')) ? 'X' : null;
-    // Actual calendar_event_id for all imported parties
-    const calendarEventId = 'losangeles@professoregghead.com';
+    // calendar_event_id stays NULL — only set when actually added to Google Calendar via the app.
+    // (Setting to the calendar email here is a bug; calendar_event_id is for the Google event ID.)
+    const calendarEventId = null;
     const materialsPrepared = yn(getVal(row, 'Materials Prepared'));
     const detailsConfirmed = parseDate(getVal(row, 'Details Confirmed'));
     const invoiceNeeded = yn(getVal(row, 'Invoice Needed'));
