@@ -348,7 +348,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
               CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname,
               CONCAT(par.first_name, ' ', par.last_name) AS contact_name,
-              par.email AS contact_email
+              par.email AS contact_email, par.phone AS contact_phone
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id

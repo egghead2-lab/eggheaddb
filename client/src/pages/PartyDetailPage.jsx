@@ -34,17 +34,30 @@ export default function PartyDetailPage() {
   const partyLeadProfessors = ref.partyLeadProfessors || [];
   const partyAssistProfessors = ref.partyAssistProfessors || [];
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty, dirtyFields } } = useForm();
 
   useEffect(() => {
     if (partyData?.data) reset(toFormData(partyData.data));
   }, [partyData]);
 
+  // Fields that, when changed, warrant a calendar re-sync prompt
+  const CAL_SYNC_FIELDS = ['first_session_date', 'start_time', 'class_length_minutes', 'parent_id',
+    'party_address', 'party_city', 'party_state', 'party_zip', 'party_location_text',
+    'lead_professor_id', 'assistant_professor_id', 'birthday_kid_name', 'birthday_kid_age', 'general_notes'];
+
   const mutation = useMutation({
     mutationFn: (data) => isNew ? createParty(data) : updateParty(id, data),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       qc.invalidateQueries(['parties']);
-      if (isNew && res?.id) navigate(`/parties/${res.id}`);
+      if (isNew && res?.id) { navigate(`/parties/${res.id}`); return; }
+      // Auto-sync calendar if any sync-relevant field changed and party is on calendar
+      const changed = CAL_SYNC_FIELDS.filter(f => dirtyFields[f]);
+      if (changed.length > 0 && party.calendar_event_id) {
+        if (confirm(`Calendar-relevant fields changed (${changed.join(', ')}).\n\nSync the Google Calendar event now?`)) {
+          try { await api.post(`/parties/${id}/calendar/sync`); }
+          catch (e) { alert('Calendar sync failed: ' + (e?.response?.data?.error || e.message)); }
+        }
+      }
     },
   });
 
@@ -60,7 +73,7 @@ export default function PartyDetailPage() {
     if (partyData?.data) {
       const d = partyData.data;
       if (d.parent_id && d.contact_name) {
-        setSelectedContact({ id: d.parent_id, name: d.contact_name, email: d.contact_email });
+        setSelectedContact({ id: d.parent_id, name: d.contact_name, email: d.contact_email, phone: d.contact_phone });
       }
     }
   }, [partyData]);
@@ -73,7 +86,7 @@ export default function PartyDetailPage() {
   };
 
   const handleContactSelect = (c) => {
-    setSelectedContact({ id: c.id, name: `${c.first_name} ${c.last_name}`, email: c.email });
+    setSelectedContact({ id: c.id, name: `${c.first_name} ${c.last_name}`, email: c.email, phone: c.phone });
     setValue('parent_id', c.id, { shouldDirty: true });
     setContactSearch('');
     setContactResults([]);
@@ -116,6 +129,30 @@ export default function PartyDetailPage() {
         </div>
 
         <div className="p-4 space-y-3 pb-24">
+          {/* Calendar (top) */}
+          {!isNew && (
+            <Section title="Google Calendar" defaultOpen={false}>
+              {party.calendar_event_id ? (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs text-green-600 font-medium">✓ On calendar</span>
+                  <a href={`https://www.google.com/calendar/event?eid=${btoa(`${party.calendar_event_id} losangeles@professoregghead.com`).replace(/=+$/, '')}`}
+                    target="_blank" rel="noreferrer"
+                    className="text-xs text-[#1e3a5f] hover:underline font-medium">
+                    Open in Google Calendar ↗
+                  </a>
+                  <span className="text-[10px] text-gray-400 font-mono truncate" title={party.calendar_event_id}>{party.calendar_event_id.substring(0, 12)}…</span>
+                  <CalendarSyncButton partyId={id} />
+                  <CalendarDeleteButton partyId={id} />
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500">Not on calendar yet</span>
+                  <CalendarCreateButton partyId={id} />
+                </div>
+              )}
+            </Section>
+          )}
+
           {/* Section 1: Key Info */}
           <Section title="Party Info" defaultOpen={true}>
             <div className="grid grid-cols-5 gap-3">
@@ -212,7 +249,10 @@ export default function PartyDetailPage() {
                       <button type="button" onClick={() => { setContactSearch(''); setSelectedContact(null); setValue('parent_id', '', { shouldDirty: true }); setContactResults([]); }} className="text-gray-400 hover:text-gray-600 text-xs">change</button>
                       <button type="button" onClick={handleContactClear} className="text-gray-400 hover:text-red-500 text-xs">clear</button>
                     </div>
-                    {selectedContact.email && <span className="text-xs text-gray-500">{selectedContact.email}</span>}
+                    <div className="flex flex-wrap gap-x-3 text-xs text-gray-500">
+                      {selectedContact.email && <span>📧 {selectedContact.email}</span>}
+                      {selectedContact.phone && <span>📞 <a href={`tel:${selectedContact.phone}`} className="text-[#1e3a5f] hover:underline">{selectedContact.phone}</a></span>}
+                    </div>
                   </div>
                 ) : (
                   <div className="relative flex flex-col gap-1">
@@ -300,24 +340,6 @@ export default function PartyDetailPage() {
             </div>
           </Section>
 
-          {/* Calendar */}
-          {!isNew && (
-            <Section title="Google Calendar" defaultOpen={false}>
-              {party.calendar_event_id ? (
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-green-600 font-medium">Event created</span>
-                  <span className="text-[10px] text-gray-400 font-mono truncate">{party.calendar_event_id}</span>
-                  <CalendarSyncButton partyId={id} />
-                  <CalendarDeleteButton partyId={id} />
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">Not on calendar yet</span>
-                  <CalendarCreateButton partyId={id} />
-                </div>
-              )}
-            </Section>
-          )}
         </div>
 
         {/* Sticky Footer */}
@@ -341,6 +363,7 @@ function CalendarCreateButton({ partyId }) {
   const mut = useMutation({
     mutationFn: () => api.post(`/parties/${partyId}/calendar`),
     onSuccess: () => qc.invalidateQueries(['parties', partyId]),
+    onError: (err) => alert('Failed to add: ' + (err?.response?.data?.error || err.message)),
   });
   return (
     <button onClick={() => mut.mutate()} disabled={mut.isPending}
@@ -351,7 +374,12 @@ function CalendarCreateButton({ partyId }) {
 }
 
 function CalendarSyncButton({ partyId }) {
-  const mut = useMutation({ mutationFn: () => api.post(`/parties/${partyId}/calendar/sync`) });
+  const qc = useQueryClient();
+  const mut = useMutation({
+    mutationFn: () => api.post(`/parties/${partyId}/calendar/sync`),
+    onSuccess: () => qc.invalidateQueries(['parties', partyId]),
+    onError: (err) => alert('Sync failed: ' + (err?.response?.data?.error || err.message)),
+  });
   return (
     <button onClick={() => mut.mutate()} disabled={mut.isPending}
       className="text-[10px] text-[#1e3a5f] hover:underline">
