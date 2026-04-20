@@ -9,8 +9,8 @@ export function CopyableTable({ children, className = '' }) {
   const ref = useRef(null);
 
   return (
-    <div className={`relative ${className}`}>
-      <div className="absolute top-1 right-1 z-10">
+    <div className={className}>
+      <div className="flex justify-end mb-1">
         <CopyTableButton tableRef={ref} />
       </div>
       <div ref={ref}>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { getPrograms } from '../api/programs';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getPrograms, updateProgram } from '../api/programs';
 import { useGeneralData, useLocationList } from '../hooks/useReferenceData';
 import { CopyableTable } from '../components/ui/CopyableTable';
 import { AppShell } from '../components/layout/AppShell';
@@ -33,6 +33,7 @@ const COLUMNS = [
 ];
 
 export default function ProgramsPage() {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [area, setArea] = useState('');
@@ -45,6 +46,9 @@ export default function ProgramsPage() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('');
   const [dir, setDir] = useState('desc');
+  const [editEnrollment, setEditEnrollment] = useState(false);
+  const [enrollmentEdits, setEnrollmentEdits] = useState({});
+  const [savingEnrollment, setSavingEnrollment] = useState(false);
 
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
@@ -78,6 +82,40 @@ export default function ProgramsPage() {
   const total = data?.total || 0;
   const limit = data?.limit || 50;
   const selection = useRowSelection(programs);
+
+  const startEditEnrollment = () => {
+    const seed = {};
+    programs.forEach(p => { seed[p.id] = p.number_enrolled ?? ''; });
+    setEnrollmentEdits(seed);
+    setEditEnrollment(true);
+  };
+
+  const cancelEditEnrollment = () => {
+    setEditEnrollment(false);
+    setEnrollmentEdits({});
+  };
+
+  const saveEnrollment = async () => {
+    const changed = programs
+      .filter(p => {
+        const newVal = enrollmentEdits[p.id];
+        const cur = p.number_enrolled;
+        if (newVal === '' && cur == null) return false;
+        return Number(newVal) !== Number(cur);
+      })
+      .map(p => ({ id: p.id, number_enrolled: enrollmentEdits[p.id] === '' ? null : Number(enrollmentEdits[p.id]) }));
+    if (!changed.length) { cancelEditEnrollment(); return; }
+    setSavingEnrollment(true);
+    let saved = 0, failed = 0;
+    for (const c of changed) {
+      try { await updateProgram(c.id, { number_enrolled: c.number_enrolled }); saved++; }
+      catch { failed++; }
+    }
+    setSavingEnrollment(false);
+    qc.invalidateQueries(['programs']);
+    cancelEditEnrollment();
+    if (failed) alert(`Saved ${saved}, failed ${failed}`);
+  };
 
   const bulkFields = [
     { key: 'class_status_id', label: 'Status', type: 'select', options: (ref.classStatuses || []).map(s => ({ value: s.id, label: s.class_status_name })) },
@@ -199,7 +237,28 @@ export default function ProgramsPage() {
                     {v('end_date') && <SortTh col="end_date" sort={sort} dir={dir} onSort={handleSort}>End</SortTh>}
                     {v('professor') && <SortTh col="professor" sort={sort} dir={dir} onSort={handleSort}>Lead Prof</SortTh>}
                     {v('sessions') && <th className="text-center px-3 py-3 font-semibold text-gray-700 w-16">Sessions</th>}
-                    {v('enrolled') && <th className="text-right px-4 py-3 font-semibold text-gray-700">Enrolled</th>}
+                    {v('enrolled') && <th className="text-right px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-2">
+                        <span>Enrolled</span>
+                        {editEnrollment ? (
+                          <span className="flex items-center gap-1">
+                            <button type="button" onClick={saveEnrollment} disabled={savingEnrollment}
+                              className="text-[10px] px-2 py-0.5 rounded bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50">
+                              {savingEnrollment ? 'Saving…' : 'Save All'}
+                            </button>
+                            <button type="button" onClick={cancelEditEnrollment} disabled={savingEnrollment}
+                              className="text-[10px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium">
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button type="button" onClick={startEditEnrollment} title="Bulk edit enrollments"
+                            className="text-[10px] px-2 py-0.5 rounded bg-gray-100 hover:bg-[#1e3a5f] hover:text-white text-gray-600 font-medium transition-colors">
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -238,7 +297,16 @@ export default function ProgramsPage() {
                       {v('professor') && <td className="px-4 py-2.5 text-gray-600">{p.lead_professor_id ? <Link to={`/professors/${p.lead_professor_id}`} className="text-[#1e3a5f] hover:underline">{p.lead_professor_nickname}</Link> : '—'}</td>}
                       {v('sessions') && <td className="px-3 py-2.5 text-center text-gray-600">{p.session_count || 0}</td>}
                       {v('enrolled') && <td className="px-4 py-2.5 text-right text-gray-700">
-                        {p.number_enrolled != null ? `${p.number_enrolled} / ${p.maximum_students || '—'}` : '—'}
+                        {editEnrollment ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <input type="number" min="0" value={enrollmentEdits[p.id] ?? ''}
+                              onChange={e => setEnrollmentEdits(prev => ({ ...prev, [p.id]: e.target.value }))}
+                              className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                            <span className="text-xs text-gray-400">/ {p.maximum_students || '—'}</span>
+                          </div>
+                        ) : (
+                          p.number_enrolled != null ? `${p.number_enrolled} / ${p.maximum_students || '—'}` : '—'
+                        )}
                       </td>}
                     </tr>
                   ))}
