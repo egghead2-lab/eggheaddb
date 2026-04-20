@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
+import api from '../api/client';
 import { getProgram, createProgram, updateProgram, copyProgram } from '../api/programs';
 import { useGeneralData, useProfessorList, useLocationList, useLessons } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
@@ -41,6 +42,13 @@ export default function ProgramDetailPage() {
   const professors = professorListData?.data || [];
   const locations = locationListData?.data || [];
   const lessons = lessonsData?.data || [];
+
+  const { data: classesData } = useQuery({
+    queryKey: ['classes-list'],
+    queryFn: () => api.get('/classes').then(r => r.data),
+    staleTime: 10 * 60 * 1000,
+  });
+  const classes = classesData?.data || [];
 
   const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
 
@@ -124,6 +132,29 @@ export default function ProgramDetailPage() {
                 valueKey="id"
                 placeholder="Search locations…"
               />
+            </div>
+            <div className="grid grid-cols-4 gap-4 mt-4">
+              <SearchSelect
+                label="Class / Curriculum"
+                value={watch('class_id')}
+                onChange={v => setValue('class_id', v, { shouldDirty: true })}
+                options={classes}
+                displayKey="class_name"
+                valueKey="id"
+                placeholder="Search classes…"
+              />
+              <div className="col-span-3 flex items-end gap-2 text-xs text-gray-500 pb-2">
+                {(() => {
+                  const sel = classes.find(c => String(c.id) === String(watch('class_id')));
+                  return sel ? (
+                    <>
+                      <span>Program Type: <strong className="text-gray-700">{sel.program_type_name || '—'}</strong></span>
+                      <span>·</span>
+                      <span>Class Type: <strong className="text-gray-700">{sel.class_type_name || '—'}</strong></span>
+                    </>
+                  ) : <span className="text-gray-400">Pick a class to set program/class type</span>;
+                })()}
+              </div>
             </div>
             <div className="grid grid-cols-4 gap-4 mt-4">
               <Select label="Lead Professor" {...register('lead_professor_id')}>

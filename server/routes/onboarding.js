@@ -1039,7 +1039,26 @@ router.get('/candidates/:id/emails', async (req, res, next) => {
     let connectedEmail = null;
     try { connectedEmail = await getGmailAddress(user.google_refresh_token); } catch {}
 
-    res.json({ success: true, data: { threads, connected: true, connectedEmail } });
+    // Fetch tracking data: open count + last opened per gmail_message_id
+    const [trackedRows] = await pool.query(
+      `SELECT ce.gmail_message_id, ce.id AS candidate_email_id, ce.track_token,
+              COUNT(o.id) AS open_count, MAX(o.opened_at) AS last_opened_at
+       FROM candidate_email ce
+       LEFT JOIN candidate_email_open o ON o.candidate_email_id = ce.id
+       WHERE ce.candidate_id = ? AND ce.direction = 'sent' AND ce.gmail_message_id IS NOT NULL
+       GROUP BY ce.gmail_message_id, ce.id, ce.track_token`,
+      [id]
+    );
+    const trackingByMessageId = {};
+    trackedRows.forEach(r => {
+      trackingByMessageId[r.gmail_message_id] = {
+        open_count: Number(r.open_count) || 0,
+        last_opened_at: r.last_opened_at,
+        tracked: !!r.track_token,
+      };
+    });
+
+    res.json({ success: true, data: { threads, connected: true, connectedEmail, tracking: trackingByMessageId } });
   } catch (err) {
     if (err.code === 401 || err.message?.includes('invalid_grant')) {
       return res.json({ success: true, data: { threads: [], connected: false, expired: true } });
@@ -1072,11 +1091,17 @@ router.post('/candidates/:id/emails', upload.array('attachments', 10), async (re
       data: f.buffer,
     }));
 
+    // Generate tracking pixel token
+    const trackToken = crypto.randomBytes(16).toString('hex');
+    const baseUrl = process.env.SERVER_URL || 'https://eggheaddb-production.up.railway.app';
+    const pixelTag = `<img src="${baseUrl}/api/public/email-pixel/${trackToken}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;" />`;
+    const bodyWithPixel = (body || '') + pixelTag;
+
     const result = await sendEmail({
       refreshToken: user.google_refresh_token,
       to: candidate.email,
       subject,
-      htmlBody: body,
+      htmlBody: bodyWithPixel,
       threadId: threadId || null,
       attachments,
       signature: user.email_signature,
@@ -1087,10 +1112,10 @@ router.post('/candidates/:id/emails', upload.array('attachments', 10), async (re
     try { fromEmail = await getGmailAddress(user.google_refresh_token); } catch {}
 
     await pool.query(
-      `INSERT INTO candidate_email (candidate_id, gmail_thread_id, gmail_message_id, subject, from_email, to_email, body_html, body_text, direction, sent_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)`,
+      `INSERT INTO candidate_email (candidate_id, gmail_thread_id, gmail_message_id, subject, from_email, to_email, body_html, body_text, direction, sent_by_user_id, track_token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)`,
       [id, result.threadId, result.id, subject, fromEmail, candidate.email, body,
-       body.replace(/<[^>]+>/g, '').trim().substring(0, 1000), userId]
+       body.replace(/<[^>]+>/g, '').trim().substring(0, 1000), userId, trackToken]
     );
 
     res.json({ success: true, threadId: result.threadId, messageId: result.id });
@@ -1255,9 +1280,15 @@ router.get('/my-portal', async (req, res, next) => {
        ORDER BY ct.completed, ct.due_date, ct.ts_inserted`, [candidate.id]
     );
 
+    // Mark staff messages as read (candidate is viewing portal)
+    await pool.query(
+      `UPDATE candidate_message SET read_at = NOW()
+       WHERE candidate_id = ? AND is_from_candidate = 0 AND read_at IS NULL`,
+      [candidate.id]
+    );
     // Messages
     const [messages] = await pool.query(
-      `SELECT cm.id, cm.body, cm.sent_by_user_id, cm.is_from_candidate, cm.ts_inserted,
+      `SELECT cm.id, cm.body, cm.sent_by_user_id, cm.is_from_candidate, cm.ts_inserted, cm.read_at,
               CONCAT(u.first_name, ' ', u.last_name) AS sender_name
        FROM candidate_message cm
        LEFT JOIN user u ON u.id = cm.sent_by_user_id
@@ -1292,8 +1323,14 @@ router.get('/my-portal', async (req, res, next) => {
 // GET /api/onboarding/candidates/:id/messages
 router.get('/candidates/:id/messages', async (req, res, next) => {
   try {
+    // Mark candidate's messages as read (staff is viewing the thread)
+    await pool.query(
+      `UPDATE candidate_message SET read_at = NOW()
+       WHERE candidate_id = ? AND is_from_candidate = 1 AND read_at IS NULL`,
+      [req.params.id]
+    );
     const [messages] = await pool.query(
-      `SELECT cm.id, cm.body, cm.sent_by_user_id, cm.is_from_candidate, cm.ts_inserted,
+      `SELECT cm.id, cm.body, cm.sent_by_user_id, cm.is_from_candidate, cm.ts_inserted, cm.read_at,
               CONCAT(u.first_name, ' ', u.last_name) AS sender_name
        FROM candidate_message cm
        LEFT JOIN user u ON u.id = cm.sent_by_user_id

@@ -424,8 +424,13 @@ export default function CandidateDetailPage() {
                         {m.is_from_candidate ? 'Candidate' : m.sender_name}
                       </div>
                       <div className="text-sm whitespace-pre-wrap">{m.body}</div>
-                      <div className={`text-[10px] mt-1 ${m.is_from_candidate ? 'text-gray-400' : 'text-white/50'}`}>
-                        {new Date(m.ts_inserted).toLocaleString()}
+                      <div className={`text-[10px] mt-1 flex items-center gap-2 ${m.is_from_candidate ? 'text-gray-400' : 'text-white/50'}`}>
+                        <span>{new Date(m.ts_inserted).toLocaleString()}</span>
+                        {!m.is_from_candidate && (
+                          m.read_at
+                            ? <span title={`Read at ${new Date(m.read_at).toLocaleString()}`}>✓ Read</span>
+                            : <span title="Not yet read by candidate">○ Sent</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1205,6 +1210,7 @@ function EmailSection({ candidateId, candidateEmail }) {
   const emailData = data?.data || {};
   const threads = emailData.threads || [];
   const connected = emailData.connected;
+  const tracking = emailData.tracking || {};
 
   const startReply = (thread) => {
     setReplyThreadId(thread.threadId);
@@ -1339,6 +1345,20 @@ function EmailSection({ candidateId, candidateEmail }) {
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-800 truncate">{thread.subject || '(no subject)'}</span>
                           <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{thread.messages.length}</span>
+                          {(() => {
+                            // Sum opens across all tracked messages in this thread
+                            const trackedMsgs = thread.messages.filter(m => tracking[m.id]);
+                            if (trackedMsgs.length === 0) return null;
+                            const totalOpens = trackedMsgs.reduce((s, m) => s + (tracking[m.id]?.open_count || 0), 0);
+                            if (totalOpens === 0) {
+                              return <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded" title="No opens yet">○ Not opened</span>;
+                            }
+                            const lastOpen = trackedMsgs.reduce((latest, m) => {
+                              const t = tracking[m.id]?.last_opened_at;
+                              return t && (!latest || new Date(t) > new Date(latest)) ? t : latest;
+                            }, null);
+                            return <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-medium" title={lastOpen ? `Last opened ${new Date(lastOpen).toLocaleString()}` : ''}>● {totalOpens} open{totalOpens !== 1 ? 's' : ''}</span>;
+                          })()}
                         </div>
                         <div className="text-xs text-gray-400 truncate mt-0.5">
                           {lastMsg.from.split('<')[0].trim()} — {lastMsg.text?.substring(0, 80) || '(html)'}…
@@ -1360,11 +1380,30 @@ function EmailSection({ candidateId, candidateEmail }) {
                                 <span className="text-xs font-semibold text-gray-700">{msg.from.split('<')[0].trim()}</span>
                                 <span className="text-[10px] text-gray-400 ml-2">to {msg.to.split('<')[0].trim()}</span>
                               </div>
-                              <span className="text-[10px] text-gray-400">{new Date(msg.date).toLocaleString()}</span>
+                              <div className="flex items-center gap-2">
+                                {tracking[msg.id] && (
+                                  tracking[msg.id].open_count > 0
+                                    ? <span className="text-[10px] text-green-700" title={`Last opened ${new Date(tracking[msg.id].last_opened_at).toLocaleString()}`}>● Opened {tracking[msg.id].open_count}× — last {new Date(tracking[msg.id].last_opened_at).toLocaleDateString()}</span>
+                                    : <span className="text-[10px] text-gray-400">○ Not opened yet</span>
+                                )}
+                                <span className="text-[10px] text-gray-400">{new Date(msg.date).toLocaleString()}</span>
+                              </div>
                             </div>
                             {msg.html ? (
-                              <div className="text-sm text-gray-700 prose prose-sm max-w-none [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-500 [&_blockquote]:text-xs"
-                                dangerouslySetInnerHTML={{ __html: msg.html }} />
+                              <div className="overflow-hidden">
+                                <iframe
+                                  title={`email-${msg.id}`}
+                                  sandbox=""
+                                  srcDoc={`<!DOCTYPE html><html><head><base target="_blank"><style>html,body{margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#333;word-wrap:break-word;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}*{box-sizing:border-box}</style></head><body>${msg.html}</body></html>`}
+                                  style={{ width: '100%', minHeight: '200px', border: 'none' }}
+                                  onLoad={e => {
+                                    try {
+                                      const doc = e.target.contentDocument;
+                                      if (doc) e.target.style.height = (doc.body.scrollHeight + 20) + 'px';
+                                    } catch {}
+                                  }}
+                                />
+                              </div>
                             ) : (
                               <div className="text-sm text-gray-700 whitespace-pre-wrap">{msg.text}</div>
                             )}

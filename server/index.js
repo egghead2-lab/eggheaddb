@@ -128,6 +128,28 @@ app.use((req, res, next) => {
 // Public static files (no auth — needed for email client rendering)
 app.use('/api/public/signature-images', express.static(path.join(__dirname, '..', 'uploads', 'signature-images')));
 
+// Public email tracking pixel (no auth — email client requests it)
+app.get('/api/public/email-pixel/:token', async (req, res) => {
+  // 1x1 transparent gif (43 bytes)
+  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.setHeader('Content-Type', 'image/gif');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  // Send the pixel right away — log async
+  res.end(gif);
+  try {
+    const trackPool = require('./db/pool');
+    const [[email]] = await trackPool.query('SELECT id FROM candidate_email WHERE track_token = ?', [req.params.token]);
+    if (email) {
+      await trackPool.query(
+        'INSERT INTO candidate_email_open (candidate_email_id, ip, user_agent) VALUES (?, ?, ?)',
+        [email.id, (req.headers['x-forwarded-for'] || req.ip || '').toString().substring(0, 64), (req.headers['user-agent'] || '').substring(0, 512)]
+      );
+    }
+  } catch (e) { console.error('Email open log failed:', e.message); }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
