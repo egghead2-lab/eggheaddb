@@ -131,6 +131,84 @@ router.get('/', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/parties/follow-up — past parties needing/received follow-up email (MUST be before /:id)
+router.get('/follow-up', authenticate, async (req, res, next) => {
+  try {
+    const { days = 14 } = req.query;
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date,
+              prog.start_time, prog.class_length_minutes,
+              prog.party_location_text, prog.party_address, prog.party_city, prog.party_state, prog.party_zip,
+              prog.emailed_follow_up, prog.final_charge_date, prog.final_charge_type, prog.charge_confirmed,
+              prog.total_party_cost, prog.deposit_amount, prog.deposit_date, prog.base_party_price,
+              prog.maximum_students AS kids_expected, prog.total_kids_attended,
+              prog.invoice_needed, prog.invoice_notes,
+              cs.class_status_name,
+              pf.party_format_name,
+              cl.class_name AS party_theme,
+              loc.nickname AS location_nickname, loc.address,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              lp.phone_number AS lead_phone,
+              CONCAT(par.first_name, ' ', par.last_name) AS contact_name,
+              par.email AS contact_email, par.phone AS contact_phone
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN parent par ON par.id = prog.parent_id
+       WHERE prog.active = 1
+         AND pt.program_type_name = 'Party'
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
+         AND prog.first_session_date < CURDATE()
+         AND prog.first_session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       ORDER BY prog.first_session_date DESC`,
+      [parseInt(days)]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/parties/charge-pending — past parties missing final charge data (MUST be before /:id)
+router.get('/charge-pending', authenticate, async (req, res, next) => {
+  try {
+    const { days = 30 } = req.query;
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date,
+              prog.start_time, prog.class_length_minutes,
+              prog.emailed_follow_up, prog.final_charge_date, prog.final_charge_type, prog.charge_confirmed,
+              prog.total_party_cost, prog.deposit_amount, prog.deposit_date, prog.base_party_price,
+              prog.maximum_students AS kids_expected, prog.total_kids_attended,
+              prog.invoice_needed, prog.invoice_notes,
+              cs.class_status_name,
+              pf.party_format_name,
+              cl.class_name AS party_theme,
+              loc.nickname AS location_nickname,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_name,
+              CONCAT(par.first_name, ' ', par.last_name) AS contact_name,
+              par.email AS contact_email
+       FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
+       LEFT JOIN parent par ON par.id = prog.parent_id
+       WHERE prog.active = 1
+         AND pt.program_type_name = 'Party'
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
+         AND prog.first_session_date < CURDATE()
+         AND prog.first_session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       ORDER BY prog.first_session_date DESC`,
+      [parseInt(days)]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/parties/unconfirmed — MUST be before /:id
 router.get('/unconfirmed', authenticate, async (req, res, next) => {
   try {
@@ -168,10 +246,14 @@ router.get('/unconfirmed', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/parties/email-templates — MUST be before /:id
+// GET /api/parties/email-templates — MUST be before /:id (optional ?category= filter)
 router.get('/email-templates', authenticate, async (req, res, next) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM party_email_template WHERE active = 1 ORDER BY is_default DESC, name');
+    const { category } = req.query;
+    const params = [];
+    let where = 'WHERE active = 1';
+    if (category) { where += ' AND category = ?'; params.push(category); }
+    const [rows] = await pool.query(`SELECT * FROM party_email_template ${where} ORDER BY is_default DESC, name`, params);
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
@@ -264,6 +346,7 @@ router.post('/', authenticate, async (req, res, next) => {
       'first_session_date', 'start_time', 'class_length_minutes',
       'party_format_id', 'party_location_text', 'party_address', 'party_city', 'party_state', 'party_zip', 'geographic_area_id', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
       'demo_professor_id', 'demo_notes', 'parent_id', 'birthday_kid_name', 'birthday_kid_age',
+      'invoice_needed', 'invoice_notes',
     ];
 
     const insertFields = fields.filter(f => data[f] !== undefined);
@@ -301,6 +384,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'first_session_date', 'start_time', 'class_length_minutes',
       'party_format_id', 'party_location_text', 'party_address', 'party_city', 'party_state', 'party_zip', 'geographic_area_id', 'demo_date', 'demo_start_time', 'demo_end_time', 'demo_type_id', 'demo_pay',
       'demo_professor_id', 'demo_notes', 'parent_id', 'birthday_kid_name', 'birthday_kid_age', 'active',
+      'invoice_needed', 'invoice_notes',
     ];
 
     const updateFields = fields.filter(f => data[f] !== undefined);
@@ -371,15 +455,65 @@ router.post('/:id/send-confirmation', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/parties/:id/mark-followed-up — mark follow-up sent (without email)
+router.post('/:id/mark-followed-up', authenticate, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE program SET emailed_follow_up = CURDATE(), ts_updated = NOW() WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/parties/:id/send-follow-up — send follow-up email + mark
+router.post('/:id/send-follow-up', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { template_id, recipient_email, subject, body } = req.body;
+    if (!recipient_email || !body) return res.status(400).json({ success: false, error: 'Email and body required' });
+
+    try {
+      const { sendEmail } = require('../lib/gmail');
+      const [[user]] = await pool.query('SELECT google_refresh_token, email_signature FROM user WHERE id = ?', [req.user.userId]);
+      if (!user?.google_refresh_token) return res.status(400).json({ success: false, error: 'No Google account linked — sign in with Google first' });
+      const htmlBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6;">${body.replace(/\n/g, '<br>')}</div>`;
+      await sendEmail({ refreshToken: user.google_refresh_token, to: recipient_email, subject, htmlBody, signature: user.email_signature });
+    } catch (emailErr) {
+      return res.status(500).json({ success: false, error: 'Failed to send email: ' + emailErr.message });
+    }
+
+    await pool.query(
+      'INSERT INTO party_email_log (program_id, template_id, recipient_email, subject, sent_by_user_id) VALUES (?,?,?,?,?)',
+      [id, template_id || null, recipient_email, subject, req.user.userId]
+    );
+    await pool.query('UPDATE program SET emailed_follow_up = CURDATE(), ts_updated = NOW() WHERE id = ?', [id]);
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/parties/:id/log-charge — set final_charge_date / final_charge_type
+router.post('/:id/log-charge', authenticate, async (req, res, next) => {
+  try {
+    const { final_charge_date, final_charge_type } = req.body;
+    if (!final_charge_date || !final_charge_type) {
+      return res.status(400).json({ success: false, error: 'final_charge_date and final_charge_type required' });
+    }
+    await pool.query(
+      'UPDATE program SET final_charge_date = ?, final_charge_type = ?, charge_confirmed = 1, ts_updated = NOW() WHERE id = ?',
+      [final_charge_date, final_charge_type, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // PARTY EMAIL TEMPLATES (POST/PUT/DELETE — GET is above /:id)
 
 router.post('/email-templates', authenticate, async (req, res, next) => {
   try {
-    const { name, subject, body } = req.body;
+    const { name, subject, body, category } = req.body;
     if (!name || !subject || !body) return res.status(400).json({ success: false, error: 'Name, subject, and body required' });
     const [result] = await pool.query(
-      'INSERT INTO party_email_template (name, subject, body) VALUES (?,?,?)',
-      [name, subject, body]
+      'INSERT INTO party_email_template (name, subject, body, category) VALUES (?,?,?,?)',
+      [name, subject, body, category || 'confirmation']
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
@@ -387,12 +521,13 @@ router.post('/email-templates', authenticate, async (req, res, next) => {
 
 router.put('/email-templates/:id', authenticate, async (req, res, next) => {
   try {
-    const { name, subject, body, is_default } = req.body;
+    const { name, subject, body, is_default, category } = req.body;
     const sets = []; const vals = [];
     if (name !== undefined) { sets.push('name = ?'); vals.push(name); }
     if (subject !== undefined) { sets.push('subject = ?'); vals.push(subject); }
     if (body !== undefined) { sets.push('body = ?'); vals.push(body); }
     if (is_default !== undefined) { sets.push('is_default = ?'); vals.push(is_default ? 1 : 0); }
+    if (category !== undefined) { sets.push('category = ?'); vals.push(category || 'confirmation'); }
     if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     await pool.query(`UPDATE party_email_template SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
     res.json({ success: true });

@@ -268,7 +268,13 @@ export default function PartyDetailPage() {
                 <option value="Other">Other</option>
               </Select>
               <Toggle label="Charge Confirmed" checked={!!watch('charge_confirmed')} onChange={v => setValue('charge_confirmed', v ? 1 : 0, { shouldDirty: true })} />
-              <Toggle label="Emailed Follow Up" checked={!!watch('emailed_follow_up')} onChange={v => setValue('emailed_follow_up', v ? 1 : 0, { shouldDirty: true })} />
+              <Input label="Emailed Follow Up" type="date" {...register('emailed_follow_up')} />
+              <Toggle label="Invoice Needed" checked={!!watch('invoice_needed')} onChange={v => setValue('invoice_needed', v ? 1 : 0, { shouldDirty: true })} />
+            </div>
+            <div className="mt-3">
+              <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Notes</label>
+              <textarea {...register('invoice_notes')} rows={2} placeholder="Notes for invoicing (visible on Follow Up tool)…"
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
             </div>
           </Section>
 

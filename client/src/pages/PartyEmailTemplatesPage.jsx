@@ -5,15 +5,24 @@ import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+
+const CATEGORIES = [
+  { value: 'confirmation', label: 'Confirmation' },
+  { value: 'follow_up', label: 'Follow Up' },
+  { value: 'charge', label: 'Charge' },
+];
+const CAT_LABEL = Object.fromEntries(CATEGORIES.map(c => [c.value, c.label]));
 
 export default function PartyEmailTemplatesPage() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', subject: '', body: '' });
+  const [addForm, setAddForm] = useState({ name: '', subject: '', body: '', category: 'confirmation' });
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', subject: '', body: '' });
+  const [editForm, setEditForm] = useState({ name: '', subject: '', body: '', category: 'confirmation' });
+  const [filterCat, setFilterCat] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['party-email-templates'],
@@ -23,7 +32,7 @@ export default function PartyEmailTemplatesPage() {
 
   const addMutation = useMutation({
     mutationFn: (d) => api.post('/parties/email-templates', d),
-    onSuccess: () => { qc.invalidateQueries(['party-email-templates']); setShowAdd(false); setAddForm({ name: '', subject: '', body: '' }); },
+    onSuccess: () => { qc.invalidateQueries(['party-email-templates']); setShowAdd(false); setAddForm({ name: '', subject: '', body: '', category: 'confirmation' }); },
   });
 
   const updateMutation = useMutation({
@@ -54,10 +63,25 @@ export default function PartyEmailTemplatesPage() {
           Templates use variables like {'{{contact_name}}, {{party_date}}, {{party_time}}, {{party_format}}, {{party_theme}}, {{location}}, {{address}}, {{lead_professor}}, {{lead_phone}}, {{program_name}}, {{duration}}'} which get filled automatically.
         </p>
 
+        {/* Category filter */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <button onClick={() => setFilterCat('')}
+            className={`text-xs px-2.5 py-1.5 rounded-lg font-medium ${!filterCat ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>All</button>
+          {CATEGORIES.map(c => (
+            <button key={c.value} onClick={() => setFilterCat(c.value)}
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium ${filterCat === c.value ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{c.label}</button>
+          ))}
+        </div>
+
         {showAdd && (
           <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-6 space-y-3">
             <div className="text-sm font-semibold text-gray-700">New Template</div>
-            <Input label="Name" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Name" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} />
+              <Select label="Category" value={addForm.category} onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}>
+                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </Select>
+            </div>
             <Input label="Subject" value={addForm.subject} onChange={e => setAddForm(f => ({ ...f, subject: e.target.value }))} placeholder="Party Confirmation - {{party_date}}" />
             <div>
               <label className="text-xs font-medium text-gray-700 block mb-1">Body</label>
@@ -80,11 +104,16 @@ export default function PartyEmailTemplatesPage() {
           <div className="text-center py-12 text-gray-400">No templates yet</div>
         ) : (
           <div className="space-y-4">
-            {templates.map(t => (
+            {templates.filter(t => !filterCat || (t.category || 'confirmation') === filterCat).map(t => (
               <div key={t.id} className="bg-white rounded-lg border border-gray-200">
                 {editingId === t.id ? (
                   <div className="p-4 space-y-3">
-                    <Input label="Name" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input label="Name" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+                      <Select label="Category" value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}>
+                        {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </Select>
+                    </div>
                     <Input label="Subject" value={editForm.subject} onChange={e => setEditForm(f => ({ ...f, subject: e.target.value }))} />
                     <div>
                       <label className="text-xs font-medium text-gray-700 block mb-1">Body</label>
@@ -101,6 +130,7 @@ export default function PartyEmailTemplatesPage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-gray-800">{t.name}</span>
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">{CAT_LABEL[t.category] || 'Confirmation'}</span>
                         {t.is_default ? (
                           <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Default</span>
                         ) : (
@@ -108,7 +138,7 @@ export default function PartyEmailTemplatesPage() {
                         )}
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => { setEditingId(t.id); setEditForm({ name: t.name, subject: t.subject, body: t.body }); }}
+                        <button onClick={() => { setEditingId(t.id); setEditForm({ name: t.name, subject: t.subject, body: t.body, category: t.category || 'confirmation' }); }}
                           className="text-xs text-[#1e3a5f] hover:underline">Edit</button>
                         <button onClick={() => { if (confirm('Delete this template?')) deleteMutation.mutate(t.id); }}
                           className="text-xs text-red-500 hover:underline">Delete</button>
