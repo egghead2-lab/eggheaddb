@@ -64,22 +64,34 @@ export default function EvaluationDashboardPage() {
         {showConfig && <EvalConfigPanel tiers={tiers} />}
 
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-red-50 rounded-lg p-4 border border-red-100">
+          <button type="button"
+            onClick={() => document.getElementById('section-overdue')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            disabled={overdue.length === 0}
+            className="bg-red-50 rounded-lg p-4 border border-red-100 text-left hover:border-red-300 hover:shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-red-100 disabled:hover:shadow-none">
             <div className="text-2xl font-bold text-red-600">{overdue.length}</div>
             <div className="text-xs text-gray-500 mt-0.5">Overdue</div>
-          </div>
-          <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+          </button>
+          <button type="button"
+            onClick={() => document.getElementById('section-never')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            disabled={neverEvaled.length === 0}
+            className="bg-amber-50 rounded-lg p-4 border border-amber-100 text-left hover:border-amber-300 hover:shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-amber-100 disabled:hover:shadow-none">
             <div className="text-2xl font-bold text-amber-600">{neverEvaled.length}</div>
             <div className="text-xs text-gray-500 mt-0.5">Never Evaluated</div>
-          </div>
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+          </button>
+          <button type="button"
+            onClick={() => document.getElementById('section-upcoming')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            disabled={upcoming.length === 0}
+            className="bg-blue-50 rounded-lg p-4 border border-blue-100 text-left hover:border-blue-300 hover:shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-blue-100 disabled:hover:shadow-none">
             <div className="text-2xl font-bold text-blue-600">{upcoming.length}</div>
             <div className="text-xs text-gray-500 mt-0.5">Due Within 30 Days</div>
-          </div>
-          <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+          </button>
+          <button type="button"
+            onClick={() => document.getElementById('section-ontrack')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            disabled={onTrack.length === 0}
+            className="bg-green-50 rounded-lg p-4 border border-green-100 text-left hover:border-green-300 hover:shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-green-100 disabled:hover:shadow-none">
             <div className="text-2xl font-bold text-green-600">{onTrack.length}</div>
             <div className="text-xs text-gray-500 mt-0.5">On Track</div>
-          </div>
+          </button>
         </div>
 
         {isLoading ? (
@@ -87,32 +99,40 @@ export default function EvaluationDashboardPage() {
         ) : (
           <>
             {overdue.length > 0 && (
-              <Section title={`Overdue Evaluations (${overdue.length})`} defaultOpen={true}>
-                {Object.entries(overdueByArea).map(([area, profs]) => (
-                  <div key={area} className="mb-4">
-                    <div className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">{area} ({profs.length})</div>
-                    <EvalTable professors={profs} statusCol="overdue" tint="red" />
-                  </div>
-                ))}
-              </Section>
+              <div id="section-overdue" className="scroll-mt-4">
+                <Section title={`Overdue Evaluations (${overdue.length})`} defaultOpen={true}>
+                  {Object.entries(overdueByArea).map(([area, profs]) => (
+                    <div key={area} className="mb-4">
+                      <div className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">{area} ({profs.length})</div>
+                      <EvalTable professors={profs} statusCol="overdue" tint="red" />
+                    </div>
+                  ))}
+                </Section>
+              </div>
             )}
 
             {neverEvaled.length > 0 && (
-              <Section title={`Never Evaluated (${neverEvaled.length})`} defaultOpen={true}>
-                <EvalTable professors={neverEvaled} statusCol="never" tint="amber" />
-              </Section>
+              <div id="section-never" className="scroll-mt-4">
+                <Section title={`Never Evaluated (${neverEvaled.length})`} defaultOpen={true}>
+                  <EvalTable professors={neverEvaled} statusCol="never" tint="amber" />
+                </Section>
+              </div>
             )}
 
             {upcoming.length > 0 && (
-              <Section title={`Due Within 30 Days (${upcoming.length})`} defaultOpen={true}>
-                <EvalTable professors={upcoming} statusCol="due" />
-              </Section>
+              <div id="section-upcoming" className="scroll-mt-4">
+                <Section title={`Due Within 30 Days (${upcoming.length})`} defaultOpen={true}>
+                  <EvalTable professors={upcoming} statusCol="due" />
+                </Section>
+              </div>
             )}
 
             {onTrack.length > 0 && (
-              <Section title={`On Track (${onTrack.length})`} defaultOpen={false}>
-                <EvalTable professors={onTrack} statusCol="due" />
-              </Section>
+              <div id="section-ontrack" className="scroll-mt-4">
+                <Section title={`On Track (${onTrack.length})`} defaultOpen={false}>
+                  <EvalTable professors={onTrack} statusCol="due" />
+                </Section>
+              </div>
             )}
           </>
         )}
