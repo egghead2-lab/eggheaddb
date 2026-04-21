@@ -128,8 +128,7 @@ function ProgramTable({ programs, profId, isLead, viewOnly, sessions, subDateSet
                             {upcomingSess.map(s => {
                               const dateStr = (s.session_date || '').split('T')[0];
                               const hasSub = subDateSet?.has(dateStr);
-                              const actualLead = s.session_professor_id || s.lead_professor_id;
-                              const lead = String(actualLead) === String(profId);
+                              const lead = s.role === 'lead';
                               const sPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
                               const pay = sPay || parseFloat(s.estimated_pay) || 0;
                               const isEst = !sPay && pay > 0;
@@ -207,8 +206,7 @@ function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
             const isToday = dateStr === today;
             const isTomorrow = dateStr === tomorrow;
             const subStatus = getSubStatus(s);
-            const actualLead = s.session_professor_id || s.lead_professor_id;
-            const lead = String(actualLead) === String(profId);
+            const lead = s.role === 'lead';
             const sessionPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
             const pay = sessionPay || parseFloat(s.estimated_pay) || 0;
             const isExpected = !sessionPay && pay > 0;
@@ -228,7 +226,14 @@ function SessionTable({ sessions, profId, viewOnly, subDateSet, showStatus }) {
                 <td className="px-3 py-2 text-gray-500">{dow}</td>
                 <td className="px-3 py-2 text-gray-600">{s.session_time ? formatTime(s.session_time) : '—'}</td>
                 <td className="px-3 py-2">
-                  {viewOnly ? <span>{s.program_nickname}</span> : <Link to={`/programs/${s.program_id || ''}`} className="text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>}
+                  <div className="flex items-center gap-1.5">
+                    {viewOnly ? <span>{s.program_nickname}</span> : <Link to={`/programs/${s.program_id || ''}`} className="text-[#1e3a5f] hover:underline">{s.program_nickname}</Link>}
+                    {s.role && (
+                      <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
+                        s.role === 'lead' ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]' : 'bg-gray-100 text-gray-600'
+                      }`}>{s.role === 'lead' ? 'LEAD' : 'ASSIST'}</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-2 text-gray-600">
                   {viewOnly && s.location_id ? (
@@ -329,14 +334,14 @@ export default function ProfessorSchedulePage() {
   const upcomingSessions = sessions.filter(s => (s.session_date || '').split('T')[0] >= today && getSubStatus(s) !== 'covered');
   const pastSessions = sessions.filter(s => (s.session_date || '').split('T')[0] < today).reverse();
 
-  // Pay totals
+  // Pay totals — only includes sessions the professor was actually on (server filters past sessions)
   const totalUpcomingPay = upcomingSessions.reduce((sum, s) => {
-    const lead = String(s.session_professor_id || s.lead_professor_id) === String(profId);
+    const lead = s.role === 'lead';
     const sPay = parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0;
     return sum + (sPay || parseFloat(s.estimated_pay) || 0);
   }, 0);
   const totalPastPay = pastSessions.reduce((sum, s) => {
-    const lead = String(s.lead_professor_id) === String(profId);
+    const lead = s.role === 'lead';
     return sum + (parseFloat(lead ? s.professor_pay : s.assistant_pay) || 0);
   }, 0);
 

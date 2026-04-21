@@ -229,6 +229,7 @@ router.get('/my-pay', authenticate, async (req, res, next) => {
 
     // Upcoming sessions (not yet in program_session_pay) — expected pay from program rates
     let upWhere = `WHERE s.active = 1 AND s.session_date >= CURDATE()
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
          AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
          AND NOT EXISTS (SELECT 1 FROM program_session_pay psp2 WHERE psp2.session_id = s.id AND psp2.professor_id = ?)`;
     const upParams = [prof.id, prof.id, prof.id, prof.id, prof.id];
@@ -257,20 +258,28 @@ router.get('/my-pay', authenticate, async (req, res, next) => {
 
     // Calculate expected pay using payroll hierarchy:
     // 1. Program-level pay  2. Professor base_pay/assist_pay
-    const upcoming = upcomingRows.map(s => {
-      const actualLead = s.session_professor_id || s.lead_professor_id;
-      const isLead = String(actualLead) === String(prof.id);
-      const pay = isLead
+    // Only include sessions this professor is actually on — explicit session override wins,
+    // program default only applies when session-level attribution is null.
+    const profIdStr = String(prof.id);
+    const upcoming = upcomingRows.reduce((acc, s) => {
+      let role = null;
+      if (String(s.session_professor_id) === profIdStr) role = 'Lead';
+      else if (String(s.session_assistant_id) === profIdStr) role = 'Assistant';
+      else if (s.session_professor_id == null && String(s.lead_professor_id) === profIdStr) role = 'Lead';
+      else if (s.session_assistant_id == null && String(s.assistant_professor_id) === profIdStr) role = 'Assistant';
+      if (!role) return acc; // someone else is actually scheduled for this session
+      const pay = role === 'Lead'
         ? (parseFloat(s.lead_professor_pay) || parseFloat(prof.base_pay) || 0)
         : (parseFloat(s.assistant_professor_pay) || parseFloat(prof.assist_pay) || 0);
-      return {
+      acc.push({
         id: s.id, pay_date: s.pay_date, pay_amount: pay,
-        role: isLead ? 'Lead' : 'Assistant',
+        role,
         program_nickname: s.program_nickname, program_id: s.program_id,
         location_nickname: s.location_nickname, lesson_name: s.lesson_name,
         pay_type: 'upcoming',
-      };
-    });
+      });
+      return acc;
+    }, []);
 
     res.json({ success: true, data: { sessions: sessionRows, upcoming, misc: miscRows, observations: obsRows } });
   } catch (err) { next(err); }
@@ -593,24 +602,45 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN lesson l ON l.id = s.lesson_id
        WHERE s.active = 1
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
          AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
        ORDER BY s.session_date ASC, s.session_time ASC`,
       [professorId, professorId, professorId, professorId]
     );
 
-    // Compute estimated_pay for each session using payroll hierarchy:
-    // 1. Session-level pay  2. Program-level pay  3. Professor base_pay/assist_pay
-    const sessions = sessionsRaw.map(s => {
-      const actualLead = s.session_professor_id || s.lead_professor_id;
-      const isLead = String(actualLead) === String(professorId);
+    // Determine role + estimated_pay for each session.
+    // Rule: a professor is only counted as on a session when they were actually on it.
+    //   - Explicit session-level attribution (s.professor_id / s.assistant_id) always wins.
+    //   - For FUTURE sessions, fall back to the program's default lead/assist when session-level is null
+    //     (that's the scheduled plan).
+    //   - For PAST sessions, we do NOT fall back to program defaults — if session-level wasn't set,
+    //     we can't confirm this prof actually taught, so don't estimate pay or show the row.
+    const todayStr = new Date().toISOString().split('T')[0];
+    const sessions = sessionsRaw.reduce((acc, s) => {
+      const rawDate = s.session_date instanceof Date ? s.session_date.toISOString() : String(s.session_date);
+      const dateStr = rawDate.split('T')[0];
+      const isPast = dateStr < todayStr;
+      const profIdStr = String(professorId);
+
+      let role = null;
+      if (String(s.session_professor_id) === profIdStr) role = 'lead';
+      else if (String(s.session_assistant_id) === profIdStr) role = 'assist';
+      else if (!isPast) {
+        if (s.session_professor_id == null && String(s.lead_professor_id) === profIdStr) role = 'lead';
+        else if (s.session_assistant_id == null && String(s.assistant_professor_id) === profIdStr) role = 'assist';
+      }
+
+      if (!role) return acc; // professor wasn't actually on this session
+
       let estimatedPay = null;
-      if (isLead) {
+      if (role === 'lead') {
         estimatedPay = parseFloat(s.professor_pay) || parseFloat(s.program_lead_pay) || parseFloat(prof.base_pay) || null;
       } else {
         estimatedPay = parseFloat(s.assistant_pay) || parseFloat(s.program_assist_pay) || parseFloat(prof.assist_pay) || null;
       }
-      return { ...s, estimated_pay: estimatedPay };
-    });
+      acc.push({ ...s, role, estimated_pay: estimatedPay });
+      return acc;
+    }, []);
 
     // Upcoming parties
     const [parties] = await pool.query(
@@ -628,6 +658,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
        LEFT JOIN party_format pf ON pf.id = prog.party_format_id
        WHERE prog.active = 1
          AND pt.program_type_name = 'Party'
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
          AND (prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
          AND prog.first_session_date >= CURDATE()
        ORDER BY prog.first_session_date ASC`,

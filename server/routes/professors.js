@@ -232,6 +232,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        WHERE s.active = 1 AND s.session_date >= CURDATE()
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
          AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)
        ORDER BY s.session_date ASC, s.session_time ASC
        LIMIT 20`,
@@ -275,12 +276,14 @@ router.get('/:id', authenticate, async (req, res, next) => {
       [id, id, id]
     );
 
-    // Get this professor's sessions for conflict detection
+    // Get this professor's sessions for conflict detection (excluding cancelled programs)
     const [profSessions] = await pool.query(
       `SELECT s.session_date FROM session s
        JOIN program p ON p.id = s.program_id AND p.active = 1
+       LEFT JOIN class_status cs2 ON cs2.id = p.class_status_id
        WHERE s.active = 1 AND (s.professor_id = ? OR s.assistant_id = ? OR p.lead_professor_id = ? OR p.assistant_professor_id = ?)
-         AND s.session_date >= CURDATE()`,
+         AND s.session_date >= CURDATE()
+         AND (cs2.class_status_name IS NULL OR cs2.class_status_name NOT LIKE 'Cancelled%')`,
       [id, id, id, id]
     );
     const sessionDateSet = new Set(profSessions.map(s => s.session_date?.toISOString().split('T')[0]));

@@ -94,7 +94,9 @@ async function checkProfessorConflicts(professorId, programId, options = {}) {
       `SELECT po.observation_date, prog.program_nickname, prog.start_time
        FROM professor_observation po
        JOIN program prog ON prog.id = po.program_id
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        WHERE po.active = 1 AND po.status = 'scheduled'
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
          AND (po.professor_id = ? OR po.evaluator_professor_id = ?)
          AND po.observation_date = ?`,
       [professorId, professorId, options.checkDate]
