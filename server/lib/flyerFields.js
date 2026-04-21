@@ -19,7 +19,7 @@ const FLYER_FIELDS = [
     type: 'text',
     source: 'location',
     description: 'School / venue display name',
-    default: { font_size: 12, alignment: 'center', auto_shrink: true },
+    default: { font_size: 12, alignment: 'left', auto_shrink: true },
   },
   {
     key: 'class_name',
@@ -75,7 +75,7 @@ const FLYER_FIELDS = [
     type: 'text',
     source: 'program',
     description: 'Lab fee, formatted as currency',
-    default: { font_size: 12, alignment: 'center', auto_shrink: true },
+    default: { font_size: 12, alignment: 'left', auto_shrink: true },
   },
   {
     key: 'grade_range',
@@ -83,7 +83,7 @@ const FLYER_FIELDS = [
     type: 'text',
     source: 'program',
     description: 'e.g. "K — 5th"',
-    default: { font_size: 12, alignment: 'center', auto_shrink: true },
+    default: { font_size: 12, alignment: 'left', auto_shrink: true },
   },
   {
     key: 'session_count',
@@ -91,7 +91,7 @@ const FLYER_FIELDS = [
     type: 'text',
     source: 'derived',
     description: 'e.g. "10 weeks"',
-    default: { font_size: 12, alignment: 'center', auto_shrink: true },
+    default: { font_size: 12, alignment: 'left', auto_shrink: true },
   },
   {
     key: 'registration_link',

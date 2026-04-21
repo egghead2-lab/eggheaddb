@@ -20,11 +20,11 @@ import { canvasToPdf, pdfToCanvas } from '../../lib/pdfCoords';
 const SAMPLE_DATA = {
   location_name: 'Sample Elementary School',
   class_name: 'Mad Science',
-  class_dates: 'Jan 14, Jan 21, Jan 28, Feb 4, Feb 11, Feb 18, Feb 25, Mar 4, Mar 11, Mar 18',
+  class_dates: '1/14, 1/21, 1/28, 2/4, 2/11, 2/18, 2/25, 3/4, 3/11, 3/18 (10 Sessions)',
   class_day: 'Tuesdays',
   class_time: '2:30 - 3:30 PM',
   class_day_and_time: 'Tuesdays, 2:30 - 3:30 PM',
-  class_cost: '$275',
+  class_cost: '$275 + $25 material fee',
   lab_fee: '$25',
   grade_range: 'K - 5th',
   session_count: '10 weeks',
@@ -115,13 +115,13 @@ export default function FlyerTemplateEditorPage() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty, saveMut.isPending]);
 
-  // Live preview render — debounced, only when in preview mode
+  // Live preview render — debounced, only when in preview mode.
+  // Uses Blob URL (more reliable in iframes than data: URLs).
   useEffect(() => {
     if (viewMode !== 'preview') return;
     setPreviewLoading(true);
     const t = setTimeout(async () => {
       try {
-        // Save first if dirty so the renderer reads our latest fields
         if (dirty && !saveMut.isPending) {
           await saveMut.mutateAsync();
         }
@@ -130,9 +130,12 @@ export default function FlyerTemplateEditorPage() {
           data: SAMPLE_DATA,
           mode: 'preview',
         });
-        setPreviewSrc(`data:application/pdf;base64,${resp.pdf_base64}`);
+        const bytes = Uint8Array.from(atob(resp.pdf_base64), c => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        setPreviewSrc(prev => { if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev); return url; });
       } catch (e) {
-        console.error('Preview render failed:', e);
+        console.error('Preview render failed:', e?.response?.data || e);
       } finally {
         setPreviewLoading(false);
       }
@@ -140,6 +143,8 @@ export default function FlyerTemplateEditorPage() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, fields, id]);
+
+  useEffect(() => () => { if (previewSrc?.startsWith('blob:')) URL.revokeObjectURL(previewSrc); }, []);
 
   const currentPageHeight = pageDimensions[pageNumber]?.height || template?.pdf_page_height || 792;
 
@@ -175,7 +180,7 @@ export default function FlyerTemplateEditorPage() {
       width: w,
       height: h,
       font_size: def.font_size ?? 12,
-      font_family: 'Helvetica',
+      font_family: 'BebasNeue',
       font_color: '#000000',
       alignment: def.alignment || 'left',
       auto_shrink: def.auto_shrink ?? 1,

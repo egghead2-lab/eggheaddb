@@ -22,6 +22,7 @@ const CATEGORIES = [
   { value: 'set_dates_email', label: 'Set Dates (Rebook)' },
   { value: 'rebook_receive_email', label: 'Rebook Receive' },
   { value: 'lab_fee_followup', label: 'Lab Fee Follow-Up' },
+  { value: 'send_flyer', label: 'Send Flyer' },
 ];
 
 export default function ClientTemplatesPage() {
@@ -132,6 +133,15 @@ const MERGE_FIELDS_BY_CATEGORY = {
     { key: '{{lab_fee_amount}}', label: 'Lab Fee Amount' },
     { key: '{{payment_link}}', label: 'Payment Link URL' },
     { key: '{{start_date}}', label: 'Start Date' },
+  ],
+  send_flyer: [
+    { key: '{{contact_name}}', label: 'Contact Name (POC)' },
+    { key: '{{school_name}}', label: 'School Name' },
+    { key: '{{class_name}}', label: 'Class Name' },
+    { key: '{{program_nickname}}', label: 'Program Nickname' },
+    { key: '{{start_date}}', label: 'Start Date' },
+    { key: '{{registration_link}}', label: 'Registration Link' },
+    { key: '{{class_cost}}', label: 'Class Cost' },
   ],
 };
 

@@ -101,6 +101,16 @@ async function run() {
       console.log('flyer_template_field already exists');
     }
 
+    // 4. program.flyer_template_id (remember which template was used so re-rendering on send is consistent)
+    if (!(await columnExists(conn, 'program', 'flyer_template_id'))) {
+      await conn.query(
+        "ALTER TABLE program ADD COLUMN flyer_template_id INT NULL AFTER flyer_required"
+      );
+      console.log('Added flyer_template_id to program');
+    } else {
+      console.log('flyer_template_id already exists on program');
+    }
+
     console.log('\nMigration complete.');
   } catch (err) {
     console.error('Migration failed:', err);

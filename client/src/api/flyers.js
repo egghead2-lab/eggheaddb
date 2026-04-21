@@ -43,6 +43,18 @@ export const renderFlyer = ({ template_id, program_id, data, mode = 'preview' })
     mode === 'download' ? { responseType: 'blob' } : undefined
   ).then(r => r.data);
 
+// Flyer-status mutations
+export const markFlyerMade = (programId, templateId) =>
+  api.post(`/flyers/programs/${programId}/mark-made`, { template_id: templateId }).then(r => r.data);
+export const unmakeFlyerProgram = (programId) =>
+  api.post(`/flyers/programs/${programId}/unmake`).then(r => r.data);
+export const markFlyerSent = (programId) =>
+  api.post(`/flyers/programs/${programId}/mark-sent`).then(r => r.data);
+export const unsendFlyerProgram = (programId) =>
+  api.post(`/flyers/programs/${programId}/unsend`).then(r => r.data);
+export const sendFlyerEmail = (programId, payload) =>
+  api.post(`/flyers/programs/${programId}/send-flyer`, payload).then(r => r.data);
+
 // Convenience: trigger a browser file download from a Blob
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);

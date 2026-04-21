@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { AppShell } from '../../components/layout/AppShell';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -9,6 +9,7 @@ import { Input } from '../../components/ui/Input';
 import { Spinner } from '../../components/ui/Spinner';
 import {
   listFlyerTemplates, getFlyerTemplate, getProgramFlyerData, renderFlyer, downloadBlob,
+  markFlyerMade,
 } from '../../api/flyers';
 
 export default function FlyerGeneratePage() {
@@ -18,11 +19,22 @@ export default function FlyerGeneratePage() {
 
   const [programId, setProgramId] = useState(programIdParam || '');
   const [templateId, setTemplateId] = useState(templateIdParam || '');
+  const qc = useQueryClient();
   const [data, setData] = useState({});
   const [previewSrc, setPreviewSrc] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [hasDownloaded, setHasDownloaded] = useState(false);
   const debounceRef = useRef(null);
+
+  const markMadeMut = useMutation({
+    mutationFn: () => markFlyerMade(programId, templateId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['flyer-programs'] });
+      qc.invalidateQueries({ queryKey: ['flyer-program-data', programId] });
+    },
+    onError: (e) => alert(e?.response?.data?.error || 'Mark as Created failed'),
+  });
 
   // Templates dropdown
   const { data: tplsData } = useQuery({
@@ -62,10 +74,12 @@ export default function FlyerGeneratePage() {
     if (programData?.data) setData(programData.data);
   }, [programData]);
 
-  // Debounced preview render
+  // Debounced preview render. Convert base64 → Blob URL (more reliable in
+  // iframes than data: URLs on Chrome/Firefox).
   useEffect(() => {
     if (!templateId) { setPreviewSrc(null); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    let revoke = null;
     debounceRef.current = setTimeout(async () => {
       setLoadingPreview(true);
       try {
@@ -75,15 +89,23 @@ export default function FlyerGeneratePage() {
           data,
           mode: 'preview',
         });
-        setPreviewSrc(`data:application/pdf;base64,${resp.pdf_base64}`);
+        const bytes = Uint8Array.from(atob(resp.pdf_base64), c => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        setPreviewSrc(prev => { if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev); return url; });
+        revoke = url;
       } catch (e) {
-        console.error(e);
+        console.error('Preview render failed:', e?.response?.data || e);
+        alert(e?.response?.data?.error || e?.message || 'Preview failed');
       } finally {
         setLoadingPreview(false);
       }
     }, 500);
-    return () => clearTimeout(debounceRef.current);
+    return () => { clearTimeout(debounceRef.current); };
   }, [templateId, programId, data]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => () => { if (previewSrc?.startsWith('blob:')) URL.revokeObjectURL(previewSrc); }, []);
 
   async function handleDownload() {
     if (!templateId) return;
@@ -97,12 +119,15 @@ export default function FlyerGeneratePage() {
       });
       const safeName = (data.location_name || 'flyer').replace(/[^\w\-]+/g, '_');
       downloadBlob(blob, `${safeName}.pdf`);
+      setHasDownloaded(true);
     } catch (e) {
       alert(e?.message || 'Download failed');
     } finally {
       setDownloading(false);
     }
   }
+
+  const isAlreadyMade = !!programData?.program?.flyer_made;
 
   return (
     <AppShell>
@@ -181,10 +206,30 @@ export default function FlyerGeneratePage() {
             </div>
           )}
 
-          <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
-            <Button size="sm" type="button" disabled={!templateId || downloading} onClick={handleDownload}>
-              {downloading ? 'Building…' : 'Download PDF'}
-            </Button>
+          <div className="pt-3 border-t border-gray-200 space-y-2">
+            <div className="flex items-center justify-end gap-2">
+              <Button size="sm" type="button" disabled={!templateId || downloading} onClick={handleDownload}>
+                {downloading ? 'Building…' : 'Download PDF'}
+              </Button>
+            </div>
+            {programId ? (
+              <div className="bg-gray-50 rounded p-2 space-y-1.5">
+                <div className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Status</div>
+                {isAlreadyMade ? (
+                  <div className="text-xs text-green-700 flex items-center gap-1">
+                    ✓ Marked as Created on {new Date(programData.program.flyer_made).toLocaleDateString()}
+                  </div>
+                ) : hasDownloaded ? (
+                  <Button size="sm" type="button"
+                    disabled={!templateId || markMadeMut.isPending}
+                    onClick={() => markMadeMut.mutate()}>
+                    {markMadeMut.isPending ? 'Marking…' : 'Mark as Created →'}
+                  </Button>
+                ) : (
+                  <div className="text-[11px] text-gray-500 italic">Download first, then mark as Created.</div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -195,9 +240,10 @@ export default function FlyerGeneratePage() {
           ) : loadingPreview && !previewSrc ? (
             <Spinner />
           ) : previewSrc ? (
-            <div className="relative w-full h-full flex items-center justify-center">
+            <div className="relative w-full h-full">
               <iframe title="Flyer preview" src={previewSrc}
-                className="w-full h-full bg-white shadow border border-gray-200" />
+                className="bg-white shadow border border-gray-200"
+                style={{ width: '100%', height: '100%', minHeight: 800 }} />
               {loadingPreview && (
                 <div className="absolute top-2 right-2 bg-white shadow rounded px-2 py-1 text-[10px] text-gray-500">
                   Updating preview…

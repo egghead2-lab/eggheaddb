@@ -29,6 +29,7 @@ const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { FLYER_FIELDS, isValidFieldKey } = require('../lib/flyerFields');
 const { renderFlyer } = require('../services/flyerRenderer');
+const { sendEmail } = require('../lib/gmail');
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'flyer-templates');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -256,21 +257,159 @@ router.get('/programs-needing-flyers', authenticate, async (req, res, next) => {
               prog.parent_cost, prog.lab_fee, prog.session_count, prog.grade_range,
               prog.flyer_required AS program_flyer_required,
               prog.flyer_made, prog.flyer_sent_electronic, prog.flyer_dropped_physical,
+              prog.flyer_template_id,
               loc.id AS location_id, loc.nickname AS location_nickname, loc.school_name,
               loc.flyer_required AS location_flyer_required,
               loc.registration_link_for_flyer, loc.flyer_instructions,
-              cl.class_name
+              loc.point_of_contact, loc.poc_email, loc.poc_title,
+              cl.class_name,
+              ft.name AS flyer_template_name
        FROM program prog
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN flyer_template ft ON ft.id = prog.flyer_template_id
        WHERE ${where.join(' AND ')}
        ORDER BY prog.first_session_date ASC`,
       params
     );
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
+});
+
+// ─── Flyer status mutations ──────────────────────────────────────────
+// Mark Created — sets flyer_made=today, remembers which template was used
+router.post('/programs/:id/mark-made', authenticate, async (req, res, next) => {
+  try {
+    const { template_id } = req.body || {};
+    await pool.query(
+      `UPDATE program SET flyer_made = CURDATE(), flyer_template_id = ? WHERE id = ?`,
+      [template_id || null, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/programs/:id/unmake', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      `UPDATE program SET flyer_made = NULL, flyer_template_id = NULL WHERE id = ?`,
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/programs/:id/mark-sent', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      `UPDATE program SET flyer_sent_electronic = CURDATE() WHERE id = ?`,
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/programs/:id/unsend', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      `UPDATE program SET flyer_sent_electronic = NULL WHERE id = ?`,
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Send the flyer via email — re-renders the PDF, attaches it, sends via Gmail.
+// The program must already have flyer_template_id set (i.e. user clicked "Mark Created" first).
+router.post('/programs/:id/send-flyer', authenticate, async (req, res, next) => {
+  try {
+    const { to, cc, bcc, subject, body_html, template_id: emailTemplateId } = req.body || {};
+    if (!to) return res.status(400).json({ success: false, error: 'Recipient email required' });
+    if (!subject) return res.status(400).json({ success: false, error: 'Subject required' });
+    if (!body_html) return res.status(400).json({ success: false, error: 'Body required' });
+
+    const [[user]] = await pool.query(
+      'SELECT google_refresh_token, email_signature FROM user WHERE id = ?',
+      [req.user.userId]
+    );
+    if (!user?.google_refresh_token) {
+      return res.status(400).json({ success: false, error: 'Gmail not connected. Sign out and back in with Google.' });
+    }
+
+    // Look up program + template to use for re-render
+    const [[prog]] = await pool.query(
+      `SELECT prog.id, prog.flyer_template_id, prog.program_nickname,
+              loc.school_name, loc.nickname AS location_nickname
+       FROM program prog
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE prog.id = ? AND prog.active = 1`,
+      [req.params.id]
+    );
+    if (!prog) return res.status(404).json({ success: false, error: 'Program not found' });
+    if (!prog.flyer_template_id) {
+      return res.status(400).json({ success: false, error: 'No flyer template recorded for this program. Generate + Mark Created first.' });
+    }
+
+    // Render PDF
+    const [[template]] = await pool.query(
+      `SELECT * FROM flyer_template WHERE id = ? AND active = 1`,
+      [prog.flyer_template_id]
+    );
+    if (!template) return res.status(400).json({ success: false, error: 'Flyer template missing or archived' });
+
+    const [fields] = await pool.query(
+      `SELECT * FROM flyer_template_field WHERE flyer_template_id = ? ORDER BY display_order, id`,
+      [prog.flyer_template_id]
+    );
+
+    const built = await buildFlyerData(req.params.id);
+    const pdfPath = path.join(__dirname, '..', '..', template.pdf_storage_path);
+    if (!fs.existsSync(pdfPath)) return res.status(500).json({ success: false, error: 'Template PDF missing on disk' });
+    const pdfBytes = await renderFlyer(fs.readFileSync(pdfPath), fields, built?.data || {});
+
+    const safeName = (prog.school_name || prog.location_nickname || prog.program_nickname || `flyer-${req.params.id}`)
+      .replace(/[^\w\-]+/g, '_');
+
+    const result = await sendEmail({
+      refreshToken: user.google_refresh_token,
+      to,
+      cc: cc || undefined,
+      bcc: bcc || undefined,
+      subject,
+      htmlBody: body_html,
+      attachments: [{
+        name: `${safeName}-flyer.pdf`,
+        mimeType: 'application/pdf',
+        data: Buffer.from(pdfBytes),
+      }],
+      signature: user.email_signature,
+    });
+
+    // Mark sent + log
+    await pool.query(
+      `UPDATE program SET flyer_sent_electronic = CURDATE() WHERE id = ?`,
+      [req.params.id]
+    );
+    try {
+      await pool.query(
+        `INSERT INTO client_email_log (tool_category, program_id, location_id, sent_at, sent_by_user_id, recipient_email, template_id)
+         VALUES ('send_flyer', ?, (SELECT location_id FROM program WHERE id = ?), NOW(), ?, ?, ?)`,
+        [req.params.id, req.params.id, req.user.userId, to, emailTemplateId || null]
+      );
+    } catch (logErr) {
+      console.error('[Flyer send] log failed:', logErr.message);
+    }
+
+    res.json({ success: true, threadId: result.threadId, messageId: result.id });
+  } catch (err) {
+    if (err.code === 401 || err.message?.includes('invalid_grant')) {
+      return res.status(400).json({ success: false, error: 'Gmail token expired. Sign out and back in.' });
+    }
+    console.error('[Flyer send] failed:', err.message, err.stack);
+    res.status(500).json({ success: false, error: err.message || 'Send failed' });
+  }
 });
 
 // Helper: build flyer data object from a program row
@@ -295,13 +434,16 @@ async function buildFlyerData(programId) {
     [programId]
   );
 
-  // Format class_dates as "Jan 12, Jan 19, Jan 26..."
+  // Format class_dates as "1/14, 1/21, 1/28 (3 Sessions)"
   const formatDateShort = (d) => {
     if (!d) return '';
     const dt = d instanceof Date ? d : new Date(d);
-    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${dt.getMonth() + 1}/${dt.getDate()}`;
   };
   const sessionDateList = sessions.map((s) => formatDateShort(s.session_date));
+  const classDatesStr = sessionDateList.length
+    ? `${sessionDateList.join(', ')} (${sessionDateList.length} Session${sessionDateList.length === 1 ? '' : 's'})`
+    : '';
 
   // Day + time: e.g., "Tuesdays, 2:30 — 3:30 PM"
   const DAYS = [['monday', 'Mondays'], ['tuesday', 'Tuesdays'], ['wednesday', 'Wednesdays'],
@@ -336,15 +478,21 @@ async function buildFlyerData(programId) {
     return `$${v.toFixed(2).replace(/\.00$/, '')}`;
   };
 
+  const parentCostStr = formatMoney(prog.parent_cost);
+  const labFeeStr = formatMoney(prog.lab_fee);
+  const classCostCombined = parentCostStr && labFeeStr
+    ? `${parentCostStr} + ${labFeeStr} material fee`
+    : parentCostStr;
+
   const data = {
     location_name: prog.school_name || prog.location_nickname || '',
     class_name: prog.class_name || '',
-    class_dates: sessionDateList.join(', '),
+    class_dates: classDatesStr,
     class_day: classDay,
     class_time: classTime,
     class_day_and_time: dayAndTime,
-    class_cost: formatMoney(prog.parent_cost),
-    lab_fee: formatMoney(prog.lab_fee),
+    class_cost: classCostCombined,
+    lab_fee: labFeeStr,
     grade_range: prog.grade_range || '',
     session_count: sessions.length ? `${sessions.length} weeks` : (prog.session_count ? `${prog.session_count} weeks` : ''),
     registration_link: prog.registration_link_for_flyer || '',
