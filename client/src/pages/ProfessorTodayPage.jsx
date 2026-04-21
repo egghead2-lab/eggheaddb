@@ -37,13 +37,14 @@ export default function ProfessorTodayPage() {
     onSuccess: () => { qc.invalidateQueries(['my-pending-parties']); qc.invalidateQueries(['my-today']); },
   });
 
-  // Available subs in professor's area
+  // Available subs in professor's area — only TODAY (used when prof has no classes today)
   const { data: subsData } = useQuery({
-    queryKey: ['available-subs'],
-    queryFn: () => api.get('/schedule/available-subs').then(r => r.data),
+    queryKey: ['available-subs-today'],
+    queryFn: () => api.get('/schedule/available-subs', { params: { today_only: 1 } }).then(r => r.data),
     staleTime: 60 * 1000,
   });
   const availableSubs = subsData?.data || [];
+  const showSubsToday = todaySessions.length === 0;
 
   const claimMutation = useMutation({
     mutationFn: ({ session_id, role }) => api.post('/schedule/claim-sub', { session_id, role }),
@@ -79,12 +80,13 @@ export default function ProfessorTodayPage() {
           </div>
         )}
 
-        {/* Available subs in your area */}
-        {availableSubs.length > 0 && (
+        {/* Available subs today — only when prof has no classes today */}
+        {showSubsToday && availableSubs.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <h2 className="text-sm font-bold text-[#1e3a5f]">Available Substitutes in Your Area</h2>
+              <h2 className="text-sm font-bold text-[#1e3a5f]">Subs Available Today</h2>
               <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">{availableSubs.length}</span>
+              <Link to="/available-subs" className="text-xs text-[#1e3a5f] hover:underline ml-auto">See next 30 days →</Link>
             </div>
             <div className="space-y-2">
               {availableSubs.map(sub => (
@@ -130,7 +132,10 @@ export default function ProfessorTodayPage() {
         {sessions.length === 0 && pendingParties.length === 0 && availableSubs.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <div className="text-lg mb-1">No classes today or tomorrow</div>
-            <div className="text-sm">No substitute opportunities in your area right now either.</div>
+            <div className="text-sm mb-4">No substitute opportunities in your area today.</div>
+            <Link to="/available-subs" className="text-sm text-[#1e3a5f] hover:underline font-medium">
+              Browse subs in your area for the next 30 days →
+            </Link>
           </div>
         ) : (
           <div className="space-y-6">

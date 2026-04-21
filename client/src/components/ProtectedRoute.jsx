@@ -33,7 +33,7 @@ export function ProtectedRoute({ children }) {
 
   // Professors can access their tools only
   if (role === 'Professor') {
-    const profAllowed = ['/', '/schedule', '/my-today', '/my-attendance', '/my-pay', '/incident-report', '/bug-bounty'];
+    const profAllowed = ['/', '/schedule', '/my-today', '/my-attendance', '/my-pay', '/incident-report', '/bug-bounty', '/available-subs'];
     if (location.pathname === '/' || profAllowed.some(p => p !== '/' && location.pathname.startsWith(p)) || location.pathname.match(/^\/programs\/\d+\/classroom/) || location.pathname.match(/^\/locations\/\d+\/info-sheet/)) return children;
     return <Navigate to="/" replace />;
   }

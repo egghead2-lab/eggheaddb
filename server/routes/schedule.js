@@ -305,8 +305,13 @@ router.get('/all-attendance', authenticate, async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════════════
 
 // GET /api/schedule/available-subs — sessions needing subs in professor's area
+// Query params: days (1-30, default 2), today_only (=1 to only show today)
 router.get('/available-subs', authenticate, async (req, res, next) => {
   try {
+    const days = Math.min(30, Math.max(1, parseInt(req.query.days) || 2));
+    const todayOnly = req.query.today_only === '1';
+    const effectiveDays = todayOnly ? 0 : days - 1; // 0 means only today (BETWEEN CURDATE() AND CURDATE())
+
     const [[prof]] = await pool.query(
       `SELECT p.id, p.base_pay, p.assist_pay,
               COALESCE(c.geographic_area_id, p.geographic_area_id) AS area_id
@@ -317,15 +322,15 @@ router.get('/available-subs', authenticate, async (req, res, next) => {
     );
     if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
 
-    // Get professor's sessions today/tomorrow to check time conflicts
+    // Get professor's own sessions in the same window to check time conflicts
     const [mySessionsRaw] = await pool.query(
       `SELECT s.session_date, COALESCE(s.session_time, prog.start_time) AS start_time, prog.class_length_minutes
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        WHERE s.active = 1
-         AND s.session_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+         AND s.session_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
          AND (COALESCE(s.professor_id, prog.lead_professor_id) = ? OR COALESCE(s.assistant_id, prog.assistant_professor_id) = ?)`,
-      [prof.id, prof.id]
+      [effectiveDays, prof.id, prof.id]
     );
 
     // Find sessions needing subs: day_off exists, no replacement assigned, in professor's area
@@ -356,7 +361,7 @@ router.get('/available-subs', authenticate, async (req, res, next) => {
          AND sc.role = CASE WHEN prog.lead_professor_id = d.professor_id THEN 'Lead' ELSE 'Assistant' END
          AND sc.active = 1 AND sc.status IN ('pending', 'approved')
        WHERE d.active = 1
-         AND d.date_requested BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+         AND d.date_requested BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
          AND cs.class_status_name NOT LIKE 'Cancelled%'
          AND (prog.lead_professor_id = d.professor_id OR prog.assistant_professor_id = d.professor_id)
          AND (
@@ -368,7 +373,7 @@ router.get('/available-subs', authenticate, async (req, res, next) => {
          AND sc.id IS NULL
          AND d.professor_id != ?
        ORDER BY s.session_date ASC, s.session_time ASC`,
-      [prof.area_id, prof.id]
+      [effectiveDays, prof.area_id, prof.id]
     );
 
     // Filter out time conflicts with professor's own schedule
