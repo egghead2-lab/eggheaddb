@@ -13,6 +13,7 @@ const TABS = [
   { path: '/payroll/onboarding-pay', label: 'Onboarding' },
   { path: '/payroll/fm-log', label: 'FM Daily Log' },
   { path: '/payroll/mileage', label: 'Mileage' },
+  { path: '/payroll/gas-reimbursements', label: 'Gas Reimbursements' },
   { path: '/payroll/gusto-codes', label: 'Gusto Codes' },
 ];
 
