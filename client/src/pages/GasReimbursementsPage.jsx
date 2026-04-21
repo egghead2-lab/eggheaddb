@@ -277,6 +277,7 @@ export default function GasReimbursementsPage() {
 function FragRow({ children }) { return <>{children}</>; }
 
 function EntryDetail({ entryId }) {
+  const [expandedProgs, setExpandedProgs] = useState(new Set());
   const { data, isLoading } = useQuery({
     queryKey: ['gas-entry-detail', entryId],
     queryFn: () => api.get(`/gas-reimbursements/entries/${entryId}`).then(r => r.data),
@@ -286,42 +287,74 @@ function EntryDetail({ entryId }) {
   const lines = entry?.lines || [];
   if (lines.length === 0) return <div className="text-xs text-gray-400">No line items</div>;
 
-  // Group by date
-  const byDate = {};
+  // Group by program
+  const byProgram = {};
   lines.forEach(l => {
-    const d = l.session_date.split('T')[0];
-    if (!byDate[d]) byDate[d] = [];
-    byDate[d].push(l);
+    const key = l.program_id || 'unknown';
+    if (!byProgram[key]) byProgram[key] = { program_id: l.program_id, program_nickname: l.program_nickname, location_nickname: l.location_nickname, lines: [] };
+    byProgram[key].lines.push(l);
+  });
+
+  const groups = Object.values(byProgram).sort((a, b) => (a.program_nickname || '').localeCompare(b.program_nickname || ''));
+
+  const toggleProg = (pid) => setExpandedProgs(prev => {
+    const next = new Set(prev);
+    next.has(pid) ? next.delete(pid) : next.add(pid);
+    return next;
   });
 
   return (
     <div className="space-y-2">
-      <div className="text-[10px] text-gray-500">Home: <span className="text-gray-700">{entry.home_address || 'No address on file'}</span></div>
-      {Object.entries(byDate).map(([date, items]) => {
-        const dateTotal = items.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+      <div className="flex items-center justify-between text-[10px] text-gray-500">
+        <span>Home: <span className="text-gray-700">{entry.home_address || 'No address on file'}</span></span>
+        <div className="flex gap-3">
+          <button onClick={() => setExpandedProgs(new Set(groups.map(g => g.program_id)))}
+            className="text-[#1e3a5f] hover:underline">Expand all</button>
+          <button onClick={() => setExpandedProgs(new Set())}
+            className="text-gray-400 hover:text-gray-600">Collapse all</button>
+        </div>
+      </div>
+
+      {groups.map(g => {
+        const total = g.lines.reduce((s, l) => s + parseFloat(l.amount || 0), 0);
+        const paidSessions = g.lines.filter(l => parseFloat(l.amount || 0) > 0).length;
+        const expanded = expandedProgs.has(g.program_id);
+        const firstLine = g.lines[0];
+
         return (
-          <div key={date} className="bg-white rounded border border-gray-200 p-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold text-gray-700">{formatDate(date)}</span>
-              <span className="text-xs font-bold text-green-700">{formatCurrency(dateTotal)}</span>
-            </div>
-            <div className="space-y-0.5">
-              {items.map(l => (
-                <div key={l.id} className="flex items-center gap-2 text-[11px] text-gray-500">
-                  <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${l.leg_type === 'primary' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {l.leg_type === 'primary' ? '1st' : '2nd+'}
-                  </span>
-                  <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${l.role === 'Lead' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                    {l.role}
-                  </span>
-                  <Link to={`/programs/${l.program_id}`} className="text-[#1e3a5f] hover:underline max-w-[280px] truncate">{l.program_nickname}</Link>
-                  <span className="text-gray-400">{l.location_nickname}</span>
-                  <span className="text-gray-600 ml-auto">{l.miles != null ? `${parseFloat(l.miles).toFixed(1)}mi` : '—'}</span>
-                  <span className="text-gray-500 text-[9px] min-w-[80px] text-right">{l.calc_method}</span>
-                  <span className="font-medium text-gray-700 w-16 text-right">{formatCurrency(l.amount)}</span>
-                </div>
-              ))}
-            </div>
+          <div key={g.program_id || 'unknown'} className="bg-white rounded border border-gray-200 overflow-hidden">
+            <button onClick={() => toggleProg(g.program_id)}
+              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left">
+              <span className="text-gray-400 text-[10px] w-3">{expanded ? '▾' : '▸'}</span>
+              <Link to={`/programs/${g.program_id}`} onClick={e => e.stopPropagation()}
+                className="font-medium text-[#1e3a5f] hover:underline text-xs truncate max-w-[400px]">{g.program_nickname}</Link>
+              <span className="text-[10px] text-gray-400">{g.location_nickname}</span>
+              <span className="text-[10px] text-gray-500 ml-auto">{g.lines.length} session{g.lines.length !== 1 ? 's' : ''}{paidSessions !== g.lines.length ? ` (${paidSessions} paid)` : ''}</span>
+              <span className="text-[10px] text-gray-400">{firstLine?.miles != null ? `${parseFloat(firstLine.miles).toFixed(1)}mi` : '—'}</span>
+              <span className="text-xs font-bold text-green-700 w-16 text-right">{formatCurrency(total)}</span>
+            </button>
+
+            {expanded && (
+              <div className="border-t border-gray-100 px-3 py-2 space-y-0.5 bg-gray-50/50">
+                {g.lines
+                  .slice()
+                  .sort((a, b) => a.session_date.localeCompare(b.session_date))
+                  .map(l => (
+                    <div key={l.id} className="flex items-center gap-2 text-[11px] text-gray-500">
+                      <span className="text-gray-600 w-16">{formatDate(l.session_date)}</span>
+                      <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${l.leg_type === 'primary' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {l.leg_type === 'primary' ? '1st' : '2nd+'}
+                      </span>
+                      <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${l.role === 'Lead' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                        {l.role}
+                      </span>
+                      <span className="text-gray-600 ml-auto">{l.miles != null ? `${parseFloat(l.miles).toFixed(1)}mi` : '—'}</span>
+                      <span className="text-gray-400 text-[9px] min-w-[80px] text-right">{l.calc_method}</span>
+                      <span className={`font-medium w-16 text-right ${parseFloat(l.amount) > 0 ? 'text-gray-700' : 'text-gray-400'}`}>{formatCurrency(l.amount)}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         );
       })}
