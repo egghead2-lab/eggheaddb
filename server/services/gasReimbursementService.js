@@ -125,6 +125,20 @@ async function calcProfessorReimbursement(professorId, startDate, endDate) {
   return { total: Math.round(total * 100) / 100, lines, numSessions: sessions.length };
 }
 
+async function prewarmDistances(pairs, type) {
+  // pairs: array of [fromId, toId] for 'prof_loc' or 'loc_loc'
+  // Run in batches of 10 parallel to avoid overwhelming Google/local DB
+  const BATCH = 10;
+  const fn = type === 'prof_loc' ? getProfessorToLocationMiles : getLocationToLocationMiles;
+  let i = 0;
+  while (i < pairs.length) {
+    const batch = pairs.slice(i, i + BATCH);
+    await Promise.allSettled(batch.map(([a, b]) => fn(a, b).catch(() => null)));
+    i += BATCH;
+    if (i % 50 === 0) console.log(`[gas-reimb] prewarmed ${Math.min(i, pairs.length)}/${pairs.length} ${type} pairs`);
+  }
+}
+
 async function calcCycle(cycleId) {
   const [[cycle]] = await pool.query('SELECT * FROM gas_reimbursement_cycle WHERE id = ?', [cycleId]);
   if (!cycle) throw new Error('Cycle not found');
@@ -156,6 +170,39 @@ async function calcCycle(cycleId) {
      ) AS all_profs WHERE professor_id IS NOT NULL`,
     [cycle.start_date, cycle.end_date, cycle.start_date, cycle.end_date]
   );
+
+  console.log(`[gas-reimb] Cycle ${cycleId}: ${profs.length} professors to process`);
+
+  // === PRE-WARM CACHE ===
+  // Pre-compute all unique (prof, loc) and (loc, loc) pairs needed, run in parallel
+  const profLocPairs = new Set();
+  const locLocPairs = new Set();
+
+  for (const { professor_id } of profs) {
+    const sess = await getProfessorSessions(professor_id, cycle.start_date, cycle.end_date);
+    // Group by date, find prof→loc (first of day) and loc→loc (back-to-back) pairs
+    const byDate = {};
+    for (const s of sess) {
+      const dateKey = s.session_date.toISOString ? s.session_date.toISOString().split('T')[0] : String(s.session_date).split('T')[0];
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push(s);
+    }
+    for (const daySessions of Object.values(byDate)) {
+      daySessions.sort((a, b) => (a.session_time || 'z').localeCompare(b.session_time || 'z'));
+      let prev = null;
+      for (const s of daySessions) {
+        if (s.location_id === prev) continue;
+        if (prev === null) profLocPairs.add(`${professor_id}:${s.location_id}`);
+        else locLocPairs.add(`${prev}:${s.location_id}`);
+        prev = s.location_id;
+      }
+    }
+  }
+
+  console.log(`[gas-reimb] Pre-warming ${profLocPairs.size} prof→loc + ${locLocPairs.size} loc→loc distances`);
+  await prewarmDistances([...profLocPairs].map(k => k.split(':').map(Number)), 'prof_loc');
+  await prewarmDistances([...locLocPairs].map(k => k.split(':').map(Number)), 'loc_loc');
+  console.log(`[gas-reimb] Pre-warm complete, calculating entries...`);
 
   // Wipe existing draft entries for this cycle (skip pushed ones)
   await pool.query(

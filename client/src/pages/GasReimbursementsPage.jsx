@@ -53,7 +53,7 @@ export default function GasReimbursementsPage() {
   });
 
   const calcCycleMut = useMutation({
-    mutationFn: (id) => api.post(`/gas-reimbursements/cycles/${id}/calculate`).then(r => r.data),
+    mutationFn: (id) => api.post(`/gas-reimbursements/cycles/${id}/calculate`, {}, { timeout: 600000 }).then(r => r.data),
     onSuccess: (data) => {
       qc.invalidateQueries(['gas-cycles']);
       qc.invalidateQueries(['gas-entries', selectedCycleId]);
