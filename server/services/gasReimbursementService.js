@@ -29,11 +29,12 @@ async function getProfessorSessions(professorId, startDate, endDate) {
      FROM session s
      JOIN program prog ON prog.id = s.program_id AND prog.active = 1
      JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
-     JOIN program_type pt ON pt.id = prog.program_type_id
+     LEFT JOIN class cl ON cl.id = prog.class_id
+     LEFT JOIN program_type pt ON pt.id = cl.program_type_id
      WHERE s.active = 1
        AND s.session_date BETWEEN ? AND ?
        AND s.not_billed != 1
-       AND pt.program_type_name NOT IN ('Camp','Party')
+       AND (pt.program_type_name IS NULL OR pt.program_type_name NOT IN ('Camp','Party'))
        AND prog.party_format_id IS NULL
        AND prog.location_id IS NOT NULL
        AND (s.professor_id = ? OR s.assistant_id = ?)
@@ -134,20 +135,22 @@ async function calcCycle(cycleId) {
        SELECT s.professor_id FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
-       JOIN program_type pt ON pt.id = prog.program_type_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
        WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
          AND s.not_billed != 1
-         AND pt.program_type_name NOT IN ('Camp','Party')
+         AND (pt.program_type_name IS NULL OR pt.program_type_name NOT IN ('Camp','Party'))
          AND prog.party_format_id IS NULL
          AND s.professor_id IS NOT NULL
        UNION
        SELECT s.assistant_id FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name = 'Confirmed'
-       JOIN program_type pt ON pt.id = prog.program_type_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
        WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
          AND s.not_billed != 1
-         AND pt.program_type_name NOT IN ('Camp','Party')
+         AND (pt.program_type_name IS NULL OR pt.program_type_name NOT IN ('Camp','Party'))
          AND prog.party_format_id IS NULL
          AND s.assistant_id IS NOT NULL
      ) AS all_profs WHERE professor_id IS NOT NULL`,
