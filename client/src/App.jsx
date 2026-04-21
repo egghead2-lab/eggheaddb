@@ -78,6 +78,9 @@ import SiteCheckInsPage from './pages/client-management/SiteCheckInsPage';
 import NpsEmailsPage from './pages/client-management/NpsEmailsPage';
 import RosterEmailsPage from './pages/client-management/RosterEmailsPage';
 import RebookingPage from './pages/client-management/RebookingPage';
+import FlyersPage from './pages/client-management/FlyersPage';
+import FlyerTemplateEditorPage from './pages/client-management/FlyerTemplateEditorPage';
+import FlyerGeneratePage from './pages/client-management/FlyerGeneratePage';
 import InvoiceQueuePage from './pages/invoicing/InvoiceQueuePage';
 import MonthlyInvoicingPage from './pages/invoicing/MonthlyInvoicingPage';
 import InvoiceTrackerPage from './pages/invoicing/InvoiceTrackerPage';
@@ -215,6 +218,9 @@ export default function App() {
       <Route path="/client-management/nps-emails" element={<ProtectedRoute><NpsEmailsPage /></ProtectedRoute>} />
       <Route path="/client-management/roster-emails" element={<ProtectedRoute><RosterEmailsPage /></ProtectedRoute>} />
       <Route path="/client-management/rebooking" element={<ProtectedRoute><RebookingPage /></ProtectedRoute>} />
+      <Route path="/client-management/flyers" element={<ProtectedRoute><FlyersPage /></ProtectedRoute>} />
+      <Route path="/client-management/flyers/templates/:id/edit" element={<ProtectedRoute><FlyerTemplateEditorPage /></ProtectedRoute>} />
+      <Route path="/client-management/flyers/generate" element={<ProtectedRoute><FlyerGeneratePage /></ProtectedRoute>} />
       <Route path="/invoicing/queue" element={<ProtectedRoute><InvoiceQueuePage /></ProtectedRoute>} />
       <Route path="/invoicing/monthly" element={<ProtectedRoute><MonthlyInvoicingPage /></ProtectedRoute>} />
       <Route path="/invoicing/tracker" element={<ProtectedRoute><InvoiceTrackerPage /></ProtectedRoute>} />

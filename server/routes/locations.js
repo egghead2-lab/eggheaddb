@@ -170,7 +170,7 @@ router.post('/', authenticate, async (req, res, next) => {
       'tb_required', 'livescan_required', 'livescan_info', 'contract_permit_required',
       'contract_permit_notes', 'special_info_required', 'flyer_required',
       'registration_link_for_flyer', 'custom_flyer_required', 'custom_flyer_items_required',
-      'flyer_quantity', 'parking_difficulty_id', 'parking_information', 'school_procedure_Info',
+      'flyer_quantity', 'flyer_instructions', 'parking_difficulty_id', 'parking_information', 'school_procedure_Info',
       'internal_notes', 'observes_allowed', 'jewish', 'set_dates_ourselves', 'number_of_weeks',
       'school_calendar_link', 'invoicing_notes', 'tbd', 'tbd_notes',
     ];
@@ -204,7 +204,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'tb_required', 'livescan_required', 'livescan_info', 'contract_permit_required',
       'contract_permit_notes', 'special_info_required', 'flyer_required',
       'registration_link_for_flyer', 'custom_flyer_required', 'custom_flyer_items_required',
-      'flyer_quantity', 'parking_difficulty_id', 'parking_information', 'school_procedure_Info',
+      'flyer_quantity', 'flyer_instructions', 'parking_difficulty_id', 'parking_information', 'school_procedure_Info',
       'internal_notes', 'observes_allowed', 'jewish', 'set_dates_ourselves', 'number_of_weeks',
       'school_calendar_link', 'invoicing_notes', 'tbd', 'tbd_notes', 'retained',
       'client_manager_user_id',

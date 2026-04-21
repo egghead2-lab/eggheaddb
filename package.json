@@ -13,6 +13,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "bcryptjs": "^3.0.3",
     "concurrently": "^9.2.1",
     "cookie-parser": "^1.4.7",
@@ -28,6 +29,7 @@
     "node-cron": "^4.2.1",
     "node-quickbooks": "^2.0.50",
     "nodemon": "^3.1.14",
+    "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "stripe": "^22.0.2",
     "twilio": "^5.13.1"

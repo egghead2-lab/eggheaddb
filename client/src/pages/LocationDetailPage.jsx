@@ -245,6 +245,20 @@ export default function LocationDetailPage() {
               <div className="col-span-2">
                 <Input label="Registration Link for Flyer" {...register('registration_link_for_flyer')} />
               </div>
+              {watch('custom_flyer_required') ? (
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Custom Flyer Items Required</label>
+                  <textarea {...register('custom_flyer_items_required')} rows={2}
+                    placeholder="What needs to be included on the custom flyer?"
+                    className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                </div>
+              ) : null}
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Flyer Instructions</label>
+                <textarea {...register('flyer_instructions')} rows={2}
+                  placeholder="Anything to remember when making this location's flyer (e.g. include their logo, specific font, special wording)…"
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
             </div>
           </Section>
 
