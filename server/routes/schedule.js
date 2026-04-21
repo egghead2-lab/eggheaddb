@@ -314,7 +314,7 @@ router.get('/available-subs', authenticate, async (req, res, next) => {
 
     const [[prof]] = await pool.query(
       `SELECT p.id, p.base_pay, p.assist_pay,
-              COALESCE(c.geographic_area_id, p.geographic_area_id) AS area_id
+              COALESCE(p.geographic_area_id, c.geographic_area_id) AS area_id
        FROM professor p
        LEFT JOIN city c ON c.id = p.city_id
        WHERE p.user_id = ? AND p.active = 1`,

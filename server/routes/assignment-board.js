@@ -309,7 +309,7 @@ router.post('/auto-schedule', authenticate, async (req, res, next) => {
               p.studysmart_trained_id, p.camp_trained_id,
               p.virtus, p.tb_test, p.rating, p.base_pay,
               ps.professor_status_name,
-              COALESCE(c.geographic_area_id, p.geographic_area_id) AS area_id
+              COALESCE(p.geographic_area_id, c.geographic_area_id) AS area_id
        FROM professor p
        JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
