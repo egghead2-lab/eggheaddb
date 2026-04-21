@@ -48,8 +48,18 @@ export default function ProfessorTodayPage() {
 
   const claimMutation = useMutation({
     mutationFn: ({ session_id, role }) => api.post('/schedule/claim-sub', { session_id, role }),
-    onSuccess: () => { qc.invalidateQueries(['available-subs']); },
+    onSuccess: () => { qc.invalidateQueries(['available-subs']); qc.invalidateQueries(['my-claims']); qc.invalidateQueries(['available-subs-today']); },
   });
+
+  // My sub claims (pending + recently rejected)
+  const { data: myClaimsData } = useQuery({
+    queryKey: ['my-claims'],
+    queryFn: () => api.get('/schedule/my-claims').then(r => r.data),
+    refetchInterval: 60000,
+  });
+  const myClaims = myClaimsData?.data || [];
+  const pendingClaims = myClaims.filter(c => c.status === 'pending');
+  const rejectedClaims = myClaims.filter(c => c.status === 'rejected');
 
   if (isLoading) return <AppShell><div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div></AppShell>;
 
@@ -76,6 +86,60 @@ export default function ProfessorTodayPage() {
               {pendingParties.map(p => (
                 <PendingPartyCard key={p.ask_id} party={p} onRespond={partyRespondMutation} />
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* My sub claims — pending + recently rejected */}
+        {(pendingClaims.length > 0 || rejectedClaims.length > 0) && (
+          <div className="mb-6">
+            <h2 className="text-sm font-bold text-gray-800 mb-3">My Sub Claims</h2>
+            <div className="space-y-2">
+              {pendingClaims.map(c => {
+                const dateStr = (c.session_date || '').split('T')[0];
+                return (
+                  <div key={c.claim_id} className="bg-amber-50 rounded-xl border border-amber-200 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 text-sm">{c.program_nickname}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {formatDate(dateStr)}
+                          {c.session_time || c.start_time ? ` at ${formatTime(c.session_time || c.start_time)}` : ''}
+                          {' · '}{c.location_nickname || ''}
+                          {' · '}{c.role}
+                        </div>
+                        <div className="text-xs text-amber-700 font-medium mt-1">
+                          Requested to claim sub — awaiting scheduler approval
+                        </div>
+                      </div>
+                      {c.expected_pay > 0 && (
+                        <span className="text-sm font-medium text-gray-500">{formatCurrency(c.expected_pay)}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {rejectedClaims.map(c => {
+                const dateStr = (c.session_date || '').split('T')[0];
+                return (
+                  <div key={c.claim_id} className="bg-red-50 rounded-xl border border-red-200 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-600 text-sm line-through">{c.program_nickname}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {formatDate(dateStr)}
+                          {c.session_time || c.start_time ? ` at ${formatTime(c.session_time || c.start_time)}` : ''}
+                          {' · '}{c.role}
+                        </div>
+                        <div className="text-xs text-red-700 mt-1">
+                          <span className="font-medium">Declined</span>
+                          {c.reject_reason && <span> — {c.reject_reason}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

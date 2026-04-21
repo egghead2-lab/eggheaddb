@@ -310,18 +310,129 @@ router.post('/claimed/approve', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/sub-management/claimed/reject — reject a sub claim
+// POST /api/sub-management/claimed/reject — reject a sub claim (reason required)
 router.post('/claimed/reject', async (req, res, next) => {
   try {
     const { claim_id, reason } = req.body;
     if (!claim_id) return res.status(400).json({ success: false, error: 'claim_id required' });
+    if (!reason || !reason.trim()) return res.status(400).json({ success: false, error: 'Reason is required when declining a sub claim' });
 
     await pool.query(
       `UPDATE sub_claim SET status = 'rejected', reject_reason = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND active = 1`,
-      [reason || null, req.user.userId, claim_id]
+      [reason.trim(), req.user.userId, claim_id]
     );
 
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SUB OUTREACH — track who we've asked about a specific sub need
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/sub-management/outreach?session_id=X — outreach history for a session
+router.get('/outreach', async (req, res, next) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id) return res.status(400).json({ success: false, error: 'session_id required' });
+
+    const [rows] = await pool.query(
+      `SELECT so.*,
+              p.professor_nickname, p.last_name AS professor_last, p.phone_number, p.email,
+              u.first_name AS asked_by_first, u.last_name AS asked_by_last
+       FROM sub_outreach so
+       JOIN professor p ON p.id = so.professor_id
+       LEFT JOIN user u ON u.id = so.asked_by_user_id
+       WHERE so.session_id = ? AND so.active = 1
+       ORDER BY so.asked_at DESC`,
+      [session_id]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/sub-management/outreach — log a new ask
+// Body: { session_id, professor_id, method, message_preview?, notes?, send_sms? }
+router.post('/outreach', async (req, res, next) => {
+  try {
+    const { session_id, professor_id, method, message_preview, notes, send_sms } = req.body;
+    if (!session_id || !professor_id || !method) {
+      return res.status(400).json({ success: false, error: 'session_id, professor_id, and method required' });
+    }
+    const allowed = ['email', 'sms', 'phone', 'manual_note'];
+    if (!allowed.includes(method)) return res.status(400).json({ success: false, error: 'Invalid method' });
+
+    let twilioSid = null;
+    // Optionally actually send an SMS
+    if (send_sms && method === 'sms') {
+      try {
+        const { sendSms, normalizePhone } = require('../lib/twilio');
+        const [[prof]] = await pool.query('SELECT phone_number FROM professor WHERE id = ?', [professor_id]);
+        const phone = normalizePhone(prof?.phone_number);
+        if (!phone) return res.status(400).json({ success: false, error: 'Professor has no valid phone number' });
+        if (!message_preview) return res.status(400).json({ success: false, error: 'Message body required to send SMS' });
+        const result = await sendSms(phone, message_preview);
+        twilioSid = result.sid;
+      } catch (err) {
+        return res.status(500).json({ success: false, error: 'SMS send failed: ' + err.message });
+      }
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO sub_outreach (session_id, professor_id, asked_by_user_id, method, message_preview, twilio_sid, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [session_id, professor_id, req.user.userId, method, message_preview || null, twilioSid, notes || null]
+    );
+
+    res.json({ success: true, id: result.insertId, twilio_sid: twilioSid });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/sub-management/outreach/:id — update response status/reason/notes
+router.put('/outreach/:id', async (req, res, next) => {
+  try {
+    const allowed = ['response', 'decline_reason', 'notes'];
+    const fields = []; const values = [];
+    for (const [k, v] of Object.entries(req.body)) {
+      if (allowed.includes(k)) { fields.push(`${k} = ?`); values.push(v); }
+    }
+    if (!fields.length) return res.status(400).json({ success: false, error: 'No fields to update' });
+
+    if (req.body.response && req.body.response !== 'pending') {
+      fields.push('response_at = NOW()');
+    }
+
+    await pool.query(`UPDATE sub_outreach SET ${fields.join(', ')} WHERE id = ?`, [...values, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/sub-management/outreach/:id — soft delete
+router.delete('/outreach/:id', async (req, res, next) => {
+  try {
+    await pool.query('UPDATE sub_outreach SET active = 0 WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/sub-management/outreach/prior-asks?professor_id=X
+// Returns most recent sub_outreach row per session for this professor (so UI can warn "asked 2d ago")
+router.get('/outreach/prior-asks', async (req, res, next) => {
+  try {
+    const { professor_id, session_ids } = req.query;
+    if (!professor_id) return res.status(400).json({ success: false, error: 'professor_id required' });
+    let where = 'WHERE so.professor_id = ? AND so.active = 1';
+    const params = [professor_id];
+    if (session_ids) {
+      const ids = session_ids.split(',').map(Number).filter(Boolean);
+      if (ids.length) { where += ` AND so.session_id IN (${ids.map(() => '?').join(',')})`; params.push(...ids); }
+    }
+    const [rows] = await pool.query(
+      `SELECT session_id, method, asked_at, response FROM sub_outreach so ${where} ORDER BY asked_at DESC`,
+      params
+    );
+    res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 

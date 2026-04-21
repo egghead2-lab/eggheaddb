@@ -51,6 +51,47 @@ router.post('/confirm-session/:sessionId', authenticate, async (req, res, next) 
   } catch (err) { next(err); }
 });
 
+// GET /api/schedule/my-claims — professor's own sub claims (pending + recently rejected)
+// Query: status=pending|rejected|all (default: visible = pending + rejected in last 7 days)
+router.get('/my-claims', authenticate, async (req, res, next) => {
+  try {
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
+
+    const { status } = req.query;
+    let statusClause = `(sc.status = 'pending' OR (sc.status = 'rejected' AND sc.reviewed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)))`;
+    const params = [prof.id];
+    if (status === 'pending') { statusClause = `sc.status = 'pending'`; }
+    else if (status === 'rejected') { statusClause = `sc.status = 'rejected'`; }
+    else if (status === 'all') { statusClause = '1=1'; }
+
+    const [rows] = await pool.query(
+      `SELECT sc.id AS claim_id, sc.session_id, sc.role, sc.status, sc.expected_pay,
+              sc.claimed_at, sc.reviewed_at, sc.reject_reason,
+              s.session_date, s.session_time,
+              prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              loc.nickname AS location_nickname, loc.address,
+              cl.class_name, ct.class_type_name, l.lesson_name,
+              ga.geographic_area_name,
+              reviewer.name AS reviewed_by_name
+       FROM sub_claim sc
+       JOIN session s ON s.id = sc.session_id
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN class_type ct ON ct.id = cl.class_type_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
+       LEFT JOIN user reviewer ON reviewer.id = sc.reviewed_by
+       WHERE sc.professor_id = ? AND sc.active = 1 AND ${statusClause}
+       ORDER BY s.session_date ASC, s.session_time ASC`,
+      params
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/schedule/my-pending-parties — parties assigned to professor pending confirmation
 router.get('/my-pending-parties', authenticate, async (req, res, next) => {
   try {
