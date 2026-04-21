@@ -367,11 +367,9 @@ router.put('/:id', authenticate, async (req, res, next) => {
         } else {
           const [stateRow] = await pool.query('SELECT id FROM state WHERE state_code = ?', [stateCode]);
           const stateId = stateRow.length > 0 ? stateRow[0].id : 5;
-          const [[profArea]] = await pool.query('SELECT geographic_area_id FROM city WHERE id = (SELECT city_id FROM professor WHERE id = ?)', [id]);
-          const areaId = profArea?.geographic_area_id || 9;
           try {
-            const [newCity] = await pool.query('INSERT INTO city (city_name, zip_code, state_id, geographic_area_id) VALUES (?, ?, ?, ?)',
-              [cityName.substring(0, 64), zip, stateId, areaId]);
+            const [newCity] = await pool.query('INSERT INTO city (city_name, zip_code, state_id) VALUES (?, ?, ?)',
+              [cityName.substring(0, 64), zip, stateId]);
             data.city_id = newCity.insertId;
           } catch (dupErr) {
             if (dupErr.code === 'ER_DUP_ENTRY') {
@@ -865,9 +863,8 @@ router.get('/observation-candidates', authenticate, async (req, res, next) => {
        LEFT JOIN class_type ct ON ct.id = cl.class_type_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN lesson l ON l.id = s.lesson_id
-       LEFT JOIN city c ON c.id = p.city_id
        WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
-         AND c.geographic_area_id = ?
+         AND p.geographic_area_id = ?
          AND p.requires_observations = 0
        ORDER BY s.session_date, s.session_time, p.professor_nickname`,
       [wStart, wEndStr, area_id]

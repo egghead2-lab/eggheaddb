@@ -94,8 +94,7 @@ router.get('/', authenticate, async (req, res, next) => {
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
-       LEFT JOIN city ci ON ci.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = ci.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN contractor con ON con.id = loc.contractor_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
@@ -159,8 +158,7 @@ router.get('/filters', authenticate, async (req, res, next) => {
     const [areas] = await pool.query(
       `SELECT DISTINCT ga.geographic_area_name
        FROM geographic_area ga
-       JOIN city ci ON ci.geographic_area_id = ga.id
-       JOIN location loc ON loc.city_id = ci.id AND loc.active = 1
+       JOIN location loc ON loc.geographic_area_id_online = ga.id AND loc.active = 1
        WHERE ga.active = 1
        ORDER BY ga.geographic_area_name`
     );

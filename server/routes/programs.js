@@ -98,7 +98,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN professor ap ON ap.id = prog.assistant_professor_id AND ap.active = 1
        LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        LEFT JOIN city c ON c.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        ${where}
        ORDER BY ${sortCol} ${sortDir}, prog.program_nickname ASC
        LIMIT ? OFFSET ?`,
@@ -114,7 +114,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN contractor con ON con.id = loc.contractor_id AND con.active = 1
        LEFT JOIN city c ON c.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        ${where}`,
       params
     );
@@ -171,8 +171,7 @@ router.get('/pending-roster', authenticate, async (req, res, next) => {
        JOIN student st ON st.id = pr.student_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN contractor con ON con.id = loc.contractor_id
-       LEFT JOIN city ci ON ci.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = ci.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN user u ON u.id = pr.added_by_user_id
        WHERE pr.pending_approval = 1 AND pr.active = 1 AND pr.date_dropped IS NULL
        ${locationFilter}

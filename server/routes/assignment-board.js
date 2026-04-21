@@ -37,8 +37,7 @@ router.get('/data', authenticate, async (req, res, next) => {
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id AND loc.active = 1
-       LEFT JOIN city c ON c.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id AND cl.active = 1
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
        LEFT JOIN class_type ct ON ct.id = cl.class_type_id
@@ -65,8 +64,7 @@ router.get('/data', authenticate, async (req, res, next) => {
              p.virtus, p.tb_test
       FROM professor p
       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
-      LEFT JOIN city c ON c.id = p.city_id
-      LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+      LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
       WHERE p.active = 1
         AND ps.professor_status_name IN ('Active', 'Training', 'Substitute')
         AND ga.geographic_area_name IN (${areaPlaceholders})`;
@@ -82,8 +80,7 @@ router.get('/data', authenticate, async (req, res, next) => {
              p.virtus, p.tb_test
       FROM professor p
       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
-      LEFT JOIN city c ON c.id = p.city_id
-      LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+      LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
       WHERE p.id IN (${assignedProfIds.map(() => '?').join(',')})`;
       profParams.push(...assignedProfIds);
     }
@@ -279,8 +276,7 @@ router.post('/auto-schedule', authenticate, async (req, res, next) => {
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
-       LEFT JOIN city c ON c.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN class_type ct ON ct.id = cl.class_type_id
        WHERE prog.active = 1
@@ -309,10 +305,9 @@ router.post('/auto-schedule', authenticate, async (req, res, next) => {
               p.studysmart_trained_id, p.camp_trained_id,
               p.virtus, p.tb_test, p.rating, p.base_pay,
               ps.professor_status_name,
-              COALESCE(p.geographic_area_id, c.geographic_area_id) AS area_id
+              p.geographic_area_id AS area_id
        FROM professor p
        JOIN professor_status ps ON ps.id = p.professor_status_id
-       LEFT JOIN city c ON c.id = p.city_id
        WHERE p.active = 1
          AND ps.professor_status_name IN ('Active', 'Substitute', 'Training')
        ORDER BY p.professor_nickname`

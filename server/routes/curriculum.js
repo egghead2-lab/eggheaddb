@@ -20,7 +20,7 @@ router.get('/programs', async (req, res, next) => {
     if (class_type_id) { where += ' AND cl.class_type_id = ?'; params.push(class_type_id); }
     if (class_id) { where += ' AND prog.class_id = ?'; params.push(class_id); }
     if (contractor_id) { where += ' AND loc.contractor_id = ?'; params.push(contractor_id); }
-    if (area_id) { where += ' AND COALESCE(loc.geographic_area_id_online, ci.geographic_area_id) = ?'; params.push(area_id); }
+    if (area_id) { where += ' AND loc.geographic_area_id_online = ?'; params.push(area_id); }
 
     // Only programs with at least one future session or recent session
     where += ` AND EXISTS (SELECT 1 FROM session s WHERE s.program_id = prog.id AND s.active = 1 AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY))`;
@@ -39,9 +39,8 @@ router.get('/programs', async (req, res, next) => {
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN class_type ct ON ct.id = cl.class_type_id
        LEFT JOIN location loc ON loc.id = prog.location_id
-       LEFT JOIN city ci ON ci.id = loc.city_id
        LEFT JOIN contractor con ON con.id = loc.contractor_id
-       LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, ci.geographic_area_id)
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        WHERE ${where}
        ORDER BY con.contractor_name, loc.nickname, prog.program_nickname`,
       params
@@ -291,7 +290,7 @@ router.get('/unscheduled', async (req, res, next) => {
     const params = [];
     if (class_type_id) { where += ' AND cl.class_type_id = ?'; params.push(class_type_id); }
     if (contractor_id) { where += ' AND loc.contractor_id = ?'; params.push(contractor_id); }
-    if (area_id) { where += ' AND COALESCE(loc.geographic_area_id_online, ci.geographic_area_id) = ?'; params.push(area_id); }
+    if (area_id) { where += ' AND loc.geographic_area_id_online = ?'; params.push(area_id); }
 
     const [rows] = await pool.query(
       `SELECT
@@ -309,9 +308,8 @@ router.get('/unscheduled', async (req, res, next) => {
        LEFT JOIN class cl ON cl.id = p.class_id
        LEFT JOIN class_type ct ON ct.id = cl.class_type_id
        LEFT JOIN location loc ON loc.id = p.location_id
-       LEFT JOIN city ci ON ci.id = loc.city_id
        LEFT JOIN contractor con ON con.id = loc.contractor_id
-       LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, ci.geographic_area_id)
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        WHERE s.lesson_id IS NULL
          AND s.no_lesson_taught = 0
          AND s.active = 1

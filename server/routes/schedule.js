@@ -313,10 +313,8 @@ router.get('/available-subs', authenticate, async (req, res, next) => {
     const effectiveDays = todayOnly ? 0 : days - 1; // 0 means only today (BETWEEN CURDATE() AND CURDATE())
 
     const [[prof]] = await pool.query(
-      `SELECT p.id, p.base_pay, p.assist_pay,
-              COALESCE(p.geographic_area_id, c.geographic_area_id) AS area_id
+      `SELECT p.id, p.base_pay, p.assist_pay, p.geographic_area_id AS area_id
        FROM professor p
-       LEFT JOIN city c ON c.id = p.city_id
        WHERE p.user_id = ? AND p.active = 1`,
       [req.user.userId]
     );
@@ -354,8 +352,7 @@ router.get('/available-subs', authenticate, async (req, res, next) => {
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN substitute_reason sr ON sr.id = d.substitute_reason_id
        LEFT JOIN location loc ON loc.id = prog.location_id
-       LEFT JOIN city ci ON ci.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, ci.geographic_area_id)
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN professor p_off ON p_off.id = d.professor_id
        LEFT JOIN sub_claim sc ON sc.session_id = s.id
          AND sc.role = CASE WHEN prog.lead_professor_id = d.professor_id THEN 'Lead' ELSE 'Assistant' END
@@ -369,7 +366,7 @@ router.get('/available-subs', authenticate, async (req, res, next) => {
            OR
            (prog.assistant_professor_id = d.professor_id AND (s.assistant_id IS NULL OR s.assistant_id = d.professor_id))
          )
-         AND COALESCE(loc.geographic_area_id_online, ci.geographic_area_id) = ?
+         AND loc.geographic_area_id_online = ?
          AND sc.id IS NULL
          AND d.professor_id != ?
        ORDER BY s.session_date ASC, s.session_time ASC`,
@@ -498,7 +495,7 @@ router.get('/:professorId', authenticate, async (req, res, next) => {
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN onboard_status os ON os.id = p.onboard_status_id
        LEFT JOIN user fm ON fm.id = ga.field_manager_user_id
        LEFT JOIN user sc ON sc.id = p.scheduling_coordinator_owner_id

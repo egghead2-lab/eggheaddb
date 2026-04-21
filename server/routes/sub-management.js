@@ -104,7 +104,7 @@ router.get('/available-professors', async (req, res, next) => {
        FROM professor p
        JOIN professor_status ps ON ps.id = p.professor_status_id
        LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        WHERE p.active = 1
          AND ps.professor_status_name IN ('Active', 'Substitute', 'Training')
          ${areaWhere}
@@ -263,8 +263,7 @@ router.get('/claimed', async (req, res, next) => {
        JOIN professor p ON p.id = sc.professor_id
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
-       LEFT JOIN city ci ON ci.id = loc.city_id
-       LEFT JOIN geographic_area ga ON ga.id = COALESCE(loc.geographic_area_id_online, ci.geographic_area_id)
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN user reviewer ON reviewer.id = sc.reviewed_by
        LEFT JOIN day_off d ON d.date_requested = s.session_date AND d.active = 1
          AND (d.professor_id = prog.lead_professor_id OR d.professor_id = prog.assistant_professor_id)

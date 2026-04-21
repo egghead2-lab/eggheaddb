@@ -92,8 +92,7 @@ router.get('/:partyId/available-professors', authenticate, async (req, res, next
               ga.geographic_area_name
        FROM professor p
        JOIN professor_status ps ON ps.id = p.professor_status_id
-       LEFT JOIN city c ON c.id = p.city_id
-       LEFT JOIN geographic_area ga ON ga.id = c.geographic_area_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        WHERE ${profWhere}
        ORDER BY p.professor_nickname`
     );
