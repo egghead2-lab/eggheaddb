@@ -41,22 +41,31 @@ async function callDistanceMatrix(origin, destination) {
   if (!GOOGLE_API_KEY) throw new Error('GOOGLE_MAPS_API_KEY not configured');
   if (!origin || !destination) throw new Error('Missing origin or destination address');
 
-  const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json');
-  url.searchParams.set('origins', origin);
-  url.searchParams.set('destinations', destination);
-  url.searchParams.set('units', 'imperial');
-  url.searchParams.set('mode', 'driving');
-  url.searchParams.set('key', GOOGLE_API_KEY);
-
-  const res = await fetch(url.toString());
+  // Uses Routes API (computeRoutes) — replaces legacy Distance Matrix API
+  const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': GOOGLE_API_KEY,
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
+    },
+    body: JSON.stringify({
+      origin: { address: origin },
+      destination: { address: destination },
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_UNAWARE',
+    }),
+  });
   const data = await res.json();
-  if (data.status !== 'OK') throw new Error(`Distance API error: ${data.status} ${data.error_message || ''}`);
-  const element = data.rows?.[0]?.elements?.[0];
-  if (!element || element.status !== 'OK') throw new Error(`No route: ${element?.status || 'unknown'}`);
+  if (!res.ok) throw new Error(`Routes API error: ${data.error?.message || res.statusText}`);
+  const route = data.routes?.[0];
+  if (!route) throw new Error('No route found');
 
+  const meters = route.distanceMeters;
+  const durationSec = parseInt(route.duration?.replace('s', '') || '0');
   return {
-    miles: element.distance.value / 1609.344, // meters → miles
-    minutes: Math.round(element.duration.value / 60),
+    miles: meters / 1609.344,
+    minutes: Math.round(durationSec / 60),
   };
 }
 
