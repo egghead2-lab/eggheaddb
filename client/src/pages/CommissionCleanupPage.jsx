@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AppShell } from '../../components/layout/AppShell';
-import { PageHeader } from '../../components/layout/PageHeader';
-import { Spinner } from '../../components/ui/Spinner';
-import api from '../../api/client';
+import { AppShell } from '../components/layout/AppShell';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Spinner } from '../components/ui/Spinner';
+import api from '../api/client';
 
 export default function CommissionCleanupPage() {
   const qc = useQueryClient();

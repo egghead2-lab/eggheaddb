@@ -114,7 +114,7 @@ import EmailBlastToolPage from './pages/EmailBlastToolPage';
 import GasReimbursementsPage from './pages/GasReimbursementsPage';
 import AvailableSubsPage from './pages/AvailableSubsPage';
 import SubsActivityPage from './pages/SubsActivityPage';
-import CommissionCleanupPage from './pages/admin/CommissionCleanupPage';
+import CommissionCleanupPage from './pages/CommissionCleanupPage';
 
 export default function App() {
   return (
