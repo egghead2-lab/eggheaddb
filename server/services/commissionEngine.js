@@ -100,6 +100,7 @@ async function listCandidatePrograms(userId, periodStart, periodEnd) {
        prog.our_cut, prog.lab_fee,
        prog.first_session_date, prog.ts_inserted AS program_booked_at,
        prog.booking_type,
+       loc.class_pricing_type_id,
        -- Effective retained / non_initial — contractor wins when present
        CASE
          WHEN loc.contractor_id IS NOT NULL THEN con.retained
@@ -206,17 +207,41 @@ async function calcRun(userId, periodStart, periodEnd) {
   let nonRetainedCommission = 0;
 
   for (const p of candidates) {
+    // Skip $0 programs — assistant slots / not separately billed
+    const parentCost = parseFloat(p.parent_cost) || 0;
+    if (parentCost <= 0) continue;
+
     const isRetained = !!p.effective_retained;
     const adjustment = await resolveAdjustment(p.location_id, p.contractor_id, periodEnd);
     const splitPct = await resolveSplit(userId, p.location_id, p.contractor_id, periodEnd);
 
-    const programRevenue = (parseFloat(p.parent_cost) || 0) * (parseInt(p.number_enrolled) || 0);
+    // Revenue depends on pricing type:
+    //   Flat Fee (id=1):  parent_cost is per-session   → monthly rev = parent_cost × sessions_in_period
+    //   Per Student (id=2): parent_cost is per-student → monthly rev = parent_cost × number_enrolled × (sessions_in_period / session_count)
+    // Default to Flat Fee when not set (matches most classes).
+    const totalSessions = parseInt(p.session_count) || 0;
+    const sessionsInPeriod = parseInt(p.sessions_in_period) || 0;
+    const enrolled = parseInt(p.number_enrolled) || 0;
+    const isPerStudent = p.class_pricing_type_id === 2;
+
+    let programRevenue = 0;
+    if (isPerStudent) {
+      const classTotal = parentCost * enrolled;
+      const share = totalSessions > 0 ? (sessionsInPeriod / totalSessions) : 0;
+      programRevenue = Math.round(classTotal * share * 100) / 100;
+    } else {
+      // Flat Fee — parent_cost is per-session
+      programRevenue = Math.round(parentCost * sessionsInPeriod * 100) / 100;
+    }
+
     const adjustedRevenue = Math.round(programRevenue * adjustment.multiplier * 100) / 100;
     const lineRevenue = Math.round(adjustedRevenue * splitPct * 100) / 100;
 
-    // Effective booking type: force rebook if non_initial_client, else use program.booking_type.
+    // Effective booking type. Default NULL to 'initial' (prior code defaulted to 'rebook'
+    // which wrongly penalized programs before the nightly reconciler ran).
+    // non_initial_client still forces 'rebook'.
     const nonInitialApplied = !!p.effective_non_initial;
-    const originalBookingType = p.booking_type || 'rebook';
+    const originalBookingType = p.booking_type || 'initial';
     const effectiveBookingType = nonInitialApplied ? 'rebook' : originalBookingType;
 
     const baseLine = {
