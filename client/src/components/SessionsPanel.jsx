@@ -52,7 +52,7 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
           className="rounded border border-gray-200 px-1.5 py-1 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f]" />
       </td>
       <td className="px-2 py-1">
-        <select defaultValue={s.professor_id || ''}
+        <select value={s.professor_id ?? ''}
           onChange={e => {
             const v = e.target.value;
             const pick = professors.find(p => String(p.id) === String(v));
@@ -62,6 +62,10 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
           }}
           className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
           <option value="">—</option>
+          {/* If currently-assigned prof isn't in the options list (filter mismatch), show a fallback option so the value renders */}
+          {s.professor_id && !professors.find(p => String(p.id) === String(s.professor_id)) && (
+            <option value={s.professor_id}>(assigned: prof #{s.professor_id})</option>
+          )}
           {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>)}
         </select>
       </td>
@@ -76,7 +80,7 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
       {showAssistant && (
         <>
           <td className="px-2 py-1">
-            <select defaultValue={s.assistant_id || ''}
+            <select value={s.assistant_id ?? ''}
               onChange={e => {
                 const v = e.target.value;
                 const pick = professors.find(p => String(p.id) === String(v));
@@ -86,6 +90,9 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
               }}
               className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
               <option value="">—</option>
+              {s.assistant_id && !professors.find(p => String(p.id) === String(s.assistant_id)) && (
+                <option value={s.assistant_id}>(assigned: prof #{s.assistant_id})</option>
+              )}
               {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>)}
             </select>
           </td>
@@ -102,7 +109,7 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
       {showObserver && (
         <>
           <td className="px-2 py-1">
-            <select defaultValue={s.observer_id || ''}
+            <select value={s.observer_id ?? ''}
               onChange={e => {
                 const v = e.target.value;
                 const pick = professors.find(p => String(p.id) === String(v));
@@ -112,6 +119,9 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
               }}
               className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
               <option value="">—</option>
+              {s.observer_id && !professors.find(p => String(p.id) === String(s.observer_id)) && (
+                <option value={s.observer_id}>(assigned: prof #{s.observer_id})</option>
+              )}
               {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>)}
             </select>
           </td>
@@ -127,9 +137,13 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
       )}
       <td className="px-2 py-1">
         <div className="flex items-center gap-0.5">
-          <select defaultValue={s.lesson_id || ''} onChange={e => handleChange('lesson_id', e.target.value)}
+          <select value={s.lesson_id ?? ''} onChange={e => handleChange('lesson_id', e.target.value)}
             className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
             <option value="">—</option>
+            {/* Show fallback option if assigned lesson isn't in the filtered/display list */}
+            {s.lesson_id && !displayLessons.find(l => String(l.id) === String(s.lesson_id)) && (
+              <option value={s.lesson_id}>{s.lesson_name || `(lesson #${s.lesson_id})`}</option>
+            )}
             {displayLessons.map(l => <option key={l.id} value={l.id}>{l.lesson_name}</option>)}
           </select>
           <button type="button" onClick={() => setShowAllLessons(!showAllLessons)}
@@ -233,6 +247,7 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
   const updateMutation = useMutation({
     mutationFn: ({ sessionId, data }) => updateSession(programId, sessionId, data),
     onSuccess: invalidate,
+    onError: (err) => setAddError(err?.response?.data?.error || err.message || 'Session update failed'),
   });
 
   const deleteMutation = useMutation({
