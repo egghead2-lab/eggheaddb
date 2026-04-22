@@ -334,6 +334,12 @@ router.post('/', authenticate, async (req, res, next) => {
       values
     );
 
+    // Auto booking-type reconcile (spec §5)
+    try {
+      const { reconcileProgram } = require('../services/commissionBookingType');
+      await reconcileProgram(result.insertId, req.user?.userId);
+    } catch (e) { console.warn('[commission] reconcileProgram failed (non-fatal):', e.message); }
+
     res.json({ success: true, id: result.insertId });
   } catch (err) {
     next(err);
@@ -391,6 +397,14 @@ router.put('/:id', authenticate, async (req, res, next) => {
       const { syncPartyCalendarEvent } = require('../lib/partyCalendar');
       await syncPartyCalendarEvent(id);
     } catch (e) { /* calendar sync failure shouldn't break the save */ }
+
+    // Auto booking-type reconcile if location or first_session_date changed (spec §5)
+    if (data.location_id !== undefined || data.first_session_date !== undefined) {
+      try {
+        const { reconcileProgram } = require('../services/commissionBookingType');
+        await reconcileProgram(id, req.user?.userId);
+      } catch (e) { console.warn('[commission] reconcileProgram failed (non-fatal):', e.message); }
+    }
 
     res.json({ success: true });
   } catch (err) {

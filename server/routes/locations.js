@@ -159,8 +159,24 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
 // POST /api/locations
 router.post('/', authenticate, async (req, res, next) => {
+  const conn = await pool.getConnection();
   try {
     const data = req.body;
+
+    // Spec §3.3: standalone locations MUST have retained_commission + at least one salesperson
+    const isStandalone = !data.contractor_id;
+    if (isStandalone) {
+      if (data.retained_commission !== 0 && data.retained_commission !== 1) {
+        return res.status(400).json({ success: false, error: 'Standalone locations require a retained_commission flag (0 or 1)' });
+      }
+      if (!Array.isArray(data.salespeople) || data.salespeople.length === 0) {
+        return res.status(400).json({ success: false, error: 'Standalone locations require at least one salesperson assignment' });
+      }
+      const total = data.salespeople.reduce((s, sp) => s + parseFloat(sp.split_pct || 0), 0);
+      if (Math.abs(total - 1) > 0.0001) {
+        return res.status(400).json({ success: false, error: `Salesperson splits must sum to 1.0 (got ${total.toFixed(4)})` });
+      }
+    }
 
     const fields = [
       'nickname', 'school_name', 'payment_through_us', 'school_collects_lab_fee', 'location_type_id', 'location_phone',
@@ -173,21 +189,38 @@ router.post('/', authenticate, async (req, res, next) => {
       'flyer_quantity', 'flyer_instructions', 'parking_difficulty_id', 'parking_information', 'school_procedure_Info',
       'internal_notes', 'observes_allowed', 'jewish', 'set_dates_ourselves', 'number_of_weeks',
       'school_calendar_link', 'invoicing_notes', 'tbd', 'tbd_notes',
+      // commission (only meaningful when standalone; ignored otherwise)
+      'retained_commission', 'non_initial_client',
     ];
 
     const insertFields = fields.filter(f => data[f] !== undefined);
     const values = insertFields.map(f => data[f] === '' ? null : data[f]);
 
-    const [result] = await pool.query(
+    await conn.beginTransaction();
+    const [result] = await conn.query(
       `INSERT INTO location (${insertFields.join(', ')}, active, ts_inserted, ts_updated)
        VALUES (${insertFields.map(() => '?').join(', ')}, 1, NOW(), NOW())`,
       values
     );
+    const locationId = result.insertId;
 
-    res.json({ success: true, id: result.insertId });
+    // Create salesperson rows for standalone locations
+    if (isStandalone && data.salespeople) {
+      const today = new Date().toISOString().split('T')[0];
+      for (const sp of data.salespeople) {
+        await conn.query(
+          `INSERT INTO location_salesperson (location_id, user_id, split_pct, effective_from, notes, created_by_user_id, active)
+           VALUES (?, ?, ?, ?, ?, ?, 1)`,
+          [locationId, sp.user_id, sp.split_pct, sp.effective_from || today, sp.notes || null, req.user.userId]
+        );
+      }
+    }
+    await conn.commit();
+    res.json({ success: true, id: locationId });
   } catch (err) {
+    await conn.rollback();
     next(err);
-  }
+  } finally { conn.release(); }
 });
 
 // PUT /api/locations/:id
@@ -214,7 +247,24 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'arrival_checkin_procedures', 'student_pickup_procedures', 'dismissal_procedures',
       'emergency_procedures', 'egghead_tips',
       'active',
+      'retained_commission', 'non_initial_client',
     ];
+
+    // Spec §3.3: if clearing contractor, retained_commission must be provided in the same patch
+    if (data.contractor_id === null) {
+      const [[cur]] = await pool.query(`SELECT retained_commission FROM location WHERE id = ?`, [id]);
+      const incoming = data.retained_commission;
+      if ((cur?.retained_commission === null || cur?.retained_commission === undefined) && incoming !== 0 && incoming !== 1) {
+        return res.status(400).json({ success: false, error: 'Removing contractor requires setting retained_commission in the same update' });
+      }
+    }
+    // Spec §3.3: if moving from standalone → contractor, clear retained_commission (inheritance takes over)
+    if (data.contractor_id && data.contractor_id > 0) {
+      data.retained_commission = null;
+    }
+    if (data.retained_commission === null && !data.contractor_id) {
+      return res.status(400).json({ success: false, error: 'retained_commission cannot be NULL on a standalone location' });
+    }
 
     const updateFields = fields.filter(f => data[f] !== undefined);
     const values = updateFields.map(f => data[f] === '' ? null : data[f]);

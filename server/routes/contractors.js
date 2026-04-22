@@ -95,18 +95,44 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
 // POST /api/contractors
 router.post('/', authenticate, async (req, res, next) => {
+  const conn = await pool.getConnection();
   try {
-    const { contractor_name } = req.body;
+    const { contractor_name, retained, non_initial_client, salespeople } = req.body;
     if (!contractor_name) return res.status(400).json({ success: false, error: 'Name is required' });
+    // Spec §3.3 hard-blocks
+    if (retained !== 0 && retained !== 1) {
+      return res.status(400).json({ success: false, error: 'retained is required (0 or 1)' });
+    }
+    if (!Array.isArray(salespeople) || salespeople.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one salesperson assignment is required' });
+    }
+    const total = salespeople.reduce((s, sp) => s + parseFloat(sp.split_pct || 0), 0);
+    if (Math.abs(total - 1) > 0.0001) {
+      return res.status(400).json({ success: false, error: `Salesperson splits must sum to 1.0 (got ${total.toFixed(4)})` });
+    }
 
-    const [result] = await pool.query(
-      `INSERT INTO contractor (contractor_name, active) VALUES (?, 1)`,
-      [contractor_name]
+    await conn.beginTransaction();
+    const primary = salespeople.slice().sort((a, b) => b.split_pct - a.split_pct)[0];
+    const [result] = await conn.query(
+      `INSERT INTO contractor (contractor_name, retained, non_initial_client, salesperson_user_id, active)
+       VALUES (?, ?, ?, ?, 1)`,
+      [contractor_name, retained, non_initial_client ? 1 : 0, primary.user_id]
     );
-    res.json({ success: true, id: result.insertId });
+    const contractorId = result.insertId;
+    const today = new Date().toISOString().split('T')[0];
+    for (const sp of salespeople) {
+      await conn.query(
+        `INSERT INTO contractor_salesperson (contractor_id, user_id, split_pct, effective_from, notes, created_by_user_id, active)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+        [contractorId, sp.user_id, sp.split_pct, sp.effective_from || today, sp.notes || null, req.user.userId]
+      );
+    }
+    await conn.commit();
+    res.json({ success: true, id: contractorId });
   } catch (err) {
+    await conn.rollback();
     next(err);
-  }
+  } finally { conn.release(); }
 });
 
 // PUT /api/contractors/:id
@@ -123,7 +149,19 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'invoice_type', 'invoice_per_location',
       'invoice_contact_name', 'invoice_contact_email', 'invoice_contact_phone',
       'invoice_notes', 'last_updated', 'general_notes', 'active',
+      // commission flags
+      'retained', 'non_initial_client',
     ];
+
+    // Spec §3.3: can't set retained back to NULL
+    if (data.retained === null) {
+      return res.status(400).json({ success: false, error: 'retained cannot be cleared once set' });
+    }
+    // If existing row has retained=NULL, edit must include a valid retained value
+    const [[existing]] = await pool.query(`SELECT retained FROM contractor WHERE id = ?`, [req.params.id]);
+    if (existing && existing.retained === null && data.retained !== 0 && data.retained !== 1) {
+      return res.status(400).json({ success: false, error: 'This contractor is missing its retained flag — please set 0 or 1 in this edit' });
+    }
 
     const updateFields = fields.filter(f => data[f] !== undefined);
     const values = updateFields.map(f => data[f] === '' ? null : data[f]);

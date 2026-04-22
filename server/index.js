@@ -212,6 +212,7 @@ app.listen(PORT, () => {
   // Nightly payroll job — runs at 7 AM UTC (11 PM PST / midnight EST)
   const cron = require('node-cron');
   const { runNightlyPayJob } = require('./services/payrollNightlyJob');
+  const { runNightlyReconciler } = require('./services/commissionBookingType');
   cron.schedule('0 7 * * *', async () => {
     console.log('[Cron] Running nightly payroll job…');
     try {
@@ -220,8 +221,15 @@ app.listen(PORT, () => {
     } catch (err) {
       console.error('[Cron] Nightly job error:', err.message);
     }
+    // After payroll, reconcile booking-types (spec §5)
+    try {
+      const r = await runNightlyReconciler();
+      console.log('[Cron] Booking-type reconciler complete:', r);
+    } catch (err) {
+      console.error('[Cron] Booking-type reconciler error:', err.message);
+    }
   });
-  console.log('[Cron] Nightly payroll job scheduled for 7 AM UTC (11 PM PST)');
+  console.log('[Cron] Nightly payroll + booking-type jobs scheduled for 7 AM UTC (11 PM PST)');
 });
 
 module.exports = app;
