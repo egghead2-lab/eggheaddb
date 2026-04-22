@@ -138,7 +138,12 @@ export default function NotificationsPage() {
       if (params.observation_id) return api.post(`/notifications/confirm-observation/${params.observation_id}`, params).then(r => r.data);
       return api.post(`/notifications/confirm/${params.sessionId}`, params).then(r => r.data);
     },
-    onSuccess: () => { qc.invalidateQueries(['notifications']); qc.invalidateQueries(['notifications-unconfirmed']); },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['notifications'] });
+      await qc.invalidateQueries({ queryKey: ['notifications-unconfirmed'] });
+      await qc.refetchQueries({ queryKey: ['notifications', date, tab] });
+    },
+    onError: (e) => showStatus('Confirm failed: ' + (e?.response?.data?.error || e.message), 'error'),
   });
 
   const [processResults, setProcessResults] = useState(null);
@@ -390,14 +395,21 @@ export default function NotificationsPage() {
                           : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-2 py-2">
-                        <button type="button" onClick={() => confirmMut.mutate({
-                          sessionId: r.session_id, observation_id: r.observation_id,
-                          confirmed: !isConfirmed, date, type: r.template_category || tab, professor_id: r.professor_id,
-                        })}>
-                          {isConfirmed
-                            ? <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium hover:bg-green-200 cursor-pointer">Confirmed</span>
-                            : <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100 cursor-pointer">Unconfirmed</span>}
-                        </button>
+                        {(() => {
+                          const rowPending = confirmMut.isPending && confirmMut.variables?.sessionId === r.session_id && confirmMut.variables?.professor_id === r.professor_id;
+                          return (
+                            <button type="button" disabled={rowPending} onClick={() => confirmMut.mutate({
+                              sessionId: r.session_id, observation_id: r.observation_id,
+                              confirmed: !isConfirmed, date, type: r.template_category || tab, professor_id: r.professor_id,
+                            })}>
+                              {rowPending
+                                ? <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 animate-pulse">...</span>
+                                : isConfirmed
+                                  ? <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium hover:bg-green-200 cursor-pointer">Confirmed</span>
+                                  : <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100 cursor-pointer">Unconfirmed</span>}
+                            </button>
+                          );
+                        })()}
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex gap-1">
