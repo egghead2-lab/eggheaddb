@@ -32,13 +32,8 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
 
   const invalidate = () => qc.invalidateQueries(['programs', String(programId)]);
 
-  const promptSync = (newCount) => {
-    if (newCount !== undefined && onEnrolledSync && numberEnrolled !== undefined && newCount !== numberEnrolled) {
-      if (confirm(`Roster now has ${newCount} active student${newCount !== 1 ? 's' : ''}. Update the enrolled number to match?`)) {
-        onEnrolledSync(newCount);
-      }
-    }
-  };
+  // Enrollment mismatch is shown as an inline badge on the parent page — don't prompt here
+  const promptSync = () => {};
 
   const addMutation = useMutation({
     mutationFn: (data) => addToRoster(programId, data),

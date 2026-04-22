@@ -20,7 +20,7 @@ function isWrongDay(dateStr, allowedDays) {
   return dow !== null && !allowedDays.includes(dow);
 }
 
-function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDays, defaultTime, onUpdate, onDelete, onDeleteAndShift, onToggleBilled }) {
+function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDays, defaultTime, showAssistant, showObserver, onUpdate, onDelete, onDeleteAndShift, onToggleBilled }) {
   const dateStr = (s.session_date || '').split('T')[0];
   const dow = getDayOfWeek(dateStr);
   const isWrong = isWrongDay(dateStr, allowedDays);
@@ -59,30 +59,38 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
           onBlur={e => { if (e.target.value !== String(s.professor_pay ?? '')) handleChange('professor_pay', e.target.value); }}
           className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
       </td>
-      <td className="px-2 py-1">
-        <select defaultValue={s.assistant_id || ''} onChange={e => handleChange('assistant_id', e.target.value)}
-          className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
-          <option value="">—</option>
-          {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
-        </select>
-      </td>
-      <td className="px-2 py-1">
-        <input type="number" step="0.01" defaultValue={s.assistant_pay ?? ''}
-          onBlur={e => { if (e.target.value !== String(s.assistant_pay ?? '')) handleChange('assistant_pay', e.target.value); }}
-          className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
-      </td>
-      <td className="px-2 py-1">
-        <select defaultValue={s.observer_id || ''} onChange={e => handleChange('observer_id', e.target.value)}
-          className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
-          <option value="">—</option>
-          {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
-        </select>
-      </td>
-      <td className="px-2 py-1">
-        <input type="number" step="0.01" defaultValue={s.observer_pay ?? ''}
-          onBlur={e => { if (e.target.value !== String(s.observer_pay ?? '')) handleChange('observer_pay', e.target.value); }}
-          className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
-      </td>
+      {showAssistant && (
+        <>
+          <td className="px-2 py-1">
+            <select defaultValue={s.assistant_id || ''} onChange={e => handleChange('assistant_id', e.target.value)}
+              className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
+              <option value="">—</option>
+              {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
+            </select>
+          </td>
+          <td className="px-2 py-1">
+            <input type="number" step="0.01" defaultValue={s.assistant_pay ?? ''}
+              onBlur={e => { if (e.target.value !== String(s.assistant_pay ?? '')) handleChange('assistant_pay', e.target.value); }}
+              className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
+          </td>
+        </>
+      )}
+      {showObserver && (
+        <>
+          <td className="px-2 py-1">
+            <select defaultValue={s.observer_id || ''} onChange={e => handleChange('observer_id', e.target.value)}
+              className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
+              <option value="">—</option>
+              {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
+            </select>
+          </td>
+          <td className="px-2 py-1">
+            <input type="number" step="0.01" defaultValue={s.observer_pay ?? ''}
+              onBlur={e => { if (e.target.value !== String(s.observer_pay ?? '')) handleChange('observer_pay', e.target.value); }}
+              className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
+          </td>
+        </>
+      )}
       <td className="px-2 py-1">
         <div className="flex items-center gap-0.5">
           <select defaultValue={s.lesson_id || ''} onChange={e => handleChange('lesson_id', e.target.value)}
@@ -270,6 +278,13 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
   }, [sessions]);
 
   const billableSessions = sessions.filter(s => !s.not_billed);
+  // Hide assistant / observer columns by default unless any session has one assigned (or user explicitly expands)
+  const hasAssistant = sessions.some(s => s.assistant_id) || !!program?.assistant_professor_id;
+  const hasObserver = sessions.some(s => s.observer_id);
+  const [showAssistantOverride, setShowAssistantOverride] = useState(false);
+  const [showObserverOverride, setShowObserverOverride] = useState(false);
+  const showAssistant = hasAssistant || showAssistantOverride;
+  const showObserver = hasObserver || showObserverOverride;
   const wrongDaySessions = new Set(
     sessions.filter(s => isWrongDay((s.session_date || '').split('T')[0], allowedDays)).map(s => s.id)
   );
@@ -361,6 +376,25 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
           </div>
         )}
 
+        {/* Column toggles — show only when the column is hidden */}
+        {(!showAssistant || !showObserver) && (
+          <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
+            <span>Columns hidden:</span>
+            {!showAssistant && (
+              <button type="button" onClick={() => setShowAssistantOverride(true)}
+                className="px-2 py-0.5 rounded border border-gray-200 bg-white hover:border-gray-400 hover:text-gray-700">
+                + Assistant
+              </button>
+            )}
+            {!showObserver && (
+              <button type="button" onClick={() => setShowObserverOverride(true)}
+                className="px-2 py-0.5 rounded border border-gray-200 bg-white hover:border-gray-400 hover:text-gray-700">
+                + Observer
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Sessions table */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
@@ -372,10 +406,10 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
                 <th className="text-left px-2 py-2 font-medium text-gray-600">Time</th>
                 <th className="text-left px-2 py-2 font-medium text-gray-600">Lead Professor</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>
-                <th className="text-left px-2 py-2 font-medium text-gray-600">Assistant</th>
-                <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>
-                <th className="text-left px-2 py-2 font-medium text-gray-600">Observer</th>
-                <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>
+                {showAssistant && <th className="text-left px-2 py-2 font-medium text-gray-600">Assistant</th>}
+                {showAssistant && <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>}
+                {showObserver && <th className="text-left px-2 py-2 font-medium text-gray-600">Observer</th>}
+                {showObserver && <th className="text-right px-2 py-2 font-medium text-gray-600 w-16">Pay</th>}
                 <th className="text-left px-2 py-2 font-medium text-gray-600">Lesson</th>
                 <th className="text-center px-1 py-2 font-medium text-gray-600 w-8" title="Billed">$</th>
                 <th className="w-8"></th>
@@ -383,11 +417,12 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sessions.length === 0 ? (
-                <tr><td colSpan={13} className="text-center py-8 text-gray-400">No sessions yet — click "Generate Sessions" or "+ Add Date"</td></tr>
+                <tr><td colSpan={9 + (showAssistant ? 2 : 0) + (showObserver ? 2 : 0)} className="text-center py-8 text-gray-400">No sessions yet — click "Generate Sessions" or "+ Add Date"</td></tr>
               ) : sessions.map((s, idx) => (
                 <SessionRow key={s.id} s={s} idx={idx}
                   professors={professors} allLessons={lessons} filteredLessons={filteredLessons}
                   allowedDays={allowedDays} defaultTime={defaultTime}
+                  showAssistant={showAssistant} showObserver={showObserver}
                   onUpdate={handleUpdate} onDelete={handleDelete} onDeleteAndShift={handleDeleteAndShift} onToggleBilled={handleToggleBilled} />
               ))}
             </tbody>
