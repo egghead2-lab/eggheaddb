@@ -451,15 +451,40 @@ router.get('/lessons', authenticate, async (req, res, next) => {
 });
 
 // GET /api/professors/list
+// ?assignable=1 — only Active/Training/Substitute status + Field Managers (by user role)
+// ?include_ids=1,2,3 — always include these prof IDs even if they don't match (for preserving existing assignments)
 router.get('/professors/list', authenticate, async (req, res, next) => {
   try {
+    const { assignable, include_ids } = req.query;
+    const includeIds = (include_ids || '').split(',').map(Number).filter(Boolean);
+
+    const baseSelect = `
+      SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.phone_number,
+             CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
+             ps.professor_status_name,
+             CASE WHEN r.role_name = 'Field Manager' THEN 1 ELSE 0 END AS is_field_manager
+      FROM professor p
+      LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
+      LEFT JOIN user u ON u.id = p.user_id
+      LEFT JOIN role r ON r.id = u.role_id
+    `;
+
+    let where = ['p.active = 1'];
+    const params = [];
+    if (assignable === '1' || assignable === 'true') {
+      const statusClause = `ps.professor_status_name IN ('Active','Training','Substitute') OR r.role_name = 'Field Manager'`;
+      if (includeIds.length) {
+        where.push(`((${statusClause}) OR p.id IN (?))`);
+        params.push(includeIds);
+      } else {
+        where.push(`(${statusClause})`);
+      }
+    }
+
     const [rows] = await pool.query(
-      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.phone_number,
-              CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
-              ps.professor_status_name
-       FROM professor p
-       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
-       WHERE p.active = 1 ORDER BY p.professor_nickname`
+      `${baseSelect} WHERE ${where.join(' AND ')}
+       ORDER BY COALESCE(p.professor_nickname, p.first_name), p.last_name`,
+      params
     );
     res.json({ success: true, data: rows });
   } catch (err) {

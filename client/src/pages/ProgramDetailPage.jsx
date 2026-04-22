@@ -19,7 +19,6 @@ import { RosterPanel } from '../components/RosterPanel';
 import { SessionsPanel } from '../components/SessionsPanel';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { formatDate, formatTime, formatCurrency, toFormData } from '../lib/utils';
-import PastProgramsPanel from '../components/PastProgramsPanel';
 import { WEEKDAY_KEYS, WEEKDAYS } from '../lib/constants';
 
 export default function ProgramDetailPage() {
@@ -35,7 +34,21 @@ export default function ProgramDetailPage() {
   });
 
   const { data: refData } = useGeneralData();
-  const { data: professorListData } = useProfessorList();
+  // Include IDs of currently-assigned professors so they stay visible even if their status changed
+  const prog0 = progData?.data || {};
+  const includeIds = useMemo(() => {
+    const ids = new Set();
+    if (prog0.lead_professor_id) ids.add(prog0.lead_professor_id);
+    if (prog0.assistant_professor_id) ids.add(prog0.assistant_professor_id);
+    if (prog0.demo_professor_id) ids.add(prog0.demo_professor_id);
+    (prog0.sessions || []).forEach(s => {
+      if (s.professor_id) ids.add(s.professor_id);
+      if (s.assistant_id) ids.add(s.assistant_id);
+      if (s.observer_id) ids.add(s.observer_id);
+    });
+    return [...ids].join(',');
+  }, [prog0.lead_professor_id, prog0.assistant_professor_id, prog0.demo_professor_id, prog0.sessions]);
+  const { data: professorListData } = useProfessorList({ assignable: 1, include_ids: includeIds || undefined });
   const { data: locationListData } = useLocationList();
   const { data: lessonsData } = useLessons();
   const ref = refData?.data || {};
@@ -103,12 +116,11 @@ export default function ProgramDetailPage() {
               </div>
             )}
           </div>
-          {!isNew && (
+          {!isNew && prog.payment_through_us ? (
             <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-gray-500">
-              {prog.payment_through_us ? <span className="text-green-600 font-medium">Payment Through Us</span> : null}
-              {prog.registration_opened_online ? <span className="text-green-600 font-medium">Registration Opened</span> : null}
+              <span className="text-green-600 font-medium">Payment Through Us</span>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="p-6 space-y-4 pb-32">
@@ -123,15 +135,23 @@ export default function ProgramDetailPage() {
                   <option key={s.id} value={s.id}>{s.class_status_name}</option>
                 ))}
               </Select>
-              <SearchSelect
-                label="Location"
-                value={watch('location_id')}
-                onChange={v => setValue('location_id', v, { shouldDirty: true })}
-                options={locations}
-                displayKey="nickname"
-                valueKey="id"
-                placeholder="Search locations…"
-              />
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-700">Location</label>
+                  {watch('location_id') && (
+                    <Link to={`/locations/${watch('location_id')}`} target="_blank"
+                      className="text-[10px] text-[#1e3a5f] hover:underline">Open ↗</Link>
+                  )}
+                </div>
+                <SearchSelect
+                  value={watch('location_id')}
+                  onChange={v => setValue('location_id', v, { shouldDirty: true })}
+                  options={locations}
+                  displayKey="nickname"
+                  valueKey="id"
+                  placeholder="Search locations…"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-4 gap-4 mt-4">
               <SearchSelect
@@ -157,31 +177,47 @@ export default function ProgramDetailPage() {
               </div>
             </div>
             <div className="grid grid-cols-4 gap-4 mt-4">
-              <Select label="Lead Professor" {...register('lead_professor_id')}>
+              <Select label="Lead Professor" value={watch('lead_professor_id') || ''}
+                onChange={e => {
+                  const v = e.target.value;
+                  setValue('lead_professor_id', v || null, { shouldDirty: true });
+                  const pick = professors.find(p => String(p.id) === String(v));
+                  if (pick?.is_field_manager) setValue('lead_professor_pay', 0, { shouldDirty: true });
+                }}>
                 <option value="">None</option>
                 {professors.map(p => (
-                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
+                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>
                 ))}
               </Select>
               <Input label="Lead Pay" type="number" step="0.01" prefix="$" {...register('lead_professor_pay')} />
-              <Select label="Assistant Professor" {...register('assistant_professor_id')}>
+              <Select label="Assistant Professor" value={watch('assistant_professor_id') || ''}
+                onChange={e => {
+                  const v = e.target.value;
+                  setValue('assistant_professor_id', v || null, { shouldDirty: true });
+                  const pick = professors.find(p => String(p.id) === String(v));
+                  if (pick?.is_field_manager) setValue('assistant_professor_pay', 0, { shouldDirty: true });
+                }}>
                 <option value="">None</option>
                 {professors.map(p => (
-                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>
+                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>
                 ))}
               </Select>
               <Input label="Assist Pay" type="number" step="0.01" prefix="$" {...register('assistant_professor_pay')} />
             </div>
             <div className="grid grid-cols-5 gap-4 mt-4">
               <Input label="Parent Cost" type="number" step="0.01" prefix="$" {...register('parent_cost')} />
-              <Input label="Lab Fee" type="number" step="0.01" prefix="$" {...register('lab_fee')} />
-              <Toggle label="Lab Fee Link Created" checked={!!watch('stripe_payment_link_id')}
-                onChange={v => {
-                  if (!v) { setValue('stripe_payment_link_id', null, { shouldDirty: true }); setValue('stripe_payment_link_url', null, { shouldDirty: true }); setValue('stripe_payment_link_qr_url', null, { shouldDirty: true }); }
-                }} />
-              <Toggle label="Lab Fee Link Not Needed" checked={!!watch('lab_fee_link_not_needed')}
-                onChange={v => setValue('lab_fee_link_not_needed', v ? 1 : 0, { shouldDirty: true })} />
               <Input label="Our Cut (per session)" type="number" step="0.01" prefix="$" {...register('our_cut')} />
+              <Input label="Lab Fee" type="number" step="0.01" prefix="$" {...register('lab_fee')} />
+              {(parseFloat(watch('lab_fee')) > 0) && (
+                <>
+                  <Toggle label="Lab Fee Link Created" checked={!!watch('stripe_payment_link_id')}
+                    onChange={v => {
+                      if (!v) { setValue('stripe_payment_link_id', null, { shouldDirty: true }); setValue('stripe_payment_link_url', null, { shouldDirty: true }); setValue('stripe_payment_link_qr_url', null, { shouldDirty: true }); }
+                    }} />
+                  <Toggle label="Lab Fee Link Not Needed" checked={!!watch('lab_fee_link_not_needed')}
+                    onChange={v => setValue('lab_fee_link_not_needed', v ? 1 : 0, { shouldDirty: true })} />
+                </>
+              )}
               {(() => {
                 const ourCut = parseFloat(watch('our_cut')) || 0;
                 const labFee = parseFloat(watch('lab_fee')) || 0;
@@ -236,47 +272,6 @@ export default function ProgramDetailPage() {
             </div>
             <div className="col-span-full mt-4">
               <Input label="General Notes" {...register('general_notes')} />
-            </div>
-          </Section>
-
-          {/* Past programs at this location */}
-          {watch('location_id') && <PastProgramsPanel locationId={watch('location_id')} />}
-
-          {/* Invoicing */}
-          <Section title={(() => {
-            const paid = watch('invoice_paid');
-            const sent = watch('invoice_date_sent');
-            const qbNum = prog.qb_invoice_number;
-            const qbStatus = prog.qb_invoice_status;
-            const status = paid ? 'Paid' : qbStatus === 'Paid' ? 'Paid (QB)' : sent ? 'Sent' : 'Not Sent';
-            const color = paid || qbStatus === 'Paid' ? 'text-green-600' : sent ? 'text-amber-600' : 'text-red-500';
-            return <span>Invoicing <span className={`text-xs font-medium ${color}`}>({status})</span>{qbNum ? <span className="text-xs text-gray-400 ml-2">#{qbNum}</span> : ''}</span>;
-          })()} defaultOpen={false}>
-            <div className="grid grid-cols-4 gap-4">
-              <Toggle label="Invoice Needed" checked={!!watch('invoice_needed')} onChange={v => setValue('invoice_needed', v ? 1 : 0, { shouldDirty: true })} />
-              <Toggle label="Invoice Paid" checked={!!watch('invoice_paid')} onChange={v => setValue('invoice_paid', v ? 1 : 0, { shouldDirty: true })} />
-              <Input label="Invoice Date Sent" type="date" {...register('invoice_date_sent')} />
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-700">Quick Actions</label>
-                <button type="button" onClick={() => { setValue('invoice_date_sent', new Date().toISOString().split('T')[0], { shouldDirty: true }); }}
-                  className="text-xs text-[#1e3a5f] hover:underline text-left py-1.5">Mark Sent Today</button>
-              </div>
-            </div>
-            {prog.qb_invoice_number && (
-              <div className="mt-3 flex items-center gap-4 text-xs">
-                <span className="text-gray-500">QB Invoice: <span className="font-medium text-gray-800">#{prog.qb_invoice_number}</span></span>
-                {prog.qb_invoice_status && (
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                    prog.qb_invoice_status === 'Paid' ? 'bg-green-100 text-green-700' :
-                    prog.qb_invoice_status === 'Overdue' ? 'bg-red-100 text-red-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>{prog.qb_invoice_status}</span>
-                )}
-                {prog.qb_invoice_balance > 0 && <span className="text-gray-400">Balance: {formatCurrency(prog.qb_invoice_balance)}</span>}
-              </div>
-            )}
-            <div className="mt-3">
-              <Input label="Invoice Notes" {...register('invoice_notes')} />
             </div>
           </Section>
 
@@ -357,6 +352,44 @@ export default function ProgramDetailPage() {
               </Section>
             );
           })()}
+
+          {/* Invoicing (below Roster) */}
+          <Section title={(() => {
+            const paid = watch('invoice_paid');
+            const sent = watch('invoice_date_sent');
+            const qbNum = prog.qb_invoice_number;
+            const qbStatus = prog.qb_invoice_status;
+            const status = paid ? 'Paid' : qbStatus === 'Paid' ? 'Paid (QB)' : sent ? 'Sent' : 'Not Sent';
+            const color = paid || qbStatus === 'Paid' ? 'text-green-600' : sent ? 'text-amber-600' : 'text-red-500';
+            return <span>Invoicing <span className={`text-xs font-medium ${color}`}>({status})</span>{qbNum ? <span className="text-xs text-gray-400 ml-2">#{qbNum}</span> : ''}</span>;
+          })()} defaultOpen={false}>
+            <div className="grid grid-cols-4 gap-4">
+              <Toggle label="Invoice Needed" checked={!!watch('invoice_needed')} onChange={v => setValue('invoice_needed', v ? 1 : 0, { shouldDirty: true })} />
+              <Toggle label="Invoice Paid" checked={!!watch('invoice_paid')} onChange={v => setValue('invoice_paid', v ? 1 : 0, { shouldDirty: true })} />
+              <Input label="Invoice Date Sent" type="date" {...register('invoice_date_sent')} />
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-700">Quick Actions</label>
+                <button type="button" onClick={() => { setValue('invoice_date_sent', new Date().toISOString().split('T')[0], { shouldDirty: true }); }}
+                  className="text-xs text-[#1e3a5f] hover:underline text-left py-1.5">Mark Sent Today</button>
+              </div>
+            </div>
+            {prog.qb_invoice_number && (
+              <div className="mt-3 flex items-center gap-4 text-xs">
+                <span className="text-gray-500">QB Invoice: <span className="font-medium text-gray-800">#{prog.qb_invoice_number}</span></span>
+                {prog.qb_invoice_status && (
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    prog.qb_invoice_status === 'Paid' ? 'bg-green-100 text-green-700' :
+                    prog.qb_invoice_status === 'Overdue' ? 'bg-red-100 text-red-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>{prog.qb_invoice_status}</span>
+                )}
+                {prog.qb_invoice_balance > 0 && <span className="text-gray-400">Balance: {formatCurrency(prog.qb_invoice_balance)}</span>}
+              </div>
+            )}
+            <div className="mt-3">
+              <Input label="Invoice Notes" {...register('invoice_notes')} />
+            </div>
+          </Section>
 
           {/* Compliance */}
           <Section title="Compliance Requirements">

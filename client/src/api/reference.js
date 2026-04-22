@@ -1,7 +1,7 @@
 import api from './client';
 export const getAreas = () => api.get('/areas').then(r => r.data);
 export const getGeneralData = () => api.get('/general-data').then(r => r.data);
-export const getProfessorList = () => api.get('/professors/list').then(r => r.data);
+export const getProfessorList = (params) => api.get('/professors/list', { params }).then(r => r.data);
 export const getLocationList = () => api.get('/locations/list').then(r => r.data);
 export const getRoles = () => api.get('/roles').then(r => r.data);
 export const getLessons = () => api.get('/lessons').then(r => r.data);

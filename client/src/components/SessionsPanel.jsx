@@ -48,10 +48,17 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
           className="rounded border border-gray-200 px-1.5 py-1 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] focus:border-[#1e3a5f]" />
       </td>
       <td className="px-2 py-1">
-        <select defaultValue={s.professor_id || ''} onChange={e => handleChange('professor_id', e.target.value)}
+        <select defaultValue={s.professor_id || ''}
+          onChange={e => {
+            const v = e.target.value;
+            const pick = professors.find(p => String(p.id) === String(v));
+            onUpdate(s.id, pick?.is_field_manager
+              ? { professor_id: v || null, professor_pay: 0 }
+              : { professor_id: v || null });
+          }}
           className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
           <option value="">—</option>
-          {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
+          {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>)}
         </select>
       </td>
       <td className="px-2 py-1">
@@ -62,10 +69,17 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
       {showAssistant && (
         <>
           <td className="px-2 py-1">
-            <select defaultValue={s.assistant_id || ''} onChange={e => handleChange('assistant_id', e.target.value)}
+            <select defaultValue={s.assistant_id || ''}
+              onChange={e => {
+                const v = e.target.value;
+                const pick = professors.find(p => String(p.id) === String(v));
+                onUpdate(s.id, pick?.is_field_manager
+                  ? { assistant_id: v || null, assistant_pay: 0 }
+                  : { assistant_id: v || null });
+              }}
               className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
               <option value="">—</option>
-              {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
+              {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>)}
             </select>
           </td>
           <td className="px-2 py-1">
@@ -78,10 +92,17 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
       {showObserver && (
         <>
           <td className="px-2 py-1">
-            <select defaultValue={s.observer_id || ''} onChange={e => handleChange('observer_id', e.target.value)}
+            <select defaultValue={s.observer_id || ''}
+              onChange={e => {
+                const v = e.target.value;
+                const pick = professors.find(p => String(p.id) === String(v));
+                onUpdate(s.id, pick?.is_field_manager
+                  ? { observer_id: v || null, observer_pay: 0 }
+                  : { observer_id: v || null });
+              }}
               className="w-full rounded border border-gray-200 px-1 py-1 text-xs appearance-none focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-white pr-5">
               <option value="">—</option>
-              {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}</option>)}
+              {professors.map(p => <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>)}
             </select>
           </td>
           <td className="px-2 py-1">
