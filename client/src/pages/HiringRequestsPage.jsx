@@ -377,9 +377,21 @@ function HiringRequestForm({ areas, onClose, onSuccess }) {
   };
 
   // Quick avail presets
-  const setAllAM = () => setForm(f => ({ ...f, avail_mon_am: true, avail_tue_am: true, avail_wed_am: true, avail_thu_am: true, avail_fri_am: true }));
-  const setAllPM = () => setForm(f => ({ ...f, avail_mon_pm: true, avail_tue_pm: true, avail_wed_pm: true, avail_thu_pm: true, avail_fri_pm: true }));
-  const setAllDay = () => setForm(f => ({ ...f, avail_mon_am: true, avail_mon_pm: true, avail_tue_am: true, avail_tue_pm: true, avail_wed_am: true, avail_wed_pm: true, avail_thu_am: true, avail_thu_pm: true, avail_fri_am: true, avail_fri_pm: true }));
+  // Replace (not add) the availability — clicking a preset overrides what was selected before
+  const setAllAM = () => setForm(f => ({ ...f,
+    avail_mon_am: true, avail_tue_am: true, avail_wed_am: true, avail_thu_am: true, avail_fri_am: true,
+    avail_mon_pm: false, avail_tue_pm: false, avail_wed_pm: false, avail_thu_pm: false, avail_fri_pm: false,
+  }));
+  const setAllPM = () => setForm(f => ({ ...f,
+    avail_mon_pm: true, avail_tue_pm: true, avail_wed_pm: true, avail_thu_pm: true, avail_fri_pm: true,
+    avail_mon_am: false, avail_tue_am: false, avail_wed_am: false, avail_thu_am: false, avail_fri_am: false,
+  }));
+  const setAllDay = () => setForm(f => ({ ...f,
+    avail_mon_am: true, avail_mon_pm: true, avail_tue_am: true, avail_tue_pm: true, avail_wed_am: true, avail_wed_pm: true, avail_thu_am: true, avail_thu_pm: true, avail_fri_am: true, avail_fri_pm: true,
+  }));
+  const clearAvailability = () => setForm(f => ({ ...f,
+    avail_mon_am: false, avail_mon_pm: false, avail_tue_am: false, avail_tue_pm: false, avail_wed_am: false, avail_wed_pm: false, avail_thu_am: false, avail_thu_pm: false, avail_fri_am: false, avail_fri_pm: false,
+  }));
 
   // Date warnings
   const fulfillWarning = form.fulfillment_date && form.fulfillment_date < threeWeeksOut;
@@ -416,6 +428,7 @@ function HiringRequestForm({ areas, onClose, onSuccess }) {
             <button type="button" onClick={setAllAM} className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200">M-F AM</button>
             <button type="button" onClick={setAllPM} className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200">M-F PM</button>
             <button type="button" onClick={setAllDay} className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200">M-F All Day</button>
+            <button type="button" onClick={clearAvailability} className="text-[10px] px-2 py-0.5 rounded bg-white border border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600 ml-auto">Clear Selection</button>
           </div>
           <div className="grid grid-cols-5 gap-2">
             {DAYS.map((d, i) => (
