@@ -10,6 +10,8 @@ const MERGE_FIELDS = [
   { key: 'professor_nickname', label: 'Sub professor nickname', example: 'Ali' },
   { key: 'role', label: 'Role needed', example: 'Lead' },
   { key: 'program_name', label: 'Program nickname', example: 'NORRIS BIMAT (1-3) - AST 26' },
+  { key: 'class_type', label: 'Class type', example: 'Science' },
+  { key: 'lesson_name', label: 'Scheduled lesson for this date', example: 'Volcano Eruptions' },
   { key: 'session_date', label: 'Session date', example: 'Monday, May 5' },
   { key: 'session_time', label: 'Session time', example: '3:30 PM' },
   { key: 'class_length', label: 'Class length', example: '60 min' },
@@ -22,6 +24,8 @@ const MERGE_FIELDS = [
 const SAMPLE_VALUES = {
   professor_nickname: 'Ali', role: 'Lead',
   program_name: 'NORRIS BIMAT (1-3) - AST 26',
+  class_type: 'Science',
+  lesson_name: 'Volcano Eruptions',
   session_date: 'Monday, May 5', session_time: '3:30 PM', class_length: '60 min',
   location_name: 'Norris Elementary',
   location_address: '123 Main St, Bakersfield CA',

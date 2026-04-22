@@ -481,10 +481,15 @@ router.get('/render-ask', async (req, res, next) => {
               prog.lead_professor_pay, prog.assistant_professor_pay,
               loc.nickname AS location_nickname, loc.school_name, loc.address,
               d.professor_id AS off_professor_id,
-              sr.reason_name
+              sr.reason_name,
+              l.lesson_name,
+              ct.class_type_name
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN class_type ct ON ct.id = cl.class_type_id
        LEFT JOIN day_off d ON d.date_requested = s.session_date AND d.active = 1
          AND (d.professor_id = prog.lead_professor_id OR d.professor_id = prog.assistant_professor_id)
        LEFT JOIN substitute_reason sr ON sr.id = d.substitute_reason_id
@@ -536,6 +541,8 @@ router.get('/render-ask', async (req, res, next) => {
       location_address: need.address || '',
       pay: pay ? pay.toFixed(2).replace(/\.00$/, '') : '0',
       reason: need.reason_name || '',
+      lesson_name: need.lesson_name || '',
+      class_type: need.class_type_name || '',
     };
 
     // Load templates
