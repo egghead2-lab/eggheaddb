@@ -665,6 +665,14 @@ function DroppableCell({ day, profId, programs, assignments, originals, unavaila
             >
               <div className="flex items-center gap-0.5">
                 <div className="text-[10px] font-medium text-gray-900 truncate leading-tight flex-1">{p.nickname}</div>
+                {(() => {
+                  // Out-of-area badge: assigned lead prof's area ≠ location's area
+                  const currentProfId = p.id in assignments ? assignments[p.id] : p.professorId;
+                  const currentProf = currentProfId ? professors.find(pr => pr.id === currentProfId) : null;
+                  const profAreaId = currentProf?.areaId ?? (currentProfId === p.professorId ? p.leadProfessorAreaId : null);
+                  const ooa = p.locationAreaId && profAreaId && profAreaId !== p.locationAreaId;
+                  return ooa ? <span className="text-[7px] px-0.5 rounded bg-orange-100 text-orange-700 font-bold shrink-0" title={`Out of area: assigned prof's area does not match location area`}>OOA</span> : null;
+                })()}
                 {p.isMultiDay && <span className="text-[7px] px-0.5 rounded bg-purple-200 text-purple-700 font-bold shrink-0" title="Multi-day program">M</span>}
                 {p.retained && <span className="text-[7px] px-0.5 rounded bg-blue-200 text-blue-700 font-bold shrink-0" title="Retained client">R</span>}
                 {p.livescanRequired && <span className="text-[7px] px-0.5 rounded bg-red-200 text-red-700 font-bold shrink-0" title="Livescan required">LS</span>}

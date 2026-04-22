@@ -33,6 +33,8 @@ router.get('/data', authenticate, async (req, res, next) => {
               prog.location_id,
               loc.retained,
               loc.contractor_id,
+              loc.geographic_area_id_online AS location_area_id,
+              lp.geographic_area_id AS lead_professor_area_id,
               loc.livescan_required, loc.virtus_required, loc.tb_required
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id AND cs.active = 1
@@ -60,6 +62,7 @@ router.get('/data', authenticate, async (req, res, next) => {
              CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
              ps.professor_status_name,
              ga.geographic_area_name AS home_territory,
+             p.geographic_area_id,
              p.science_trained_id, p.engineering_trained_id, p.robotics_trained_id, p.studysmart_trained_id,
              p.virtus, p.tb_test
       FROM professor p
@@ -76,6 +79,7 @@ router.get('/data', authenticate, async (req, res, next) => {
              CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
              ps.professor_status_name,
              ga.geographic_area_name AS home_territory,
+             p.geographic_area_id,
              p.science_trained_id, p.engineering_trained_id, p.robotics_trained_id, p.studysmart_trained_id,
              p.virtus, p.tb_test
       FROM professor p
@@ -143,6 +147,8 @@ router.get('/data', authenticate, async (req, res, next) => {
         isMultiDay,
         pay: p.lead_professor_pay,
         retained: !!p.retained,
+        locationAreaId: p.location_area_id || null,
+        leadProfessorAreaId: p.lead_professor_area_id || null,
       };
 
       // Create one entry per weekday the program runs on
@@ -182,6 +188,7 @@ router.get('/data', authenticate, async (req, res, next) => {
       nickname: p.professor_nickname,
       status: p.professor_status_name,
       homeTerritory: p.home_territory || '',
+      areaId: p.geographic_area_id || null,
       availability: availMap[p.id] || {},
       scienceTrained: !!p.science_trained_id,
       engineeringTrained: !!p.engineering_trained_id,
