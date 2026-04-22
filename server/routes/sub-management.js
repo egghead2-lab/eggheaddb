@@ -51,6 +51,7 @@ router.get('/needs', async (req, res, next) => {
          AND d.date_requested >= CURDATE()
          AND d.date_requested <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
          AND cs.class_status_name NOT LIKE 'Cancelled%'
+         AND prog.party_format_id IS NULL
          AND (prog.lead_professor_id = d.professor_id OR prog.assistant_professor_id = d.professor_id)
          AND (
            (prog.lead_professor_id = d.professor_id AND (s.professor_id IS NULL OR s.professor_id = d.professor_id))

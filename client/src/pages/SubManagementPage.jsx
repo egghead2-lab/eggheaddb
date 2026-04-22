@@ -563,8 +563,14 @@ function SubNeedsPanel() {
     setSelectedAreas(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
   };
 
-  const toggleSearchArea = (id) => {
-    setSearchAreas(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+  const toggleSearchArea = (id, multi) => {
+    if (multi) {
+      // Ctrl/Cmd+Click → toggle in/out of the current selection
+      setSearchAreas(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+    } else {
+      // Plain click → select only this one (replace)
+      setSearchAreas(prev => (prev.length === 1 && prev[0] === id) ? [] : [id]);
+    }
   };
 
   const today = new Date().toISOString().split('T')[0];
@@ -654,7 +660,8 @@ function SubNeedsPanel() {
                   <div className="flex flex-wrap gap-1 mt-2">
                     <span className="text-[10px] text-gray-400 py-0.5 mr-1">Search in:</span>
                     {(ref.areas || []).map(a => (
-                      <button key={a.id} onClick={() => toggleSearchArea(a.id)}
+                      <button key={a.id} onClick={e => toggleSearchArea(a.id, e.ctrlKey || e.metaKey)}
+                        title="Click to select one area · Ctrl/Cmd+Click to select multiple"
                         className={`px-1.5 py-0.5 rounded text-[10px] transition-colors ${
                           searchAreas.includes(a.id)
                             ? 'bg-[#1e3a5f] text-white'
@@ -667,6 +674,7 @@ function SubNeedsPanel() {
                       All areas
                     </label>
                   </div>
+                  <div className="text-[9px] text-gray-400 mt-1 italic">Tip: Ctrl+Click (Cmd on Mac) to search multiple areas at once.</div>
                 </div>
 
                 {/* Professor table */}
