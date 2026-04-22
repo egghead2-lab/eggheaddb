@@ -14,6 +14,7 @@ const TABS = [
   { path: '/payroll/fm-log', label: 'FM Daily Log' },
   { path: '/payroll/mileage', label: 'Mileage' },
   { path: '/payroll/gas-reimbursements', label: 'Gas Reimbursements' },
+  { path: '/subs-activity', label: 'Sub Activity' },
   { path: '/payroll/gusto-codes', label: 'Gusto Codes' },
 ];
 

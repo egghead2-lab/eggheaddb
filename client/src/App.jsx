@@ -113,6 +113,7 @@ import PermitManagementPage from './pages/PermitManagementPage';
 import EmailBlastToolPage from './pages/EmailBlastToolPage';
 import GasReimbursementsPage from './pages/GasReimbursementsPage';
 import AvailableSubsPage from './pages/AvailableSubsPage';
+import SubsActivityPage from './pages/SubsActivityPage';
 
 export default function App() {
   return (
@@ -245,6 +246,7 @@ export default function App() {
       <Route path="/email-blasts" element={<ProtectedRoute><EmailBlastToolPage /></ProtectedRoute>} />
       <Route path="/payroll/gas-reimbursements" element={<ProtectedRoute><GasReimbursementsPage /></ProtectedRoute>} />
       <Route path="/available-subs" element={<ProtectedRoute><AvailableSubsPage /></ProtectedRoute>} />
+      <Route path="/subs-activity" element={<ProtectedRoute><SubsActivityPage /></ProtectedRoute>} />
 
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />

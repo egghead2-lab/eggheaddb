@@ -97,6 +97,44 @@ router.get('/', authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/professors/subs-activity — all Substitute-status professors + their recent teaching activity
+// Shows last session date + counts in last 30/60/90 days. Flags for termination if no activity in 30 days.
+router.get('/subs-activity', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, p.phone_number,
+              p.hire_date, p.base_pay, p.assist_pay,
+              ga.geographic_area_name AS area,
+              (SELECT MAX(s.session_date)
+                 FROM session s
+                 JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+                 WHERE s.active = 1 AND s.session_date <= CURDATE()
+                   AND (s.professor_id = p.id OR s.assistant_id = p.id)) AS last_session_date,
+              (SELECT COUNT(*) FROM session s
+                 JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+                 WHERE s.active = 1 AND s.not_billed != 1
+                   AND s.session_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND CURDATE()
+                   AND (s.professor_id = p.id OR s.assistant_id = p.id)) AS count_30d,
+              (SELECT COUNT(*) FROM session s
+                 JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+                 WHERE s.active = 1 AND s.not_billed != 1
+                   AND s.session_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 60 DAY) AND CURDATE()
+                   AND (s.professor_id = p.id OR s.assistant_id = p.id)) AS count_60d,
+              (SELECT COUNT(*) FROM session s
+                 JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+                 WHERE s.active = 1 AND s.not_billed != 1
+                   AND s.session_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 90 DAY) AND CURDATE()
+                   AND (s.professor_id = p.id OR s.assistant_id = p.id)) AS count_90d
+       FROM professor p
+       JOIN professor_status ps ON ps.id = p.professor_status_id
+       LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
+       WHERE p.active = 1 AND ps.professor_status_name = 'Substitute'
+       ORDER BY last_session_date IS NULL DESC, last_session_date ASC, p.professor_nickname`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/professors/my-profile — professor finds their own professor ID from their user ID
 router.get('/my-profile', authenticate, async (req, res, next) => {
   try {
