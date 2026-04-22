@@ -759,6 +759,14 @@ router.get('/bug-reports', authenticate, async (req, res, next) => {
 router.put('/bug-reports/:id', authenticate, async (req, res, next) => {
   try {
     const { status, admin_notes, fixed } = req.body;
+
+    // Snapshot before-state so we can detect a new/changed reply
+    const [[before]] = await pool.query(
+      'SELECT submitted_by_user_id, description, admin_notes FROM bug_report WHERE id = ?',
+      [req.params.id]
+    );
+    if (!before) return res.status(404).json({ success: false, error: 'Bug not found' });
+
     const sets = []; const vals = [];
     if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
     if (admin_notes !== undefined) { sets.push('admin_notes = ?'); vals.push(admin_notes); }
@@ -766,6 +774,41 @@ router.put('/bug-reports/:id', authenticate, async (req, res, next) => {
     if (fixed === false) { sets.push('fixed_at = NULL'); }
     if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     await pool.query(`UPDATE bug_report SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
+
+    // If admin_notes changed to a new non-empty value, email the bug submitter
+    const newNotes = (admin_notes || '').trim();
+    const oldNotes = (before.admin_notes || '').trim();
+    if (admin_notes !== undefined && newNotes && newNotes !== oldNotes && before.submitted_by_user_id) {
+      (async () => {
+        try {
+          const { sendEmail } = require('../lib/gmail');
+          // Sender = admin who made the change; recipient = bug submitter
+          const [[sender]] = await pool.query(
+            'SELECT google_refresh_token, email_signature FROM user WHERE id = ?', [req.user.userId]
+          );
+          const [[recipient]] = await pool.query(
+            'SELECT email, first_name FROM user WHERE id = ? AND active = 1', [before.submitted_by_user_id]
+          );
+          if (!sender?.google_refresh_token || !recipient?.email) return;
+          const truncatedDesc = (before.description || '').substring(0, 400);
+          const htmlBody = `
+            <p>Hey ${recipient.first_name || ''},</p>
+            <p>Nick replied to your bug report:</p>
+            <blockquote style="border-left:3px solid #1e3a5f;padding:8px 12px;background:#f5f7fa;color:#333">${newNotes.replace(/\n/g, '<br>')}</blockquote>
+            <p style="color:#666;font-size:12px"><strong>Your original report:</strong><br>${truncatedDesc.replace(/\n/g, '<br>')}${before.description?.length > 400 ? '…' : ''}</p>
+            <p style="font-size:12px"><a href="${process.env.CLIENT_URL || 'https://db.professoregghead.com'}/bug-bounty">View in Bug Bounty →</a></p>
+          `;
+          await sendEmail({
+            refreshToken: sender.google_refresh_token,
+            to: recipient.email,
+            subject: 'Response to your bug report',
+            htmlBody,
+            signature: sender.email_signature,
+          });
+        } catch (e) { console.warn('[bug-reply email] non-fatal:', e.message); }
+      })();
+    }
+
     res.json({ success: true });
   } catch (err) { next(err); }
 });
