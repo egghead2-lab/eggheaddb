@@ -95,12 +95,13 @@ router.post('/sync-candidates', async (req, res, next) => {
 router.get('/professor-issues', async (req, res, next) => {
   try {
     // Active professors (Active/Substitute/Training/In Training) without an active Trainual account
+    // Uses trainual_email if set, else email
     const [missingFromTrainual] = await pool.query(
-      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, ps.professor_status_name,
+      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, p.trainual_email, ps.professor_status_name,
               tu.status AS trainual_status
        FROM professor p
        LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
-       LEFT JOIN trainual_user tu ON tu.email = LOWER(p.email)
+       LEFT JOIN trainual_user tu ON tu.email = LOWER(COALESCE(NULLIF(p.trainual_email, ''), p.email))
        WHERE p.active = 1
          AND ps.professor_status_name IN ('Active', 'Substitute', 'Training', 'In Training')
          AND p.email IS NOT NULL AND p.email != ''
@@ -110,11 +111,11 @@ router.get('/professor-issues', async (req, res, next) => {
 
     // Professors with status Inactive-Items Pending or Terminated but still active in Trainual
     const [shouldBeArchived] = await pool.query(
-      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, ps.professor_status_name,
+      `SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.email, p.trainual_email, ps.professor_status_name,
               tu.trainual_user_id, tu.avg_completion, tu.status AS trainual_status
        FROM professor p
        JOIN professor_status ps ON ps.id = p.professor_status_id
-       JOIN trainual_user tu ON tu.email = LOWER(p.email)
+       JOIN trainual_user tu ON tu.email = LOWER(COALESCE(NULLIF(p.trainual_email, ''), p.email))
        WHERE p.active = 1
          AND ps.professor_status_name IN ('Inactive - Items Pending', 'Terminated', 'Inactive')
          AND tu.status = 'active'
@@ -122,6 +123,18 @@ router.get('/professor-issues', async (req, res, next) => {
     );
 
     res.json({ success: true, data: { missingFromTrainual, shouldBeArchived } });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/trainual/professor/:id/trainual-email — set alternate email used to match Trainual
+router.patch('/professor/:id/trainual-email', async (req, res, next) => {
+  try {
+    const { trainual_email } = req.body;
+    await pool.query(
+      'UPDATE professor SET trainual_email = ? WHERE id = ?',
+      [trainual_email ? String(trainual_email).trim() : null, req.params.id]
+    );
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

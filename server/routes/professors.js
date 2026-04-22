@@ -74,7 +74,7 @@ router.get('/', authenticate, async (req, res, next) => {
        LEFT JOIN city c ON c.id = p.city_id
        LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
        LEFT JOIN user sc_user ON sc_user.id = p.scheduling_coordinator_owner_id
-       LEFT JOIN trainual_user tu ON tu.email = LOWER(p.email)
+       LEFT JOIN trainual_user tu ON tu.email = LOWER(COALESCE(NULLIF(p.trainual_email, ''), p.email))
        ${where}
        ORDER BY ${sortCol} ${sortDir}, p.last_name ASC
        LIMIT ? OFFSET ?`,
@@ -345,7 +345,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
     const data = req.body;
 
     const fields = [
-      'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email',
+      'professor_nickname', 'professor_status_id', 'first_name', 'last_name', 'email', 'trainual_email',
       'phone_number', 'address', 'city_id', 'general_notes', 'availability_notes',
       'emergency_contact', 'emergency_contact_number',
       'birthday', 'hire_date',

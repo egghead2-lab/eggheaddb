@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProfessors } from '../api/professors';
-import { syncTrainual, archiveTrainualUser, getProfessorIssues } from '../api/trainual';
+import { syncTrainual, archiveTrainualUser, getProfessorIssues, setTrainualEmail } from '../api/trainual';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -216,12 +216,10 @@ export default function ProfessorsPage() {
                     <div className="text-xs font-semibold text-amber-800 mb-1">
                       Active but missing from Trainual ({issues.missingFromTrainual.length})
                     </div>
-                    <ul className="text-xs space-y-1">
+                    <div className="text-[10px] text-gray-500 mb-2">If a professor registered in Trainual under a different email, paste that email next to their name to match it.</div>
+                    <ul className="text-xs space-y-1.5">
                       {issues.missingFromTrainual.map(p => (
-                        <li key={p.id}>
-                          <Link to={`/professors/${p.id}`} className="text-[#1e3a5f] hover:underline">{p.professor_nickname}</Link>
-                          <span className="text-gray-500"> — {p.professor_status_name}{p.trainual_status ? ` (Trainual: ${p.trainual_status})` : ' (no Trainual account)'}</span>
-                        </li>
+                        <TrainualMissingRow key={p.id} p={p} onDone={() => refetchIssues()} />
                       ))}
                     </ul>
                   </div>
@@ -343,5 +341,39 @@ export default function ProfessorsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function TrainualMissingRow({ p, onDone }) {
+  const [email, setEmail] = useState(p.trainual_email || '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const save = async () => {
+    setSaving(true); setErr(null);
+    try {
+      await setTrainualEmail(p.id, email);
+      onDone?.();
+    } catch (e) {
+      setErr(e?.response?.data?.error || 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <li className="flex items-center gap-2 flex-wrap">
+      <Link to={`/professors/${p.id}`} className="text-[#1e3a5f] hover:underline font-medium">{p.professor_nickname}</Link>
+      <span className="text-gray-500 text-[11px]">{p.professor_status_name}{p.trainual_status ? ` · Trainual: ${p.trainual_status}` : ' · no Trainual account'}</span>
+      <span className="text-gray-400 text-[10px]">({p.email})</span>
+      <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+        placeholder="Trainual email (if different)"
+        className="rounded border border-gray-300 px-2 py-0.5 text-[11px] w-56 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+      <button onClick={save} disabled={saving || email === (p.trainual_email || '')}
+        className="text-[10px] px-2 py-0.5 rounded bg-[#1e3a5f] text-white font-medium disabled:opacity-50">
+        {saving ? '...' : 'Match'}
+      </button>
+      {err && <span className="text-[10px] text-red-600">{err}</span>}
+    </li>
   );
 }

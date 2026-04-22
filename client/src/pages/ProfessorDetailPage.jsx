@@ -958,6 +958,7 @@ export default function ProfessorDetailPage() {
               <Input label="First Name" required {...register('first_name', { required: 'Required' })} error={errors.first_name?.message} />
               <Input label="Last Name" required {...register('last_name', { required: 'Required' })} error={errors.last_name?.message} />
               <Input label="Email" type="email" required {...register('email', { required: 'Required' })} error={errors.email?.message} />
+              <Input label="Trainual Email (if different)" type="email" {...register('trainual_email')} placeholder="leave blank if same as Email" />
               <Input label="Phone Number" required {...register('phone_number', { required: 'Required' })} error={errors.phone_number?.message} />
               <div className="col-span-2">
                 <Input label="Street Address" required {...register('address', { required: 'Required' })} error={errors.address?.message} />
