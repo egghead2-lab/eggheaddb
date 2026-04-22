@@ -44,7 +44,8 @@ router.get('/', async (req, res, next) => {
               tu.avg_completion AS trainual_completion, tu.status AS trainual_status
        FROM user u
        LEFT JOIN role r ON r.id = u.role_id
-       LEFT JOIN trainual_user tu ON tu.email = LOWER(u.email)
+       LEFT JOIN professor p_link ON p_link.user_id = u.id AND p_link.active = 1
+       LEFT JOIN trainual_user tu ON tu.email = LOWER(COALESCE(NULLIF(p_link.trainual_email, ''), p_link.email, u.email))
        ${where}
        ORDER BY ${sortCol} ${sortDir}
        LIMIT ? OFFSET ?`,
