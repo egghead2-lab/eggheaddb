@@ -253,4 +253,152 @@ router.get('/salespeople', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── Admin: Run management ──────────────────────────────────────────
+const run = require('../services/commissionRun');
+
+function periodBounds(periodStart) {
+  const d = new Date(periodStart);
+  const start = new Date(d.getFullYear(), d.getMonth(), 1);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return {
+    start: start.toISOString().split('T')[0],
+    end: end.toISOString().split('T')[0],
+  };
+}
+
+// GET /api/commission/admin/runs — list with filters
+router.get('/admin/runs', requireAdmin, async (req, res, next) => {
+  try {
+    const { user_id, period_start, status } = req.query;
+    const where = ['cr.active = 1'];
+    const params = [];
+    if (user_id) { where.push('cr.user_id = ?'); params.push(user_id); }
+    if (period_start) { where.push('cr.period_start = ?'); params.push(period_start); }
+    if (status) { where.push('cr.status = ?'); params.push(status); }
+    const [rows] = await pool.query(
+      `SELECT cr.*, u.first_name, u.last_name, u.email
+       FROM commission_run cr JOIN user u ON u.id = cr.user_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY cr.period_start DESC, u.last_name`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/commission/admin/runs — create single run
+router.post('/admin/runs', requireAdmin, async (req, res, next) => {
+  try {
+    const { user_id, period_start } = req.body;
+    if (!user_id || !period_start) return res.status(400).json({ success: false, error: 'user_id + period_start required' });
+    const { start, end } = periodBounds(period_start);
+    const out = await run.createRun(user_id, start, end, req.user.userId);
+    if (!out.existed) await run.calculateRun(out.id, req.user.userId);
+    res.json({ success: true, id: out.id, existed: out.existed });
+  } catch (err) { next(err); }
+});
+
+// POST /api/commission/admin/runs/batch — create + calc for every active salesperson in Sales role + plan users
+router.post('/admin/runs/batch', requireAdmin, async (req, res, next) => {
+  try {
+    const { period_start } = req.body;
+    if (!period_start) return res.status(400).json({ success: false, error: 'period_start required' });
+    const { start, end } = periodBounds(period_start);
+
+    // Everyone with an active plan covering the period
+    const [users] = await pool.query(
+      `SELECT DISTINCT user_id FROM salesperson_commission_plan
+       WHERE active = 1 AND effective_from <= ? AND (effective_to IS NULL OR effective_to >= ?)`,
+      [end, end]
+    );
+
+    const results = [];
+    for (const u of users) {
+      try {
+        const out = await run.createRun(u.user_id, start, end, req.user.userId);
+        if (!out.existed) await run.calculateRun(out.id, req.user.userId);
+        results.push({ user_id: u.user_id, run_id: out.id, existed: out.existed });
+      } catch (e) {
+        results.push({ user_id: u.user_id, error: e.message });
+      }
+    }
+    res.json({ success: true, results });
+  } catch (err) { next(err); }
+});
+
+// GET /api/commission/admin/runs/:id — detail + lines
+router.get('/admin/runs/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const [[r]] = await pool.query(
+      `SELECT cr.*, u.first_name, u.last_name, u.email,
+              p.monthly_quota, p.initial_rate, p.rebook_rate, p.non_retained_flat_fee
+       FROM commission_run cr
+       JOIN user u ON u.id = cr.user_id
+       JOIN salesperson_commission_plan p ON p.id = cr.plan_id
+       WHERE cr.id = ?`, [req.params.id]
+    );
+    if (!r) return res.status(404).json({ success: false, error: 'Not found' });
+    const [lines] = await pool.query(
+      `SELECT crl.*, prog.program_nickname, loc.nickname AS location_nickname,
+              con.contractor_name
+       FROM commission_run_line crl
+       LEFT JOIN program prog ON prog.id = crl.program_id
+       LEFT JOIN location loc ON loc.id = crl.location_id
+       LEFT JOIN contractor con ON con.id = crl.contractor_id
+       WHERE crl.commission_run_id = ?
+       ORDER BY crl.line_type, con.contractor_name, prog.program_nickname`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: { ...r, lines } });
+  } catch (err) { next(err); }
+});
+
+// POST /api/commission/admin/runs/:id/recalculate
+router.post('/admin/runs/:id/recalculate', requireAdmin, async (req, res, next) => {
+  try {
+    await run.calculateRun(req.params.id, req.user.userId);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/commission/admin/runs/:id/lines/:lineId
+router.patch('/admin/runs/:id/lines/:lineId', requireAdmin, async (req, res, next) => {
+  try {
+    await run.updateLine(req.params.id, req.params.lineId, req.body, req.user.userId);
+    res.json({ success: true });
+  } catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+// Status transitions
+router.post('/admin/runs/:id/submit', requireAdmin, async (req, res, next) => {
+  try { await run.transitionStatus(req.params.id, 'draft', 'pending_approval', req.user.userId); res.json({ success: true }); }
+  catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+router.post('/admin/runs/:id/approve', requireAdmin, async (req, res, next) => {
+  try { await run.transitionStatus(req.params.id, 'pending_approval', 'approved', req.user.userId); res.json({ success: true }); }
+  catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+router.post('/admin/runs/:id/finalize', requireAdmin, async (req, res, next) => {
+  try { await run.finalizeRun(req.params.id, req.user.userId); res.json({ success: true }); }
+  catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+router.post('/admin/runs/:id/reopen', requireAdmin, async (req, res, next) => {
+  try { const out = await run.reopenRun(req.params.id, req.user.userId); res.json({ success: true, ...out }); }
+  catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+// Audit log
+router.get('/admin/runs/:id/audit', requireAdmin, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT a.*, u.first_name AS actor_first, u.last_name AS actor_last
+       FROM commission_run_audit a LEFT JOIN user u ON u.id = a.actor_user_id
+       WHERE a.commission_run_id = ?
+       ORDER BY a.ts_inserted DESC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
