@@ -384,6 +384,17 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
     const [[oldRow]] = await pool.query('SELECT * FROM program WHERE id = ?', [id]);
 
+    // Enforce: number_enrolled cannot exceed maximum_students
+    // Only block when either field is being actively changed in this request
+    // (so previously-bad data isn't retroactively blocking unrelated edits).
+    if (data.number_enrolled !== undefined || data.maximum_students !== undefined) {
+      const newEnrolled = data.number_enrolled !== undefined ? parseInt(data.number_enrolled) : parseInt(oldRow?.number_enrolled);
+      const newMax = data.maximum_students !== undefined ? parseInt(data.maximum_students) : parseInt(oldRow?.maximum_students);
+      if (newMax && newEnrolled && newEnrolled > newMax) {
+        return res.status(400).json({ success: false, error: `Enrolled (${newEnrolled}) cannot exceed Max Students (${newMax})` });
+      }
+    }
+
     await pool.query(
       `UPDATE program SET ${updateFields.map(f => `${f} = ?`).join(', ')}, ts_updated = NOW()
        WHERE id = ?`,

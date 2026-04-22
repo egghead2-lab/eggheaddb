@@ -368,13 +368,22 @@ export default function ProgramDetailPage() {
           {!isNew && (() => {
             const rosterCount = (prog.roster || []).filter(r => !r.date_dropped).length;
             const enrolledVal = parseInt(watch('number_enrolled')) || 0;
+            const maxStudentsVal = parseInt(watch('maximum_students')) || 0;
             const mismatch = rosterCount > 0 && enrolledVal !== rosterCount;
+            const overMax = maxStudentsVal > 0 && enrolledVal > maxStudentsVal;
             return (
               <Section title={`Roster (${rosterCount}${prog.maximum_students ? ' / ' + prog.maximum_students : ''} students)`} defaultOpen={true}>
                 <div className="grid grid-cols-4 gap-3 mb-3">
                   <div>
-                    <Input label="Enrolled #" type="number" {...register('number_enrolled')} />
-                    {mismatch && (
+                    <Input label="Enrolled #" type="number" max={maxStudentsVal || undefined}
+                      {...register('number_enrolled')}
+                      className={overMax ? 'border-red-400 bg-red-50 text-red-700' : ''} />
+                    {overMax && (
+                      <div className="text-[10px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium mt-1 inline-block">
+                        Enrolled exceeds Max ({maxStudentsVal}) — save will be blocked
+                      </div>
+                    )}
+                    {!overMax && mismatch && (
                       <div className="flex items-center gap-1.5 mt-1">
                         <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium">
                           Roster has {rosterCount} — enrolled shows {enrolledVal}

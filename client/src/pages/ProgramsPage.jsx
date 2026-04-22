@@ -96,6 +96,15 @@ export default function ProgramsPage() {
   };
 
   const saveEnrollment = async () => {
+    // Block save if any edited value exceeds its program's max
+    const overCaps = programs.filter(p => {
+      const v = enrollmentEdits[p.id];
+      return p.maximum_students && v !== '' && v != null && Number(v) > Number(p.maximum_students);
+    });
+    if (overCaps.length) {
+      alert(`Cannot save — ${overCaps.length} program${overCaps.length === 1 ? ' has' : 's have'} an enrolled count over the max students cap.`);
+      return;
+    }
     const changed = programs
       .filter(p => {
         const newVal = enrollmentEdits[p.id];
@@ -299,9 +308,17 @@ export default function ProgramsPage() {
                       {v('enrolled') && <td className="px-4 py-2.5 text-right text-gray-700">
                         {editEnrollment ? (
                           <div className="flex items-center justify-end gap-1">
-                            <input type="number" min="0" value={enrollmentEdits[p.id] ?? ''}
-                              onChange={e => setEnrollmentEdits(prev => ({ ...prev, [p.id]: e.target.value }))}
-                              className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                            {(() => {
+                              const val = enrollmentEdits[p.id];
+                              const over = p.maximum_students && val !== '' && val != null && Number(val) > Number(p.maximum_students);
+                              return (
+                                <input type="number" min="0" max={p.maximum_students || undefined}
+                                  value={val ?? ''}
+                                  onChange={e => setEnrollmentEdits(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  title={over ? `Cannot exceed max of ${p.maximum_students}` : ''}
+                                  className={`w-14 rounded border px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 ${over ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-300' : 'border-gray-300 focus:ring-[#1e3a5f]'}`} />
+                              );
+                            })()}
                             <span className="text-xs text-gray-400">/ {p.maximum_students || '—'}</span>
                           </div>
                         ) : (
