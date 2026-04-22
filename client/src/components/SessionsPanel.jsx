@@ -26,6 +26,10 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
   const isWrong = isWrongDay(dateStr, allowedDays);
   const [showAllLessons, setShowAllLessons] = useState(false);
   const displayLessons = showAllLessons ? allLessons : (filteredLessons.length > 0 ? filteredLessons : allLessons);
+  const isFM = (pid) => pid && professors.find(p => String(p.id) === String(pid))?.is_field_manager;
+  const leadIsFM = isFM(s.professor_id);
+  const assistIsFM = isFM(s.assistant_id);
+  const obsIsFM = isFM(s.observer_id);
 
   const handleChange = (field, value) => {
     onUpdate(s.id, { [field]: value || null });
@@ -62,9 +66,12 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
         </select>
       </td>
       <td className="px-2 py-1">
-        <input type="number" step="0.01" defaultValue={s.professor_pay ?? ''}
-          onBlur={e => { if (e.target.value !== String(s.professor_pay ?? '')) handleChange('professor_pay', e.target.value); }}
-          className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
+        <input type="number" step="0.01" value={leadIsFM ? 0 : (s.professor_pay ?? '')}
+          disabled={leadIsFM}
+          onBlur={e => { if (!leadIsFM && e.target.value !== String(s.professor_pay ?? '')) handleChange('professor_pay', e.target.value); }}
+          onChange={() => {}}
+          title={leadIsFM ? 'Field Managers are not paid for class sessions' : undefined}
+          className={`w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${leadIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
       </td>
       {showAssistant && (
         <>
@@ -83,9 +90,12 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
             </select>
           </td>
           <td className="px-2 py-1">
-            <input type="number" step="0.01" defaultValue={s.assistant_pay ?? ''}
-              onBlur={e => { if (e.target.value !== String(s.assistant_pay ?? '')) handleChange('assistant_pay', e.target.value); }}
-              className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
+            <input type="number" step="0.01" value={assistIsFM ? 0 : (s.assistant_pay ?? '')}
+              disabled={assistIsFM}
+              onBlur={e => { if (!assistIsFM && e.target.value !== String(s.assistant_pay ?? '')) handleChange('assistant_pay', e.target.value); }}
+              onChange={() => {}}
+              title={assistIsFM ? 'Field Managers are not paid for class sessions' : undefined}
+              className={`w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${assistIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
           </td>
         </>
       )}
@@ -106,9 +116,12 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
             </select>
           </td>
           <td className="px-2 py-1">
-            <input type="number" step="0.01" defaultValue={s.observer_pay ?? ''}
-              onBlur={e => { if (e.target.value !== String(s.observer_pay ?? '')) handleChange('observer_pay', e.target.value); }}
-              className="w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" placeholder="$" />
+            <input type="number" step="0.01" value={obsIsFM ? 0 : (s.observer_pay ?? '')}
+              disabled={obsIsFM}
+              onBlur={e => { if (!obsIsFM && e.target.value !== String(s.observer_pay ?? '')) handleChange('observer_pay', e.target.value); }}
+              onChange={() => {}}
+              title={obsIsFM ? 'Field Managers are not paid for observation on class sessions' : undefined}
+              className={`w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${obsIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
           </td>
         </>
       )}

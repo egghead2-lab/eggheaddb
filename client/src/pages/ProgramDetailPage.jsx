@@ -176,34 +176,79 @@ export default function ProgramDetailPage() {
                 })()}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-4 mt-4">
-              <Select label="Lead Professor" value={watch('lead_professor_id') || ''}
-                onChange={e => {
-                  const v = e.target.value;
-                  setValue('lead_professor_id', v || null, { shouldDirty: true });
-                  const pick = professors.find(p => String(p.id) === String(v));
-                  if (pick?.is_field_manager) setValue('lead_professor_pay', 0, { shouldDirty: true });
-                }}>
-                <option value="">None</option>
-                {professors.map(p => (
-                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>
-                ))}
-              </Select>
-              <Input label="Lead Pay" type="number" step="0.01" prefix="$" {...register('lead_professor_pay')} />
-              <Select label="Assistant Professor" value={watch('assistant_professor_id') || ''}
-                onChange={e => {
-                  const v = e.target.value;
-                  setValue('assistant_professor_id', v || null, { shouldDirty: true });
-                  const pick = professors.find(p => String(p.id) === String(v));
-                  if (pick?.is_field_manager) setValue('assistant_professor_pay', 0, { shouldDirty: true });
-                }}>
-                <option value="">None</option>
-                {professors.map(p => (
-                  <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>
-                ))}
-              </Select>
-              <Input label="Assist Pay" type="number" step="0.01" prefix="$" {...register('assistant_professor_pay')} />
-            </div>
+            {(() => {
+              const leadId = watch('lead_professor_id');
+              const assistId = watch('assistant_professor_id');
+              const unassignable = (pid) => {
+                const p = professors.find(x => String(x.id) === String(pid));
+                if (!p) return null;
+                if (p.is_field_manager) return null;
+                const ok = ['Active', 'Training', 'Substitute'].includes(p.professor_status_name);
+                return ok ? null : p.professor_status_name;
+              };
+              const leadWarn = unassignable(leadId);
+              const assistWarn = unassignable(assistId);
+              return (
+                <div className="grid grid-cols-4 gap-4 mt-4">
+                  <div>
+                    <Select label="Lead Professor" value={leadId || ''}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setValue('lead_professor_id', v || null, { shouldDirty: true });
+                        const pick = professors.find(p => String(p.id) === String(v));
+                        if (pick?.is_field_manager) setValue('lead_professor_pay', 0, { shouldDirty: true });
+                      }}>
+                      <option value="">None</option>
+                      {professors.map(p => (
+                        <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>
+                      ))}
+                    </Select>
+                    {leadWarn && <div className="mt-1 text-[10px] text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 inline-block">⚠ Assigned prof is {leadWarn}</div>}
+                  </div>
+                  {(() => {
+                    const leadIsFM = professors.find(p => String(p.id) === String(leadId))?.is_field_manager;
+                    return (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-700">Lead Pay</label>
+                        <input type="number" step="0.01" value={leadIsFM ? 0 : (watch('lead_professor_pay') ?? '')}
+                          disabled={leadIsFM}
+                          onChange={e => setValue('lead_professor_pay', e.target.value || null, { shouldDirty: true })}
+                          title={leadIsFM ? 'Field Managers are not paid for class sessions' : undefined}
+                          className={`rounded border border-gray-300 px-2 py-1.5 text-sm ${leadIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+                      </div>
+                    );
+                  })()}
+                  <div>
+                    <Select label="Assistant Professor" value={assistId || ''}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setValue('assistant_professor_id', v || null, { shouldDirty: true });
+                        const pick = professors.find(p => String(p.id) === String(v));
+                        if (pick?.is_field_manager) setValue('assistant_professor_pay', 0, { shouldDirty: true });
+                      }}>
+                      <option value="">None</option>
+                      {professors.map(p => (
+                        <option key={p.id} value={p.id}>{p.display_name || p.professor_nickname}{p.is_field_manager ? ' (FM)' : ''}</option>
+                      ))}
+                    </Select>
+                    {assistWarn && <div className="mt-1 text-[10px] text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 inline-block">⚠ Assigned prof is {assistWarn}</div>}
+                  </div>
+                  {(() => {
+                    const assistIsFM = professors.find(p => String(p.id) === String(assistId))?.is_field_manager;
+                    return (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-700">Assist Pay</label>
+                        <input type="number" step="0.01" value={assistIsFM ? 0 : (watch('assistant_professor_pay') ?? '')}
+                          disabled={assistIsFM}
+                          onChange={e => setValue('assistant_professor_pay', e.target.value || null, { shouldDirty: true })}
+                          title={assistIsFM ? 'Field Managers are not paid for class sessions' : undefined}
+                          className={`rounded border border-gray-300 px-2 py-1.5 text-sm ${assistIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-5 gap-4 mt-4">
               <Input label="Parent Cost" type="number" step="0.01" prefix="$" {...register('parent_cost')} />
               <Input label="Our Cut (per session)" type="number" step="0.01" prefix="$" {...register('our_cut')} />

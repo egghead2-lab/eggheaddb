@@ -62,6 +62,21 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// GET /api/users/fm-missing-professor — Field Managers without a linked active professor profile
+router.get('/fm-missing-professor', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.id AS user_id, u.first_name, u.last_name, u.email
+       FROM user u
+       JOIN role r ON r.id = u.role_id
+       LEFT JOIN professor p ON p.user_id = u.id AND p.active = 1
+       WHERE r.role_name = 'Field Manager' AND u.active = 1 AND p.id IS NULL
+       ORDER BY u.last_name, u.first_name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/users/:id
 router.get('/:id', async (req, res, next) => {
   try {

@@ -45,6 +45,9 @@ export default function DashboardPage() {
           <KpiCard label="Overdue Evals" value={kpi.overdueEvals} link="/evaluations" color={kpi.overdueEvals > 0 ? 'red' : ''} />
         </div>
 
+        {/* FM missing professor profile warning — Admin/CEO only */}
+        {['Admin', 'CEO'].includes(role) && <FmMissingProfessorWarning />}
+
         {/* Pending Roster Approvals — Client Managers, Admins, CEO */}
         {['Admin', 'CEO', 'Client Manager'].includes(role) && <PendingRosterApprovals />}
 
@@ -486,6 +489,33 @@ function TaskRow({ report }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function FmMissingProfessorWarning() {
+  const { data } = useQuery({
+    queryKey: ['fm-missing-professor'],
+    queryFn: () => api.get('/users/fm-missing-professor').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const fms = data?.data || [];
+  if (fms.length === 0) return null;
+  return (
+    <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-sm font-semibold text-amber-800">Field Managers missing professor profile</span>
+        <span className="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-bold">{fms.length}</span>
+      </div>
+      <div className="text-xs text-amber-700 mb-2">Every FM should have a linked Professor record so they can be assigned to sessions. Link or create one for each:</div>
+      <div className="flex flex-wrap gap-2">
+        {fms.map(fm => (
+          <Link key={fm.user_id} to={`/users/${fm.user_id}`}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-amber-300 text-xs text-amber-800 hover:border-amber-500 hover:text-amber-900">
+            {fm.first_name} {fm.last_name} <span className="text-amber-500">↗</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

@@ -114,8 +114,8 @@ export default function AssignmentBoardPage() {
   const allProfsGlobal = useMemo(() => {
     const validStatuses = new Set(['Active', 'Substitute', 'Training']);
     return (allProfsData?.data || [])
-      .filter(p => validStatuses.has(p.professor_status_name))
-      .map(p => ({ id: p.id, name: p.display_name || p.professor_nickname, status: p.professor_status_name }));
+      .filter(p => validStatuses.has(p.professor_status_name) || p.is_field_manager)
+      .map(p => ({ id: p.id, name: (p.display_name || p.professor_nickname) + (p.is_field_manager ? ' (FM)' : ''), status: p.professor_status_name, is_field_manager: p.is_field_manager }));
   }, [allProfsData]);
 
   // Initialize assignments from loaded data — reset on every fresh load
