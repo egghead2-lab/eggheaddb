@@ -43,6 +43,7 @@ const trainualRoutes = require('./routes/trainual');
 const scheduleConflictsRoutes = require('./routes/schedule-conflicts');
 const registrationBlastsRoutes = require('./routes/registration-blasts');
 const gasReimbursementsRoutes = require('./routes/gas-reimbursements');
+const commissionRoutes = require('./routes/commission');
 const flyersRoutes = require('./routes/flyers');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -198,6 +199,7 @@ app.use('/api/trainual', trainualRoutes);
 app.use('/api/schedule-conflicts', scheduleConflictsRoutes);
 app.use('/api/registration-blasts', registrationBlastsRoutes);
 app.use('/api/gas-reimbursements', gasReimbursementsRoutes);
+app.use('/api/commission', commissionRoutes);
 app.use('/api/flyers', flyersRoutes);
 
 // Error handler
