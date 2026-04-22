@@ -63,17 +63,60 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /api/users/fm-missing-professor — Field Managers without a linked active professor profile
+// Each row includes `matching_professor` if a professor with the same email exists (unlinked)
 router.get('/fm-missing-professor', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT u.id AS user_id, u.first_name, u.last_name, u.email
+      `SELECT u.id AS user_id, u.first_name, u.last_name, u.email,
+              mp.id AS matching_professor_id,
+              mp.professor_nickname AS matching_professor_nickname,
+              mp.last_name AS matching_professor_last_name
        FROM user u
        JOIN role r ON r.id = u.role_id
        LEFT JOIN professor p ON p.user_id = u.id AND p.active = 1
+       LEFT JOIN professor mp ON mp.email = u.email AND mp.active = 1 AND mp.user_id IS NULL
        WHERE r.role_name = 'Field Manager' AND u.active = 1 AND p.id IS NULL
        ORDER BY u.last_name, u.first_name`
     );
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/users/:id/link-professor — link an FM (or any user) to an existing professor record
+// Body: { professor_id }  — sets professor.user_id = :id
+router.post('/:id/link-professor', async (req, res, next) => {
+  try {
+    const { professor_id } = req.body;
+    if (!professor_id) return res.status(400).json({ success: false, error: 'professor_id required' });
+    // Fail if the professor is already linked to a different user
+    const [[prof]] = await pool.query('SELECT id, user_id FROM professor WHERE id = ? AND active = 1', [professor_id]);
+    if (!prof) return res.status(404).json({ success: false, error: 'Professor not found' });
+    if (prof.user_id && String(prof.user_id) !== String(req.params.id)) {
+      return res.status(400).json({ success: false, error: `Professor is already linked to user #${prof.user_id}` });
+    }
+    await pool.query('UPDATE professor SET user_id = ? WHERE id = ?', [req.params.id, professor_id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/users/:id/create-professor — create a new professor record for a user (by email)
+// Creates minimal professor, copies first/last/email from user, status = Active, links user_id.
+router.post('/:id/create-professor', async (req, res, next) => {
+  try {
+    const [[user]] = await pool.query('SELECT id, first_name, last_name, email FROM user WHERE id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+
+    // Resolve Active status id
+    const [[status]] = await pool.query("SELECT id FROM professor_status WHERE professor_status_name = 'Active' LIMIT 1");
+    const statusId = status?.id || null;
+
+    const nickname = (user.first_name || '').trim() || (user.email ? user.email.split('@')[0] : 'User');
+    const [r] = await pool.query(
+      `INSERT INTO professor (user_id, professor_nickname, first_name, last_name, email, professor_status_id, active, ts_inserted, ts_updated)
+       VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [user.id, nickname, user.first_name || null, user.last_name || null, user.email || null, statusId]
+    );
+    res.json({ success: true, professor_id: r.insertId });
   } catch (err) { next(err); }
 });
 

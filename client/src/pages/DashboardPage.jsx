@@ -494,12 +494,36 @@ function TaskRow({ report }) {
 }
 
 function FmMissingProfessorWarning() {
+  const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ['fm-missing-professor'],
     queryFn: () => api.get('/users/fm-missing-professor').then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
   const fms = data?.data || [];
+  const [busyId, setBusyId] = useState(null);
+  const [err, setErr] = useState(null);
+
+  const invalidate = () => qc.invalidateQueries(['fm-missing-professor']);
+
+  const linkExisting = async (fm) => {
+    setBusyId(fm.user_id); setErr(null);
+    try {
+      await api.post(`/users/${fm.user_id}/link-professor`, { professor_id: fm.matching_professor_id });
+      invalidate();
+    } catch (e) { setErr(e?.response?.data?.error || 'Failed to link'); }
+    finally { setBusyId(null); }
+  };
+
+  const createNew = async (fm) => {
+    setBusyId(fm.user_id); setErr(null);
+    try {
+      await api.post(`/users/${fm.user_id}/create-professor`);
+      invalidate();
+    } catch (e) { setErr(e?.response?.data?.error || 'Failed to create'); }
+    finally { setBusyId(null); }
+  };
+
   if (fms.length === 0) return null;
   return (
     <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
@@ -507,14 +531,36 @@ function FmMissingProfessorWarning() {
         <span className="text-sm font-semibold text-amber-800">Field Managers missing professor profile</span>
         <span className="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-bold">{fms.length}</span>
       </div>
-      <div className="text-xs text-amber-700 mb-2">Every FM should have a linked Professor record so they can be assigned to sessions. Link or create one for each:</div>
-      <div className="flex flex-wrap gap-2">
-        {fms.map(fm => (
-          <Link key={fm.user_id} to={`/users/${fm.user_id}`}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-amber-300 text-xs text-amber-800 hover:border-amber-500 hover:text-amber-900">
-            {fm.first_name} {fm.last_name} <span className="text-amber-500">↗</span>
-          </Link>
-        ))}
+      <div className="text-xs text-amber-700 mb-2">Every FM needs a linked Professor record so they can be assigned to sessions.</div>
+      {err && <div className="mb-2 text-xs text-red-600">{err}</div>}
+      <div className="space-y-1">
+        {fms.map(fm => {
+          const busy = busyId === fm.user_id;
+          return (
+            <div key={fm.user_id} className="flex items-center gap-2 flex-wrap text-xs bg-white rounded px-2 py-1.5 border border-amber-200">
+              <span className="font-medium text-gray-800">{fm.first_name} {fm.last_name}</span>
+              <span className="text-gray-400">{fm.email}</span>
+              {fm.matching_professor_id ? (
+                <>
+                  <span className="text-gray-500">Found matching professor: <strong>{fm.matching_professor_nickname} {fm.matching_professor_last_name}</strong></span>
+                  <button onClick={() => linkExisting(fm)} disabled={busy}
+                    className="ml-auto text-[10px] px-2 py-0.5 rounded bg-green-600 text-white font-medium disabled:opacity-50">
+                    {busy ? '...' : 'Link'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-gray-500">No matching professor by email</span>
+                  <button onClick={() => createNew(fm)} disabled={busy}
+                    className="ml-auto text-[10px] px-2 py-0.5 rounded bg-[#1e3a5f] text-white font-medium disabled:opacity-50">
+                    {busy ? '...' : 'Create Professor'}
+                  </button>
+                </>
+              )}
+              <Link to={`/users/${fm.user_id}`} className="text-[10px] text-amber-600 hover:text-amber-800">Edit ↗</Link>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
