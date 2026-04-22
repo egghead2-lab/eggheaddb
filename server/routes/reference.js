@@ -791,7 +791,7 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
        GROUP BY submitted_by_user_id, submitted_by_name
        ORDER BY earnings DESC`
     );
-    // Add award amounts per user
+    // Track award amounts per user for display only (NOT included in leaderboard earnings/ranking)
     const [awards] = await pool.query(
       `SELECT user_id, SUM(amount) AS award_total FROM bug_bounty_award
        WHERE MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())
@@ -799,9 +799,12 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
     );
     const awardMap = {};
     awards.forEach(a => { awardMap[a.user_id] = parseFloat(a.award_total) || 0; });
-    rows.forEach(r => { r.award_amount = awardMap[r.user_id] || 0; r.earnings = parseInt(r.earnings) + r.award_amount; });
+    rows.forEach(r => {
+      r.earnings = parseInt(r.earnings);  // earnings stays as bug-approvals only
+      r.award_amount = awardMap[r.user_id] || 0;  // shown separately, not in ranking
+    });
 
-    // Cap at $100 per person
+    // Cap approval earnings at $100 per person
     rows.forEach(r => { r.earnings = Math.min(r.earnings, 100); });
     const totalPayout = Math.min(rows.reduce((sum, r) => sum + r.earnings, 0), 1000);
     res.json({ success: true, data: rows, totalPayout });
