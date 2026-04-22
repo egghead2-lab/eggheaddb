@@ -357,7 +357,7 @@ router.get('/outreach', async (req, res, next) => {
 // Body: { session_id, professor_id, method, message_preview?, notes?, send_sms? }
 router.post('/outreach', async (req, res, next) => {
   try {
-    const { session_id, professor_id, method, message_preview, notes, send_sms } = req.body;
+    const { session_id, professor_id, method, message_preview, notes, send_sms, send_email, email_subject } = req.body;
     if (!session_id || !professor_id || !method) {
       return res.status(400).json({ success: false, error: 'session_id, professor_id, and method required' });
     }
@@ -365,6 +365,26 @@ router.post('/outreach', async (req, res, next) => {
     if (!allowed.includes(method)) return res.status(400).json({ success: false, error: 'Invalid method' });
 
     let twilioSid = null;
+    // Optionally actually send an email via admin's Gmail
+    if (send_email && method === 'email') {
+      try {
+        const { sendEmail } = require('../lib/gmail');
+        const [[prof]] = await pool.query('SELECT email FROM professor WHERE id = ?', [professor_id]);
+        const [[sender]] = await pool.query('SELECT google_refresh_token, email_signature FROM user WHERE id = ?', [req.user.userId]);
+        if (!prof?.email) return res.status(400).json({ success: false, error: 'Professor has no email' });
+        if (!sender?.google_refresh_token) return res.status(400).json({ success: false, error: 'Your Gmail is not connected' });
+        if (!message_preview) return res.status(400).json({ success: false, error: 'Message body required' });
+        await sendEmail({
+          refreshToken: sender.google_refresh_token,
+          to: prof.email,
+          subject: email_subject || 'Sub opportunity',
+          htmlBody: String(message_preview).replace(/\n/g, '<br>'),
+          signature: sender.email_signature,
+        });
+      } catch (err) {
+        return res.status(500).json({ success: false, error: 'Email send failed: ' + err.message });
+      }
+    }
     // Optionally actually send an SMS
     if (send_sms && method === 'sms') {
       try {
@@ -414,6 +434,129 @@ router.delete('/outreach/:id', async (req, res, next) => {
   try {
     await pool.query('UPDATE sub_outreach SET active = 0 WHERE id = ?', [req.params.id]);
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ─── Sub Ask Templates ──────────────────────────────────────────────
+const TEMPLATE_KEYS = ['sub_ask_sms_template', 'sub_ask_email_subject', 'sub_ask_email_body'];
+
+router.get('/templates', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN (?)`,
+      [TEMPLATE_KEYS]
+    );
+    const out = {};
+    rows.forEach(r => { out[r.setting_key] = r.setting_value; });
+    res.json({ success: true, data: out });
+  } catch (err) { next(err); }
+});
+
+router.put('/templates', async (req, res, next) => {
+  try {
+    for (const key of TEMPLATE_KEYS) {
+      if (req.body[key] !== undefined) {
+        await pool.query(
+          `INSERT INTO app_settings (setting_key, setting_value, updated_by) VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)`,
+          [key, req.body[key], req.user?.name || 'admin']
+        );
+      }
+    }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Given a session_id + professor_id, render the templates with merge-field substitution.
+// Used by the Ask modal to pre-populate SMS/email bodies.
+router.get('/render-ask', async (req, res, next) => {
+  try {
+    const { session_id, professor_id } = req.query;
+    if (!session_id || !professor_id) return res.status(400).json({ success: false, error: 'session_id + professor_id required' });
+
+    const [[need]] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.session_time,
+              prog.id AS program_id, prog.program_nickname, prog.start_time, prog.class_length_minutes,
+              prog.lead_professor_id, prog.assistant_professor_id,
+              prog.lead_professor_pay, prog.assistant_professor_pay,
+              loc.nickname AS location_nickname, loc.school_name, loc.address,
+              d.professor_id AS off_professor_id,
+              sr.reason_name
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN day_off d ON d.date_requested = s.session_date AND d.active = 1
+         AND (d.professor_id = prog.lead_professor_id OR d.professor_id = prog.assistant_professor_id)
+       LEFT JOIN substitute_reason sr ON sr.id = d.substitute_reason_id
+       WHERE s.id = ?`,
+      [session_id]
+    );
+    if (!need) return res.status(404).json({ success: false, error: 'Session not found' });
+
+    const [[prof]] = await pool.query(
+      `SELECT professor_nickname, first_name, last_name, base_pay, assist_pay FROM professor WHERE id = ?`,
+      [professor_id]
+    );
+
+    // Which role is the sub filling? Whoever is out
+    const role = need.off_professor_id === need.lead_professor_id ? 'Lead' : 'Assistant';
+
+    // Pay resolution: session > program > professor base
+    let pay = 0;
+    if (role === 'Lead') {
+      const [[sPay]] = await pool.query(`SELECT professor_pay FROM session WHERE id = ?`, [session_id]);
+      pay = parseFloat(sPay?.professor_pay) || parseFloat(need.lead_professor_pay) || parseFloat(prof?.base_pay) || 0;
+    } else {
+      const [[sPay]] = await pool.query(`SELECT assistant_pay FROM session WHERE id = ?`, [session_id]);
+      pay = parseFloat(sPay?.assistant_pay) || parseFloat(need.assistant_professor_pay) || parseFloat(prof?.assist_pay) || 0;
+    }
+
+    // Format values
+    const dateObj = new Date(need.session_date);
+    const session_date = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const timeStr = need.session_time || need.start_time;
+    let session_time = '';
+    if (timeStr) {
+      const [h, m] = String(timeStr).split(':');
+      const hour = parseInt(h);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const h12 = hour % 12 || 12;
+      session_time = `${h12}:${m} ${ampm}`;
+    }
+    const class_length = need.class_length_minutes ? `${need.class_length_minutes} min` : '';
+
+    const values = {
+      professor_nickname: prof?.professor_nickname || prof?.first_name || '',
+      role,
+      program_name: need.program_nickname || '',
+      session_date,
+      session_time,
+      class_length,
+      location_name: need.location_nickname || need.school_name || '',
+      location_address: need.address || '',
+      pay: pay ? pay.toFixed(2).replace(/\.00$/, '') : '0',
+      reason: need.reason_name || '',
+    };
+
+    // Load templates
+    const [rows] = await pool.query(
+      `SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN (?)`,
+      [TEMPLATE_KEYS]
+    );
+    const tpl = {};
+    rows.forEach(r => { tpl[r.setting_key] = r.setting_value || ''; });
+
+    const fill = (str) => String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) => (values[k] !== undefined ? values[k] : `{{${k}}}`));
+
+    res.json({
+      success: true,
+      data: {
+        values,
+        sms: fill(tpl.sub_ask_sms_template),
+        email_subject: fill(tpl.sub_ask_email_subject),
+        email_body: fill(tpl.sub_ask_email_body),
+      },
+    });
   } catch (err) { next(err); }
 });
 

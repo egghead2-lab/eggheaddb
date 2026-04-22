@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
@@ -219,20 +219,35 @@ function OutreachPanel({ sessionId, onRequestAsk }) {
 function AskModal({ professor, sessionId, need, onClose }) {
   const qc = useQueryClient();
   const [method, setMethod] = useState('sms');
-  const [message, setMessage] = useState(
-    `Hi ${professor.professor_nickname} - are you available to sub on ${formatDate((need?.date_requested || '').split('T')[0])} at ${formatTime(need?.session_time || need?.start_time || '')} for ${need?.program_nickname || 'a class'}? Reply YES if interested.`
-  );
+  const [message, setMessage] = useState('');
+  const [subject, setSubject] = useState('');
   const [notes, setNotes] = useState('');
   const [sendSms, setSendSms] = useState(true);
+  const [sendEmail, setSendEmailOpt] = useState(true);
+
+  // Load rendered templates (SMS + email subject + body) from the backend
+  const { data: renderData } = useQuery({
+    queryKey: ['sub-ask-render', sessionId, professor.id],
+    queryFn: () => api.get('/sub-management/render-ask', { params: { session_id: sessionId, professor_id: professor.id } }).then(r => r.data),
+  });
+
+  // Whenever the method changes, swap in the matching rendered template
+  useEffect(() => {
+    if (!renderData?.data) return;
+    if (method === 'sms') setMessage(renderData.data.sms || '');
+    else if (method === 'email') { setMessage(renderData.data.email_body || ''); setSubject(renderData.data.email_subject || ''); }
+  }, [method, renderData]);
 
   const createMut = useMutation({
     mutationFn: () => api.post('/sub-management/outreach', {
       session_id: sessionId,
       professor_id: professor.id,
       method,
-      message_preview: method === 'manual_note' ? null : message.slice(0, 500),
+      message_preview: method === 'manual_note' ? null : message.slice(0, 1000),
+      email_subject: method === 'email' ? subject : undefined,
       notes: notes || null,
       send_sms: method === 'sms' && sendSms,
+      send_email: method === 'email' && sendEmail,
     }),
     onSuccess: () => {
       qc.invalidateQueries(['outreach', sessionId]);
@@ -262,12 +277,19 @@ function AskModal({ professor, sessionId, need, onClose }) {
           ))}
         </div>
 
+        {method === 'email' && (
+          <div className="mb-3">
+            <label className="text-xs font-medium text-gray-700 block mb-1">Subject</label>
+            <Input value={subject} onChange={e => setSubject(e.target.value)} />
+          </div>
+        )}
+
         {method !== 'manual_note' && (
           <div className="mb-3">
             <label className="text-xs font-medium text-gray-700 block mb-1">Message</label>
-            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4}
+            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={method === 'email' ? 8 : 4}
               className="block w-full rounded border border-gray-300 text-sm px-3 py-2 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-            <p className="text-[10px] text-gray-400 mt-1">{message.length} chars</p>
+            <p className="text-[10px] text-gray-400 mt-1">{message.length} chars · <a href="/admin/sub-ask-templates" target="_blank" className="text-[#1e3a5f] hover:underline">Edit template</a></p>
           </div>
         )}
 
@@ -283,10 +305,17 @@ function AskModal({ professor, sessionId, need, onClose }) {
           </label>
         )}
 
+        {method === 'email' && (
+          <label className="flex items-center gap-2 cursor-pointer text-xs mb-3">
+            <input type="checkbox" checked={sendEmail} onChange={e => setSendEmailOpt(e.target.checked)} />
+            <span>Send email from your Gmail now {!sendEmail && <span className="text-gray-400">(just log, don't send)</span>}</span>
+          </label>
+        )}
+
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5">Cancel</button>
           <Button size="sm" onClick={() => createMut.mutate()} disabled={createMut.isPending}>
-            {createMut.isPending ? 'Saving…' : (method === 'sms' && sendSms ? 'Send & Log' : 'Log Ask')}
+            {createMut.isPending ? 'Saving…' : ((method === 'sms' && sendSms) || (method === 'email' && sendEmail) ? 'Send & Log' : 'Log Ask')}
           </Button>
         </div>
       </div>

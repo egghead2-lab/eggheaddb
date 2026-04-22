@@ -117,6 +117,7 @@ import SubsActivityPage from './pages/SubsActivityPage';
 import CommissionCleanupPage from './pages/CommissionCleanupPage';
 import CommissionRunsPage from './pages/CommissionRunsPage';
 import CommissionRunDetailPage from './pages/CommissionRunDetailPage';
+import SubAskTemplatesPage from './pages/SubAskTemplatesPage';
 
 export default function App() {
   return (
@@ -253,6 +254,7 @@ export default function App() {
       <Route path="/admin/commission/cleanup" element={<ProtectedRoute><CommissionCleanupPage /></ProtectedRoute>} />
       <Route path="/admin/commission" element={<ProtectedRoute><CommissionRunsPage /></ProtectedRoute>} />
       <Route path="/admin/commission/runs/:id" element={<ProtectedRoute><CommissionRunDetailPage /></ProtectedRoute>} />
+      <Route path="/admin/sub-ask-templates" element={<ProtectedRoute><SubAskTemplatesPage /></ProtectedRoute>} />
 
       <Route path="/candidate-portal" element={<ProtectedRoute><CandidatePortalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
