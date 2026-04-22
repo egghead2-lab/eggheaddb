@@ -25,6 +25,11 @@ export const STATUS_COLORS = {
   'Pending': 'bg-amber-100 text-amber-800',
   'Substitute': 'bg-sky-100 text-sky-800',
   'Inactive - Items Pending': 'bg-amber-100 text-amber-800',
+  // Program types
+  'Class': 'bg-blue-100 text-blue-800',
+  'Camp': 'bg-orange-100 text-orange-800',
+  'Party': 'bg-pink-100 text-pink-800',
+  'Workshop': 'bg-teal-100 text-teal-800',
   // Roles
   'Admin': 'bg-red-100 text-red-800',
   'CEO': 'bg-red-100 text-red-800',
