@@ -49,6 +49,7 @@ export default function ProgramsPage() {
   const [editEnrollment, setEditEnrollment] = useState(false);
   const [enrollmentEdits, setEnrollmentEdits] = useState({});
   const [savingEnrollment, setSavingEnrollment] = useState(false);
+  const [enrollmentError, setEnrollmentError] = useState(null);
 
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
@@ -93,6 +94,7 @@ export default function ProgramsPage() {
   const cancelEditEnrollment = () => {
     setEditEnrollment(false);
     setEnrollmentEdits({});
+    setEnrollmentError(null);
   };
 
   const saveEnrollment = async () => {
@@ -102,9 +104,10 @@ export default function ProgramsPage() {
       return p.maximum_students && v !== '' && v != null && Number(v) > Number(p.maximum_students);
     });
     if (overCaps.length) {
-      alert(`Cannot save — ${overCaps.length} program${overCaps.length === 1 ? ' has' : 's have'} an enrolled count over the max students cap.`);
+      setEnrollmentError(`${overCaps.length} program${overCaps.length === 1 ? ' has' : 's have'} an enrolled count over the max students cap. Fix the red rows before saving.`);
       return;
     }
+    setEnrollmentError(null);
     const changed = programs
       .filter(p => {
         const newVal = enrollmentEdits[p.id];
@@ -229,6 +232,16 @@ export default function ProgramsPage() {
           <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
         ) : (
           <>
+            {enrollmentError && (
+              <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2 text-sm text-red-800">
+                  <span className="font-bold">⚠</span>
+                  <span>{enrollmentError}</span>
+                </div>
+                <button onClick={() => setEnrollmentError(null)}
+                  className="text-xs text-red-400 hover:text-red-700 shrink-0">Dismiss</button>
+              </div>
+            )}
             <CopyableTable className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
