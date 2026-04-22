@@ -148,9 +148,7 @@ export default function CommissionRunDetailPage() {
                   <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(l.line_revenue)}</td>
                   <td className="px-2 py-1.5 text-center text-[10px]">
                     {l.line_type === 'non_retained' ? (
-                      <span className={l.requirements_met ? 'text-green-600' : 'text-red-600'}>
-                        {l.requirements_met ? '✓ All' : `${[l.req_enrollment_hit, l.req_margin_hit, l.req_booked_3wk_hit, l.req_program_ran].filter(Boolean).length}/4`}
-                      </span>
+                      <ReqBadges line={l} />
                     ) : '—'}
                   </td>
                   <td className="px-2 py-1.5 text-center">
@@ -175,6 +173,35 @@ export default function CommissionRunDetailPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function ReqBadges({ line }) {
+  const reqs = [
+    { key: 'req_enrollment_hit', short: 'Enr', label: 'Location enrollment ≥ 100' },
+    { key: 'req_margin_hit', short: 'Mgn', label: 'Margin ≥ 10%' },
+    { key: 'req_booked_3wk_hit', short: '3wk', label: 'Booked ≥ 21 days ahead' },
+    { key: 'req_program_ran', short: 'Ran', label: 'Program had at least 1 session run in period' },
+    { key: 'req_min_weeks_hit', short: '6wk', label: '≥ 6 weeks (flexible — prorates below this)' },
+  ];
+  return (
+    <div className="flex gap-0.5 justify-center">
+      {reqs.map(r => {
+        const passed = !!line[r.key];
+        const isFlexible = r.key === 'req_min_weeks_hit';
+        return (
+          <span key={r.key}
+            title={`${r.label}: ${passed ? 'PASS' : 'FAIL'}${isFlexible ? ' (flexible — prorated not rejected)' : ''}`}
+            className={`inline-flex items-center justify-center w-7 px-0.5 py-0.5 rounded text-[9px] font-medium cursor-help ${
+              passed ? 'bg-green-100 text-green-700' :
+              isFlexible ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+            {r.short}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
