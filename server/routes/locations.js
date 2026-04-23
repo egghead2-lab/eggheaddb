@@ -4,6 +4,42 @@ const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { logAudit } = require('../lib/audit');
 
+// Required-field validation. Client manager satisfied by either the location's
+// own override OR the linked geographic area's CM (existing inheritance pattern).
+const REQUIRED_LOCATION_FIELDS = [
+  { key: 'nickname', label: 'Nickname' },
+  { key: 'school_name', label: 'School Name' },
+  { key: 'location_type_id', label: 'Location Type' },
+  { key: 'address', label: 'Address' },
+  { key: 'city_id', label: 'City (with Zip)' },
+  { key: 'location_phone', label: 'Location Phone' },
+  { key: 'geographic_area_id_online', label: 'Geographic Area' },
+  { key: 'point_of_contact', label: 'Contact Name' },
+  { key: 'poc_email', label: 'Contact Email' },
+];
+
+function isEmpty(v) { return v === undefined || v === null || v === ''; }
+
+async function validateLocationRequired(merged) {
+  const missing = [];
+  for (const f of REQUIRED_LOCATION_FIELDS) {
+    if (isEmpty(merged[f.key])) missing.push(f.label);
+  }
+  // Client manager: location-level OR area-level
+  if (isEmpty(merged.client_manager_user_id)) {
+    let areaCm = null;
+    if (!isEmpty(merged.geographic_area_id_online)) {
+      const [[ga]] = await pool.query(
+        `SELECT client_manager_user_id FROM geographic_area WHERE id = ?`,
+        [merged.geographic_area_id_online]
+      );
+      areaCm = ga?.client_manager_user_id;
+    }
+    if (isEmpty(areaCm)) missing.push('Client Manager (set on location or its area)');
+  }
+  return missing;
+}
+
 // GET /api/locations
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -163,6 +199,12 @@ router.post('/', authenticate, async (req, res, next) => {
   try {
     const data = req.body;
 
+    // Required-field validation (POST validates incoming data directly)
+    const missing = await validateLocationRequired(data);
+    if (missing.length) {
+      return res.status(400).json({ success: false, error: `Missing required: ${missing.join(', ')}` });
+    }
+
     // Spec §3.3: standalone locations MUST have retained_commission + at least one salesperson
     const isStandalone = !data.contractor_id;
     if (isStandalone) {
@@ -250,6 +292,17 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'retained_commission', 'non_initial_client',
     ];
 
+    // Required-field validation against merged state
+    const [[oldRow]] = await pool.query(`SELECT * FROM location WHERE id = ?`, [id]);
+    if (!oldRow) return res.status(404).json({ success: false, error: 'Location not found' });
+    const mergedForValidate = { ...oldRow, ...Object.fromEntries(
+      Object.entries(data).map(([k, v]) => [k, v === '' ? null : v])
+    ) };
+    const missing = await validateLocationRequired(mergedForValidate);
+    if (missing.length) {
+      return res.status(400).json({ success: false, error: `Missing required: ${missing.join(', ')}` });
+    }
+
     // Spec §3.3: if clearing contractor, retained_commission must be provided in the same patch
     if (data.contractor_id === null) {
       const [[cur]] = await pool.query(`SELECT retained_commission FROM location WHERE id = ?`, [id]);
@@ -272,8 +325,6 @@ router.put('/:id', authenticate, async (req, res, next) => {
     if (updateFields.length === 0) {
       return res.status(400).json({ success: false, error: 'No fields to update' });
     }
-
-    const [[oldRow]] = await pool.query('SELECT * FROM location WHERE id = ?', [id]);
 
     await pool.query(
       `UPDATE location SET ${updateFields.map(f => `${f} = ?`).join(', ')}, ts_updated = NOW()

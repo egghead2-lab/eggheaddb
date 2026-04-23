@@ -80,19 +80,19 @@ export default function LocationDetailPage() {
           {/* General Info */}
           <Section title="General Info" defaultOpen={true}>
             <div className="grid grid-cols-3 gap-4">
-              <Input label="Nickname" {...register('nickname')} />
-              <Input label="School Name" {...register('school_name')} />
-              <Select label="Location Type" {...register('location_type_id')}>
+              <Input label="Nickname *" {...register('nickname')} />
+              <Input label="School Name *" {...register('school_name')} />
+              <Select label="Location Type *" {...register('location_type_id')}>
                 <option value="">Select type…</option>
                 {(ref.locationTypes || []).map(t => <option key={t.id} value={t.id}>{t.location_type_name}</option>)}
               </Select>
               <div className="col-span-2">
-                <Input label="Address" {...register('address')} />
+                <Input label="Address *" {...register('address')} />
               </div>
-              <Input label="City" {...register('city_name_text')} placeholder="City name" defaultValue={loc.city_name || ''} />
-              <Input label="Zip Code" {...register('zip_code_text')} placeholder="Zip code" defaultValue={loc.zip_code || ''} />
-              <Input label="Location Phone" {...register('location_phone')} />
-              <Select label="Geographic Area" {...register('geographic_area_id_online')}>
+              <Input label="City *" {...register('city_name_text')} placeholder="City name" defaultValue={loc.city_name || ''} />
+              <Input label="Zip Code *" {...register('zip_code_text')} placeholder="Zip code" defaultValue={loc.zip_code || ''} />
+              <Input label="Location Phone *" {...register('location_phone')} />
+              <Select label="Geographic Area *" {...register('geographic_area_id_online')}>
                 <option value="">Select area…</option>
                 {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
               </Select>
@@ -117,10 +117,10 @@ export default function LocationDetailPage() {
           {/* Point of Contact */}
           <Section title="Point of Contact" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Contact Name" {...register('point_of_contact')} />
+              <Input label="Contact Name *" {...register('point_of_contact')} />
               <Input label="Title" {...register('poc_title')} />
               <Input label="Phone" {...register('poc_phone')} />
-              <Input label="Email" type="email" {...register('poc_email')} />
+              <Input label="Email *" type="email" {...register('poc_email')} />
             </div>
           </Section>
 

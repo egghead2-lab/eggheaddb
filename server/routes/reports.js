@@ -26,7 +26,16 @@ const ENTITIES = {
       CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor,
       CONCAT(sc.first_name, ' ', sc.last_name) AS scheduling_coordinator,
       CONCAT(fm.first_name, ' ', fm.last_name) AS field_manager,
-      CONCAT(cmgr.first_name, ' ', cmgr.last_name) AS client_manager,
+      COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cmgr.first_name, ' ', cmgr.last_name)) AS client_manager,
+      (SELECT GROUP_CONCAT(CONCAT(u.first_name, ' ', u.last_name) SEPARATOR ', ')
+        FROM user u
+        WHERE u.id IN (
+          SELECT cs2.user_id FROM contractor_salesperson cs2
+            WHERE cs2.contractor_id = loc.contractor_id AND cs2.active = 1
+          UNION
+          SELECT ls.user_id FROM location_salesperson ls
+            WHERE ls.location_id = loc.id AND ls.active = 1 AND loc.contractor_id IS NULL
+        )) AS salesperson,
       lp.virtus AS lead_virtus, lp.tb_test AS lead_tb,
       (SELECT COUNT(*) FROM livescan ls WHERE ls.professor_id = lp.id AND ls.active = 1 AND ls.location_id = loc.id) AS lead_has_livescan_at_location
     FROM program prog
@@ -43,6 +52,7 @@ const ENTITIES = {
     LEFT JOIN user sc ON sc.id = ga.scheduling_coordinator_user_id
     LEFT JOIN user fm ON fm.id = ga.field_manager_user_id
     LEFT JOIN user cmgr ON cmgr.id = ga.client_manager_user_id
+    LEFT JOIN user loc_cm ON loc_cm.id = loc.client_manager_user_id
     WHERE prog.active = 1`,
     fields: {
       // Core
@@ -65,7 +75,8 @@ const ENTITIES = {
       has_assistant: { label: 'Has Assistant', type: 'boolean', col: 'prog.assistant_professor_id IS NOT NULL', raw: true },
       scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)", idCol: 'ga.scheduling_coordinator_user_id', idType: 'user' },
       field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)", idCol: 'ga.field_manager_user_id', idType: 'user' },
-      client_manager: { label: 'Client Manager', type: 'text', col: "CONCAT(cmgr.first_name, ' ', cmgr.last_name)", idCol: 'loc.client_manager_user_id', idType: 'user' },
+      client_manager: { label: 'Client Manager', type: 'text', col: "COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cmgr.first_name, ' ', cmgr.last_name))", idCol: 'COALESCE(loc.client_manager_user_id, ga.client_manager_user_id)', idType: 'user' },
+      salesperson: { label: 'Salesperson', type: 'text', col: 'salesperson' },
       // Financials
       parent_cost: { label: 'Parent Cost', type: 'number', col: 'prog.parent_cost' },
       our_cut: { label: 'Our Cut', type: 'number', col: 'prog.our_cut' },
@@ -121,6 +132,21 @@ const ENTITIES = {
       ps.professor_status_name AS status, ga.geographic_area_name AS area,
       c.city_name, os.onboard_status_name AS onboard_status,
       CONCAT(sc.first_name, ' ', sc.last_name) AS scheduling_coordinator,
+      CONCAT(cmgr.first_name, ' ', cmgr.last_name) AS client_manager,
+      CONCAT(fmgr.first_name, ' ', fmgr.last_name) AS field_manager,
+      (SELECT GROUP_CONCAT(DISTINCT CONCAT(u.first_name, ' ', u.last_name) SEPARATOR ', ')
+        FROM user u
+        WHERE u.id IN (
+          SELECT cs2.user_id FROM program pr
+            JOIN location loc2 ON loc2.id = pr.location_id
+            JOIN contractor_salesperson cs2 ON cs2.contractor_id = loc2.contractor_id AND cs2.active = 1
+            WHERE pr.active = 1 AND (pr.lead_professor_id = p.id OR pr.assistant_professor_id = p.id)
+          UNION
+          SELECT ls.user_id FROM program pr3
+            JOIN location loc3 ON loc3.id = pr3.location_id AND loc3.contractor_id IS NULL
+            JOIN location_salesperson ls ON ls.location_id = loc3.id AND ls.active = 1
+            WHERE pr3.active = 1 AND (pr3.lead_professor_id = p.id OR pr3.assistant_professor_id = p.id)
+        )) AS salesperson,
       p.science_trained_id, p.engineering_trained_id, p.show_party_trained_id,
       p.studysmart_trained_id, p.camp_trained_id, p.robotics_trained_id,
       p.virtus, p.virtus_date, p.tb_test, p.tb_date,
@@ -137,6 +163,8 @@ const ENTITIES = {
     LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
     LEFT JOIN onboard_status os ON os.id = p.onboard_status_id
     LEFT JOIN user sc ON sc.id = p.scheduling_coordinator_owner_id
+    LEFT JOIN user cmgr ON cmgr.id = ga.client_manager_user_id
+    LEFT JOIN user fmgr ON fmgr.id = ga.field_manager_user_id
     WHERE p.active = 1`,
     fields: {
       // Core
@@ -144,6 +172,9 @@ const ENTITIES = {
       area: { label: 'Geographic Area', type: 'select', options: 'area' },
       onboard_status: { label: 'Onboard Status', type: 'text', col: 'os.onboard_status_name' },
       scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)", idCol: 'p.scheduling_coordinator_owner_id', idType: 'user' },
+      client_manager: { label: 'Client Manager (area)', type: 'text', col: "CONCAT(cmgr.first_name, ' ', cmgr.last_name)", idCol: 'ga.client_manager_user_id', idType: 'user' },
+      field_manager: { label: 'Field Manager (area)', type: 'text', col: "CONCAT(fmgr.first_name, ' ', fmgr.last_name)", idCol: 'ga.field_manager_user_id', idType: 'user' },
+      salesperson: { label: 'Salesperson (any program)', type: 'text', col: 'salesperson' },
       city: { label: 'City', type: 'text', col: 'c.city_name' },
       email: { label: 'Email', type: 'text', col: 'p.email' },
       phone: { label: 'Phone', type: 'text', col: 'p.phone_number' },
@@ -189,6 +220,15 @@ const ENTITIES = {
       COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm.first_name, ' ', cm.last_name)) AS client_manager,
       CONCAT(fm.first_name, ' ', fm.last_name) AS field_manager,
       CONCAT(sc.first_name, ' ', sc.last_name) AS scheduling_coordinator,
+      (SELECT GROUP_CONCAT(CONCAT(u.first_name, ' ', u.last_name) SEPARATOR ', ')
+        FROM user u
+        WHERE u.id IN (
+          SELECT cs2.user_id FROM contractor_salesperson cs2
+            WHERE cs2.contractor_id = loc.contractor_id AND cs2.active = 1
+          UNION
+          SELECT ls.user_id FROM location_salesperson ls
+            WHERE ls.location_id = loc.id AND ls.active = 1 AND loc.contractor_id IS NULL
+        )) AS salesperson,
       (SELECT COUNT(*) FROM program pr LEFT JOIN class_status cs ON cs.id = pr.class_status_id
        WHERE pr.location_id = loc.id AND pr.active = 1 AND cs.class_status_name NOT LIKE 'Cancelled%'
        AND (pr.last_session_date >= CURDATE() OR pr.last_session_date IS NULL)) AS active_program_count,
@@ -215,6 +255,7 @@ const ENTITIES = {
       client_manager: { label: 'Client Manager', type: 'text', col: "COALESCE(CONCAT(loc_cm.first_name, ' ', loc_cm.last_name), CONCAT(cm.first_name, ' ', cm.last_name))", idCol: 'COALESCE(loc.client_manager_user_id, ga.client_manager_user_id)', idType: 'user' },
       field_manager: { label: 'Field Manager', type: 'text', col: "CONCAT(fm.first_name, ' ', fm.last_name)", idCol: 'ga.field_manager_user_id', idType: 'user' },
       scheduling_coordinator: { label: 'Scheduling Coordinator', type: 'select', options: 'scheduling_coordinator', col: "CONCAT(sc.first_name, ' ', sc.last_name)", idCol: 'ga.scheduling_coordinator_user_id', idType: 'user' },
+      salesperson: { label: 'Salesperson', type: 'text', col: 'salesperson' },
       point_of_contact: { label: 'Point of Contact', type: 'text', col: 'loc.point_of_contact' },
       poc_email: { label: 'Contact Email', type: 'text', col: 'loc.poc_email' },
       poc_phone: { label: 'Contact Phone', type: 'text', col: 'loc.poc_phone' },

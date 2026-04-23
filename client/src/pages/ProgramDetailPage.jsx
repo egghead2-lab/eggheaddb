@@ -128,8 +128,8 @@ export default function ProgramDetailPage() {
           <Section title="General Info" defaultOpen={true}>
             <div className="grid grid-cols-4 gap-4">
               <Input label="Program Nickname" {...register('program_nickname')} />
-              <Input label="Grade Range" placeholder="e.g. K-3, 4-6" {...register('grade_range')} />
-              <Select label="Status" {...register('class_status_id')}>
+              <Input label="Grade Range *" placeholder="e.g. K-3, 4-6" {...register('grade_range')} />
+              <Select label="Status *" {...register('class_status_id')}>
                 <option value="">Select status…</option>
                 {(ref.classStatuses || []).filter(s => !isNew || !s.class_status_name.startsWith('Cancelled')).map(s => (
                   <option key={s.id} value={s.id}>{s.class_status_name}</option>
@@ -137,7 +137,7 @@ export default function ProgramDetailPage() {
               </Select>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-gray-700">Location</label>
+                  <label className="text-xs font-medium text-gray-700">Location *</label>
                   {watch('location_id') && (
                     <Link to={`/locations/${watch('location_id')}`} target="_blank"
                       className="text-[10px] text-[#1e3a5f] hover:underline">Open ↗</Link>
@@ -155,7 +155,7 @@ export default function ProgramDetailPage() {
             </div>
             <div className="grid grid-cols-4 gap-4 mt-4">
               <SearchSelect
-                label="Class / Curriculum"
+                label="Class / Curriculum *"
                 value={watch('class_id')}
                 onChange={v => setValue('class_id', v, { shouldDirty: true })}
                 options={classes}
@@ -176,6 +176,49 @@ export default function ProgramDetailPage() {
                 })()}
               </div>
             </div>
+
+            {/* Team (read-only, inherited from area + location) */}
+            <div className="mt-4 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                <span>Team</span>
+                <span className="text-gray-400 normal-case font-normal lowercase">— set on area / location, not editable here</span>
+              </div>
+              <div className="grid grid-cols-4 gap-3 text-xs">
+                <div>
+                  <div className="text-[10px] text-gray-500">Client Manager</div>
+                  <div className="text-gray-800 font-medium">{prog.client_manager_name?.trim() || <span className="text-amber-600">— missing —</span>}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500">Scheduler</div>
+                  <div className="text-gray-800 font-medium">{prog.scheduling_coordinator_name?.trim() || <span className="text-amber-600">— missing —</span>}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500">Field Manager</div>
+                  <div className="text-gray-800 font-medium">{prog.field_manager_name?.trim() || <span className="text-amber-600">— missing —</span>}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500">
+                    Salesperson{(prog.salespeople || []).length > 1 ? 's' : ''}
+                    {(prog.salespeople || [])[0]?.source ? (
+                      <span className="ml-1 text-gray-400">(from {(prog.salespeople || [])[0].source})</span>
+                    ) : null}
+                  </div>
+                  <div className="text-gray-800 font-medium">
+                    {(prog.salespeople || []).length === 0 ? (
+                      <span className="text-amber-600">— missing —</span>
+                    ) : (
+                      (prog.salespeople || []).map((s, i) => (
+                        <span key={s.id}>
+                          {i > 0 ? ', ' : ''}{s.name}
+                          {s.split_pct && parseFloat(s.split_pct) < 1 ? <span className="text-gray-400 ml-0.5">({Math.round(parseFloat(s.split_pct) * 100)}%)</span> : null}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {(() => {
               const leadId = watch('lead_professor_id');
               const assistId = watch('assistant_professor_id');
@@ -250,8 +293,8 @@ export default function ProgramDetailPage() {
               );
             })()}
             <div className="grid grid-cols-5 gap-4 mt-4">
-              <Input label="Parent Cost" type="number" step="0.01" prefix="$" {...register('parent_cost')} />
-              <Input label="Our Cut (per session)" type="number" step="0.01" prefix="$" {...register('our_cut')} />
+              <Input label="Parent Cost *" type="number" step="0.01" prefix="$" {...register('parent_cost')} />
+              <Input label="Our Cut (per session) *" type="number" step="0.01" prefix="$" {...register('our_cut')} />
               <Input label="Lab Fee" type="number" step="0.01" prefix="$" {...register('lab_fee')} />
               {(parseFloat(watch('lab_fee')) > 0) && (
                 <>
@@ -323,8 +366,8 @@ export default function ProgramDetailPage() {
           {/* Schedule */}
           <Section title="Schedule" defaultOpen={true}>
             <div className="grid grid-cols-4 gap-4">
-              <Input label="Start Time" type="time" {...register('start_time')} />
-              <Input label="Class Length (minutes)" type="number" {...register('class_length_minutes')} />
+              <Input label="Start Time *" type="time" {...register('start_time')} />
+              <Input label="Class Length (minutes) *" type="number" {...register('class_length_minutes')} />
               {prog.first_session_date && (
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-gray-700">First Session</label>
@@ -339,7 +382,7 @@ export default function ProgramDetailPage() {
               )}
             </div>
             <div className="mt-3">
-              <label className="text-xs font-medium text-gray-700 block mb-2">Day of Week</label>
+              <label className="text-xs font-medium text-gray-700 block mb-2">Day of Week * <span className="text-gray-400 font-normal">(at least one)</span></label>
               <div className="flex flex-wrap gap-3">
                 {WEEKDAY_KEYS.map((key, i) => (
                   <Toggle key={key} label={WEEKDAYS[i]} checked={!!watch(key)} onChange={v => setValue(key, v ? 1 : 0, { shouldDirty: true })} />
@@ -393,8 +436,8 @@ export default function ProgramDetailPage() {
                       </div>
                     )}
                   </div>
-                  <Input label="Min Students" type="number" {...register('minimum_students')} />
-                  <Input label="Max Students" type="number" {...register('maximum_students')} />
+                  <Input label="Min Students *" type="number" {...register('minimum_students')} />
+                  <Input label="Max Students *" type="number" {...register('maximum_students')} />
                 </div>
                 <RosterPanel
                   programId={id}

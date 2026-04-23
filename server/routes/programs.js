@@ -4,6 +4,38 @@ const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { logAudit } = require('../lib/audit');
 
+// Required-field validation for non-party programs.
+// PUT validates the MERGED state (existing row + incoming changes), so editing
+// one field on a legacy program will reject if it's still missing requirements.
+const REQUIRED_PROGRAM_FIELDS = [
+  { key: 'location_id', label: 'Location' },
+  { key: 'class_id', label: 'Class / Curriculum' },
+  { key: 'class_status_id', label: 'Status' },
+  { key: 'grade_range', label: 'Grades' },
+  { key: 'start_time', label: 'Start Time' },
+  { key: 'class_length_minutes', label: 'Class Length' },
+  { key: 'parent_cost', label: 'Parent Cost' },
+  { key: 'our_cut', label: 'Our Cut' },
+  { key: 'minimum_students', label: 'Min Students' },
+  { key: 'maximum_students', label: 'Max Students' },
+];
+const DAY_FIELDS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+
+function isEmpty(v) {
+  return v === undefined || v === null || v === '';
+}
+
+function validateProgramRequired(merged) {
+  const missing = [];
+  for (const f of REQUIRED_PROGRAM_FIELDS) {
+    if (isEmpty(merged[f.key])) missing.push(f.label);
+  }
+  if (!DAY_FIELDS.some(d => parseInt(merged[d]) === 1)) {
+    missing.push('At least one day of the week');
+  }
+  return missing;
+}
+
 // GET /api/programs (exclude party program types)
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -229,16 +261,26 @@ router.get('/:id', authenticate, async (req, res, next) => {
               cs.class_status_name,
               loc.nickname AS location_nickname, prog.party_city,
               loc.retained AS location_retained,
+              loc.geographic_area_id_online AS location_area_id,
               cl.class_name, cl.class_code, cl.formal_class_name,
               pt.program_type_name,
               ct.class_type_name,
               cpt.class_pricing_type_name,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS lead_professor_nickname,
               CONCAT(ap.professor_nickname, ' ', ap.last_name) AS assistant_professor_nickname,
-              CONCAT(dp.professor_nickname, ' ', dp.last_name) AS demo_professor_nickname
+              CONCAT(dp.professor_nickname, ' ', dp.last_name) AS demo_professor_nickname,
+              -- Inherited team (read-only on program level — set on area/location)
+              ga.geographic_area_name AS area_name,
+              CONCAT(cm.first_name, ' ', cm.last_name) AS client_manager_name,
+              CONCAT(sched.first_name, ' ', sched.last_name) AS scheduling_coordinator_name,
+              CONCAT(fm.first_name, ' ', fm.last_name) AS field_manager_name
        FROM program prog
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
+       LEFT JOIN user cm ON cm.id = COALESCE(loc.client_manager_user_id, ga.client_manager_user_id)
+       LEFT JOIN user sched ON sched.id = ga.scheduling_coordinator_user_id
+       LEFT JOIN user fm ON fm.id = ga.field_manager_user_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
        LEFT JOIN class_type ct ON ct.id = cl.class_type_id
@@ -253,6 +295,45 @@ router.get('/:id', authenticate, async (req, res, next) => {
     if (!program) {
       return res.status(404).json({ success: false, error: 'Program not found' });
     }
+
+    // Salespeople (matches commissionEngine.js cascade: contractor first, else location).
+    // Currently-active rows only.
+    const [[locInfo]] = await pool.query(
+      `SELECT contractor_id FROM location WHERE id = ?`, [program.location_id]
+    );
+    let salespeople = [];
+    if (locInfo?.contractor_id) {
+      const [rows] = await pool.query(
+        `SELECT cs.id, cs.user_id, cs.split_pct, cs.effective_from, cs.effective_to,
+                CONCAT(u.first_name, ' ', u.last_name) AS name,
+                'contractor' AS source
+         FROM contractor_salesperson cs
+         LEFT JOIN user u ON u.id = cs.user_id
+         WHERE cs.contractor_id = ?
+           AND cs.active = 1
+           AND (cs.effective_from IS NULL OR cs.effective_from <= CURDATE())
+           AND (cs.effective_to IS NULL OR cs.effective_to >= CURDATE())
+         ORDER BY cs.split_pct DESC, cs.id`,
+        [locInfo.contractor_id]
+      );
+      salespeople = rows;
+    } else {
+      const [rows] = await pool.query(
+        `SELECT ls.id, ls.user_id, ls.split_pct, ls.effective_from, ls.effective_to,
+                CONCAT(u.first_name, ' ', u.last_name) AS name,
+                'location' AS source
+         FROM location_salesperson ls
+         LEFT JOIN user u ON u.id = ls.user_id
+         WHERE ls.location_id = ?
+           AND ls.active = 1
+           AND (ls.effective_from IS NULL OR ls.effective_from <= CURDATE())
+           AND (ls.effective_to IS NULL OR ls.effective_to >= CURDATE())
+         ORDER BY ls.split_pct DESC, ls.id`,
+        [program.location_id]
+      );
+      salespeople = rows;
+    }
+    program.salespeople = salespeople;
 
     const [sessions] = await pool.query(
       `SELECT s.*,
@@ -294,6 +375,11 @@ router.get('/:id', authenticate, async (req, res, next) => {
 router.post('/', authenticate, async (req, res, next) => {
   try {
     const data = req.body;
+
+    const missing = validateProgramRequired(data);
+    if (missing.length) {
+      return res.status(400).json({ success: false, error: `Missing required: ${missing.join(', ')}` });
+    }
 
     const fields = [
       'program_nickname', 'class_status_id', 'location_id', 'live', 'class_id', 'grade_range',
@@ -383,6 +469,26 @@ router.put('/:id', authenticate, async (req, res, next) => {
     }
 
     const [[oldRow]] = await pool.query('SELECT * FROM program WHERE id = ?', [id]);
+    if (!oldRow) return res.status(404).json({ success: false, error: 'Program not found' });
+
+    // Required-field validation against the merged future state.
+    // Skip for parties — they live in /api/parties and have a different shape.
+    const [[progType]] = await pool.query(
+      `SELECT pt.program_type_name FROM program p
+       LEFT JOIN class c ON c.id = p.class_id
+       LEFT JOIN program_type pt ON pt.id = c.program_type_id
+       WHERE p.id = ?`, [id]
+    );
+    const isParty = progType?.program_type_name === 'Party';
+    if (!isParty) {
+      const merged = { ...oldRow, ...Object.fromEntries(
+        Object.entries(data).map(([k, v]) => [k, v === '' ? null : v])
+      ) };
+      const missing = validateProgramRequired(merged);
+      if (missing.length) {
+        return res.status(400).json({ success: false, error: `Missing required: ${missing.join(', ')}` });
+      }
+    }
 
     // Enforce: number_enrolled cannot exceed maximum_students
     // Only block when either field is being actively changed in this request
