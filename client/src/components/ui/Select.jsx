@@ -1,5 +1,38 @@
+import { Children } from 'react';
+import { useFormContext } from 'react-hook-form';
+import { useViewMode } from '../../contexts/ViewModeContext';
+
+function flattenOptions(children) {
+  const out = [];
+  Children.forEach(children, (c) => {
+    if (!c || !c.props) return;
+    if (c.type === 'option') out.push(c);
+    else if (c.props.children) out.push(...flattenOptions(c.props.children));
+  });
+  return out;
+}
+
 export function Select({ label, error, required, children, className = '', ...props }) {
-  // Strip any w-* classes from className since we want auto-width
+  const isViewMode = useViewMode();
+  const formCtx = useFormContext();
+
+  if (isViewMode) {
+    const watched = props.name && formCtx ? formCtx.watch(props.name) : undefined;
+    const val = watched ?? props.value ?? props.defaultValue ?? '';
+    const options = flattenOptions(children);
+    const match = options.find(o => String(o.props.value ?? '') === String(val ?? ''));
+    const display = match?.props.children;
+    const isEmpty = display === undefined || display === null || display === '' || val === '';
+    return (
+      <div className="flex flex-col gap-1">
+        {label && <label className="text-xs font-medium text-gray-500">{label}</label>}
+        <div className="text-sm text-gray-800 py-1.5">
+          {isEmpty ? <span className="text-gray-400">—</span> : display}
+        </div>
+      </div>
+    );
+  }
+
   const filteredClassName = className.replace(/\bw-\[?\d+[^\s]*/g, '').trim();
   return (
     <div className="flex flex-col gap-1">

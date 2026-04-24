@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
+import { useViewMode } from '../../contexts/ViewModeContext';
 
 export function SearchSelect({ label, required, error, value, onChange, options, placeholder = 'Search…', displayKey = 'label', valueKey = 'id' }) {
+  const isViewMode = useViewMode();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -17,6 +19,17 @@ export function SearchSelect({ label, required, error, value, onChange, options,
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  if (isViewMode) {
+    return (
+      <div className="flex flex-col gap-1">
+        {label && <label className="text-xs font-medium text-gray-500">{label}</label>}
+        <div className="text-sm text-gray-800 py-1.5">
+          {selected ? selected[displayKey] : <span className="text-gray-400">—</span>}
+        </div>
+      </div>
+    );
+  }
 
   const handleSelect = (opt) => {
     onChange(String(opt[valueKey]));

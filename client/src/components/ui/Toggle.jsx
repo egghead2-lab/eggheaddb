@@ -1,4 +1,19 @@
+import { useViewMode } from '../../contexts/ViewModeContext';
+
 export function Toggle({ label, checked, onChange, disabled = false }) {
+  const isViewMode = useViewMode();
+
+  if (isViewMode) {
+    return (
+      <div className="flex flex-col gap-1">
+        {label && <label className="text-xs font-medium text-gray-500">{label}</label>}
+        <div className="text-sm py-1.5">
+          <span className={checked ? 'text-emerald-600 font-medium' : 'text-gray-400'}>{checked ? 'Yes' : 'No'}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <label className="flex items-center gap-2 cursor-pointer select-none">
       <div className="relative">

@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
+import { ViewModeProvider } from '../contexts/ViewModeContext';
 import api from '../api/client';
 import { getProgram, createProgram, updateProgram, copyProgram } from '../api/programs';
 import { useGeneralData, useProfessorList, useLocationList, useLessons } from '../hooks/useReferenceData';
@@ -63,7 +64,11 @@ export default function ProgramDetailPage() {
   });
   const classes = classesData?.data || [];
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
+  const formMethods = useForm();
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = formMethods;
+
+  // View mode on by default for existing programs; new programs go straight to edit
+  const [viewMode, setViewMode] = useState(!isNew);
 
   useEffect(() => {
     if (progData?.data) reset(toFormData(progData.data));
@@ -74,6 +79,7 @@ export default function ProgramDetailPage() {
     onSuccess: (res) => {
       qc.invalidateQueries(['programs']);
       if (isNew && res?.id) navigate(`/programs/${res.id}`);
+      else setViewMode(true);
     },
   });
 
@@ -87,6 +93,8 @@ export default function ProgramDetailPage() {
   return (
     <AppShell>
       <UnsavedChangesModal when={isDirty} />
+      <FormProvider {...formMethods}>
+      <ViewModeProvider value={viewMode}>
       <form onSubmit={handleSubmit(onSubmit)}>
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-6 py-4">
@@ -105,6 +113,17 @@ export default function ProgramDetailPage() {
             </div>
             {!isNew && (
               <div className="flex items-center gap-3">
+                {viewMode ? (
+                  <button type="button" onClick={() => setViewMode(false)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] transition-colors shadow-sm">
+                    ✎ Edit
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => { reset(toFormData(prog)); setViewMode(true); }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">
+                    Cancel Edit
+                  </button>
+                )}
                 <Link to={`/programs/${id}/classroom`}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] transition-colors shadow-sm">
                   Classroom & Attendance
@@ -250,14 +269,19 @@ export default function ProgramDetailPage() {
                   </div>
                   {(() => {
                     const leadIsFM = professors.find(p => String(p.id) === String(leadId))?.is_field_manager;
+                    const payVal = leadIsFM ? 0 : watch('lead_professor_pay');
                     return (
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-medium text-gray-700">Lead Pay</label>
-                        <input type="number" step="0.01" value={leadIsFM ? 0 : (watch('lead_professor_pay') ?? '')}
-                          disabled={leadIsFM}
-                          onChange={e => setValue('lead_professor_pay', e.target.value || null, { shouldDirty: true })}
-                          title={leadIsFM ? 'Field Managers are not paid for class sessions' : undefined}
-                          className={`rounded border border-gray-300 px-2 py-1.5 text-sm ${leadIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+                        <label className={`text-xs font-medium ${viewMode ? 'text-gray-500' : 'text-gray-700'}`}>Lead Pay</label>
+                        {viewMode ? (
+                          <div className="text-sm text-gray-800 py-1.5">{payVal === '' || payVal == null ? <span className="text-gray-400">—</span> : `$${payVal}`}</div>
+                        ) : (
+                          <input type="number" step="0.01" value={payVal ?? ''}
+                            disabled={leadIsFM}
+                            onChange={e => setValue('lead_professor_pay', e.target.value || null, { shouldDirty: true })}
+                            title={leadIsFM ? 'Field Managers are not paid for class sessions' : undefined}
+                            className={`rounded border border-gray-300 px-2 py-1.5 text-sm ${leadIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+                        )}
                       </div>
                     );
                   })()}
@@ -278,14 +302,19 @@ export default function ProgramDetailPage() {
                   </div>
                   {(() => {
                     const assistIsFM = professors.find(p => String(p.id) === String(assistId))?.is_field_manager;
+                    const payVal = assistIsFM ? 0 : watch('assistant_professor_pay');
                     return (
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-medium text-gray-700">Assist Pay</label>
-                        <input type="number" step="0.01" value={assistIsFM ? 0 : (watch('assistant_professor_pay') ?? '')}
-                          disabled={assistIsFM}
-                          onChange={e => setValue('assistant_professor_pay', e.target.value || null, { shouldDirty: true })}
-                          title={assistIsFM ? 'Field Managers are not paid for class sessions' : undefined}
-                          className={`rounded border border-gray-300 px-2 py-1.5 text-sm ${assistIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+                        <label className={`text-xs font-medium ${viewMode ? 'text-gray-500' : 'text-gray-700'}`}>Assist Pay</label>
+                        {viewMode ? (
+                          <div className="text-sm text-gray-800 py-1.5">{payVal === '' || payVal == null ? <span className="text-gray-400">—</span> : `$${payVal}`}</div>
+                        ) : (
+                          <input type="number" step="0.01" value={payVal ?? ''}
+                            disabled={assistIsFM}
+                            onChange={e => setValue('assistant_professor_pay', e.target.value || null, { shouldDirty: true })}
+                            title={assistIsFM ? 'Field Managers are not paid for class sessions' : undefined}
+                            className={`rounded border border-gray-300 px-2 py-1.5 text-sm ${assistIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+                        )}
                       </div>
                     );
                   })()}
@@ -545,18 +574,22 @@ export default function ProgramDetailPage() {
         {/* Audit History */}
           {!isNew && <AuditHistory table="program" recordId={id} />}
 
-        {/* Sticky Footer */}
-        <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
-          {mutation.isError && <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>}
-          {mutation.isSuccess && <p className="text-sm text-green-600">Saved successfully</p>}
-          <div className="ml-auto flex gap-3">
-            <Link to="/programs" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save Changes'}
-            </Button>
+        {/* Sticky Footer — only visible in edit mode */}
+        {!viewMode && (
+          <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
+            {mutation.isError && <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>}
+            {mutation.isSuccess && <p className="text-sm text-green-600">Saved successfully</p>}
+            <div className="ml-auto flex gap-3">
+              <Link to="/programs" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </form>
+      </ViewModeProvider>
+      </FormProvider>
     </AppShell>
   );
 }
