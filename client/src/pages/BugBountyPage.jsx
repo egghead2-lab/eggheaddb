@@ -202,7 +202,7 @@ export default function BugBountyPage() {
 }
 
 function BugCard({ bug: b, isAdmin, currentUserId, labels, tab, onUpdate, onDelete }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(b.msg_count > 0);
   const isOwn = currentUserId && b.submitted_by_user_id === currentUserId;
   const canMessage = isAdmin || isOwn;
   const minorStatusLabel = tab === 'idea' ? 'Minor QOL' : 'Minor';
@@ -250,10 +250,6 @@ function BugCard({ bug: b, isAdmin, currentUserId, labels, tab, onUpdate, onDele
                 <button onClick={() => onUpdate.mutate({ id: b.id, fixed: false })}
                   className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Un-{fixedLabel.toLowerCase()}</button>
               )}
-              {b.status !== 'new' && (
-                <button onClick={() => onUpdate.mutate({ id: b.id, status: 'new' })}
-                  className="text-[10px] text-blue-500 border border-blue-200 px-1.5 py-0.5 rounded hover:bg-blue-50">Reset</button>
-              )}
               <ConfirmButton onConfirm={() => onDelete.mutate(b.id)}
                 className="text-[10px] text-red-400 hover:text-red-600">×</ConfirmButton>
             </div>
@@ -261,13 +257,15 @@ function BugCard({ bug: b, isAdmin, currentUserId, labels, tab, onUpdate, onDele
         </div>
       </div>
 
-      {/* Thread toggle */}
+      {/* Reply toggle */}
       <div className="mt-2 flex items-center gap-2">
         <button type="button" onClick={() => setExpanded(v => !v)}
-          className="text-[11px] text-[#1e3a5f] hover:underline font-medium">
-          {expanded ? 'Hide thread' : `${b.msg_count > 0 ? `${b.msg_count} message${b.msg_count !== 1 ? 's' : ''}` : 'Start a thread'}`}
+          className="text-[11px] px-2 py-0.5 rounded border border-[#1e3a5f] text-[#1e3a5f] hover:bg-[#1e3a5f]/5 font-medium">
+          {expanded ? 'Hide' : 'Reply'}
         </button>
-        {b.msg_count > 0 && !expanded && <span className="text-[10px] text-gray-400">Last: {formatDate(b.last_msg_at)}</span>}
+        {b.msg_count > 0 && (
+          <span className="text-[10px] text-gray-400">{b.msg_count} message{b.msg_count !== 1 ? 's' : ''} · Last {formatDate(b.last_msg_at)}</span>
+        )}
       </div>
       {expanded && <MessageThread bugId={b.id} canPost={canMessage} isAdmin={isAdmin} />}
     </div>
