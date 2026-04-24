@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
+import { ViewModeProvider } from '../contexts/ViewModeContext';
 import { getProfessor, createProfessor, updateProfessor, createLivescan, updateLivescan, deleteLivescan } from '../api/professors';
 import api from '../api/client';
 import { useGeneralData, useLocationList } from '../hooks/useReferenceData';
@@ -798,7 +799,10 @@ export default function ProfessorDetailPage() {
   const { data: locationListData } = useLocationList();
   const locationList = locationListData?.data || [];
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
+  const formMethods = useForm();
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = formMethods;
+
+  const [viewMode, setViewMode] = useState(!isNew);
 
   useEffect(() => {
     if (profData?.data) {
@@ -819,6 +823,7 @@ export default function ProfessorDetailPage() {
       setSaveStatus({ type: 'success', msg: 'Saved!' });
       setTimeout(() => setSaveStatus(null), 3000);
       if (isNew && res?.id) navigate(`/professors/${res.id}`);
+      else setViewMode(true);
     },
     onError: (e) => {
       setSaveStatus({ type: 'error', msg: e?.response?.data?.error || e.message || 'Save failed' });
@@ -923,6 +928,8 @@ export default function ProfessorDetailPage() {
   return (
     <AppShell>
       <UnsavedChangesModal when={isDirty} />
+      <FormProvider {...formMethods}>
+      <ViewModeProvider value={viewMode}>
       <form onSubmit={handleSubmit(onSubmit, onError)}>
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -940,7 +947,26 @@ export default function ProfessorDetailPage() {
             </div>
           </div>
           {!isNew && (
-            <Link to={`/schedule/${id}`} className="text-sm text-[#1e3a5f] hover:underline">View Schedule →</Link>
+            <div className="flex items-center gap-3">
+              {viewMode ? (
+                <button type="button" onClick={() => setViewMode(false)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] transition-colors shadow-sm">
+                  ✎ Edit
+                </button>
+              ) : (
+                <button type="button" onClick={() => {
+                  const fd = toFormData(prof);
+                  fd._city_name = prof.city_name || '';
+                  fd._state_code = prof.state_code || '';
+                  fd._zip_code = prof.zip_code || '';
+                  reset(fd);
+                  setViewMode(true);
+                }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">
+                  Cancel Edit
+                </button>
+              )}
+              <Link to={`/schedule/${id}`} className="text-sm text-[#1e3a5f] hover:underline">View Schedule →</Link>
+            </div>
           )}
         </div>
 
@@ -1300,20 +1326,24 @@ export default function ProfessorDetailPage() {
           </Section>
         </div>
 
-        {/* Sticky Footer */}
-        <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
-          {mutation.isError && (
-            <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>
-          )}
-          {mutation.isSuccess && <p className="text-sm text-green-600">Saved successfully</p>}
-          <div className="ml-auto flex gap-3">
-            <Link to="/professors" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save Changes'}
-            </Button>
+        {/* Sticky Footer — edit mode only */}
+        {!viewMode && (
+          <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
+            {mutation.isError && (
+              <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>
+            )}
+            {mutation.isSuccess && <p className="text-sm text-green-600">Saved successfully</p>}
+            <div className="ml-auto flex gap-3">
+              <Link to="/professors" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </form>
+      </ViewModeProvider>
+      </FormProvider>
       {saveStatus && (
         <div className={`fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm shadow-lg z-50 ${
           saveStatus.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'

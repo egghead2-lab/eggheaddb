@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
+import { ViewModeProvider } from '../contexts/ViewModeContext';
 import { getParty, createParty, updateParty } from '../api/parties';
 import api from '../api/client';
 import { searchParents } from '../api/parents';
@@ -34,7 +35,10 @@ export default function PartyDetailPage() {
   const partyLeadProfessors = ref.partyLeadProfessors || [];
   const partyAssistProfessors = ref.partyAssistProfessors || [];
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty, dirtyFields } } = useForm();
+  const formMethods = useForm();
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty, dirtyFields } } = formMethods;
+
+  const [viewMode, setViewMode] = useState(!isNew);
 
   useEffect(() => {
     if (partyData?.data) reset(toFormData(partyData.data));
@@ -58,6 +62,7 @@ export default function PartyDetailPage() {
           catch (e) { alert('Calendar sync failed: ' + (e?.response?.data?.error || e.message)); }
         }
       }
+      setViewMode(true);
     },
   });
 
@@ -104,6 +109,8 @@ export default function PartyDetailPage() {
   return (
     <AppShell>
       <UnsavedChangesModal when={isDirty} />
+      <FormProvider {...formMethods}>
+      <ViewModeProvider value={viewMode}>
       <form onSubmit={handleSubmit(onSubmit)}>
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
@@ -126,6 +133,19 @@ export default function PartyDetailPage() {
               </div>
             )}
           </div>
+          {!isNew && (
+            viewMode ? (
+              <button type="button" onClick={() => setViewMode(false)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] transition-colors shadow-sm">
+                ✎ Edit
+              </button>
+            ) : (
+              <button type="button" onClick={() => { reset(toFormData(party)); setViewMode(true); }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">
+                Cancel Edit
+              </button>
+            )
+          )}
         </div>
 
         <div className="p-4 space-y-3 pb-24">
@@ -181,7 +201,7 @@ export default function PartyDetailPage() {
               <Input label="Shirt Size" {...register('shirt_size')} />
               <Input label="Birthday Kid" placeholder="Name" {...register('birthday_kid_name')} />
               <Input label="Turning Age" type="number" {...register('birthday_kid_age')} />
-              <div className="col-span-3">
+              {!viewMode && <div className="col-span-3">
                 <label className="text-xs font-medium text-gray-700 block mb-1">Quick Address <span className="text-gray-400 font-normal">— paste any format, auto-fills the fields below</span></label>
                 <input placeholder="123 Main St, Los Angeles, CA 90001 (or paste from Google Maps)"
                   className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] bg-gray-50"
@@ -216,8 +236,8 @@ export default function PartyDetailPage() {
                       alert(`Couldn't parse address. Expected format like:\n  123 Main St, Los Angeles, CA 90001\n\nFill in the fields below manually.`);
                     }
                   }} />
-              </div>
-              <div className="col-span-2" />
+              </div>}
+              {!viewMode && <div className="col-span-2" />}
               <div className="col-span-2">
                 <Input label="Street Address" placeholder="123 Main St" {...register('party_address')} />
               </div>
@@ -239,7 +259,20 @@ export default function PartyDetailPage() {
             <input type="hidden" {...register('parent_id')} />
             <div className="grid grid-cols-5 gap-3 items-end">
               <div className="col-span-2">
-                {selectedContact ? (
+                {viewMode ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-gray-500">Contact</label>
+                    {selectedContact ? (
+                      <>
+                        <Link to={`/parents/${selectedContact.id}`} className="text-sm text-[#1e3a5f] hover:underline font-medium py-1.5">{selectedContact.name}</Link>
+                        <div className="flex flex-wrap gap-x-3 text-xs text-gray-500">
+                          {selectedContact.email && <span>📧 {selectedContact.email}</span>}
+                          {selectedContact.phone && <span>📞 <a href={`tel:${selectedContact.phone}`} className="text-[#1e3a5f] hover:underline">{selectedContact.phone}</a></span>}
+                        </div>
+                      </>
+                    ) : <div className="text-sm text-gray-400 py-1.5">—</div>}
+                  </div>
+                ) : selectedContact ? (
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-gray-700">Contact</label>
                     <div className="flex items-center gap-2 rounded border border-gray-300 px-3 py-1.5 text-sm bg-white">
@@ -277,13 +310,13 @@ export default function PartyDetailPage() {
                   </div>
                 )}
               </div>
-              <Link
+              {!viewMode && <Link
                 to="/parents/new"
                 target="_blank"
                 className="text-xs text-[#1e3a5f] hover:underline pb-1.5"
               >
                 + New Parent
-              </Link>
+              </Link>}
             </div>
           </Section>
 
@@ -334,26 +367,36 @@ export default function PartyDetailPage() {
               <Toggle label="Invoice Needed" checked={!!watch('invoice_needed')} onChange={v => setValue('invoice_needed', v ? 1 : 0, { shouldDirty: true })} />
             </div>
             <div className="mt-3">
-              <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Notes</label>
-              <textarea {...register('invoice_notes')} rows={2} placeholder="Notes for invoicing (visible on Follow Up tool)…"
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              <label className={`text-xs font-medium block mb-1 ${viewMode ? 'text-gray-500' : 'text-gray-700'}`}>Invoice Notes</label>
+              {viewMode ? (
+                <div className="text-sm text-gray-800 whitespace-pre-wrap py-1">
+                  {watch('invoice_notes')?.trim() || <span className="text-gray-400">—</span>}
+                </div>
+              ) : (
+                <textarea {...register('invoice_notes')} rows={2} placeholder="Notes for invoicing (visible on Follow Up tool)…"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              )}
             </div>
           </Section>
 
         </div>
 
-        {/* Sticky Footer */}
-        <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
-          {mutation.isError && <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>}
-          {mutation.isSuccess && <p className="text-sm text-green-600">Saved</p>}
-          <div className="ml-auto flex gap-3">
-            <Link to="/parties" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save Changes'}
-            </Button>
+        {/* Sticky Footer — only in edit mode */}
+        {!viewMode && (
+          <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
+            {mutation.isError && <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>}
+            {mutation.isSuccess && <p className="text-sm text-green-600">Saved</p>}
+            <div className="ml-auto flex gap-3">
+              <Link to="/parties" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </form>
+      </ViewModeProvider>
+      </FormProvider>
     </AppShell>
   );
 }

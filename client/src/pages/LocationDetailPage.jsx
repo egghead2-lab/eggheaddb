@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
 import { getLocation, createLocation, updateLocation } from '../api/locations';
 import { updateProgram } from '../api/programs';
 import { useGeneralData } from '../hooks/useReferenceData';
@@ -13,10 +13,12 @@ import { AuditHistory } from '../components/AuditHistory';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
+import { Textarea } from '../components/ui/Textarea';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
+import { ViewModeProvider } from '../contexts/ViewModeContext';
 
 export default function LocationDetailPage() {
   const { id } = useParams();
@@ -41,7 +43,10 @@ export default function LocationDetailPage() {
   });
   const cmUsers = cmUsersData?.data || [];
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm();
+  const formMethods = useForm();
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = formMethods;
+
+  const [viewMode, setViewMode] = useState(!isNew);
 
   useEffect(() => {
     if (locData?.data) reset(toFormData(locData.data));
@@ -52,6 +57,7 @@ export default function LocationDetailPage() {
     onSuccess: (res) => {
       qc.invalidateQueries(['locations']);
       if (isNew && res?.id) navigate(`/locations/${res.id}`);
+      else setViewMode(true);
     },
   });
 
@@ -65,15 +71,32 @@ export default function LocationDetailPage() {
   return (
     <AppShell>
       <UnsavedChangesModal when={isDirty} />
+      <FormProvider {...formMethods}>
+      <ViewModeProvider value={viewMode}>
       <form onSubmit={handleSubmit(onSubmit)}>
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <Link to="/locations" className="text-sm text-gray-500 hover:text-[#1e3a5f]">← Locations</Link>
-          <div className="flex items-center gap-3 mt-0.5">
-            <h1 className="text-xl font-bold text-gray-900">
-              {isNew ? 'New Location' : (loc.nickname || loc.school_name || `Location #${id}`)}
-            </h1>
-            {loc.retained ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Retained</span> : null}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <div>
+            <Link to="/locations" className="text-sm text-gray-500 hover:text-[#1e3a5f]">← Locations</Link>
+            <div className="flex items-center gap-3 mt-0.5">
+              <h1 className="text-xl font-bold text-gray-900">
+                {isNew ? 'New Location' : (loc.nickname || loc.school_name || `Location #${id}`)}
+              </h1>
+              {loc.retained ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Retained</span> : null}
+            </div>
           </div>
+          {!isNew && (
+            viewMode ? (
+              <button type="button" onClick={() => setViewMode(false)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] transition-colors shadow-sm">
+                ✎ Edit
+              </button>
+            ) : (
+              <button type="button" onClick={() => { reset(toFormData(loc)); setViewMode(true); }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">
+                Cancel Edit
+              </button>
+            )
+          )}
         </div>
 
         <div className="p-6 space-y-4 pb-32">
@@ -107,9 +130,7 @@ export default function LocationDetailPage() {
               <Toggle label="Retained Client" checked={!!watch('retained')} onChange={v => setValue('retained', v ? 1 : 0, { shouldDirty: true })} />
               {!isNew && <Toggle label="Active" checked={watch('active') !== 0 && watch('active') !== '0'} onChange={v => setValue('active', v ? 1 : 0, { shouldDirty: true })} />}
               <div className="col-span-3">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Internal Notes</label>
-                <textarea {...register('internal_notes')} rows={2}
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Internal Notes" {...register('internal_notes')} rows={2} />
               </div>
             </div>
           </Section>
@@ -212,16 +233,12 @@ export default function LocationDetailPage() {
           {/* Invoicing */}
           <Section title="Invoicing" defaultOpen={true}>
             <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Invoice Type</label>
-                <select {...register('invoice_type')}
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
-                  <option value="">Not Set (defaults to 2nd Week)</option>
-                  <option value="Monthly">Monthly</option>
-                  <option value="2nd Week">2nd Week</option>
-                  <option value="After Last Class">After Last Class</option>
-                </select>
-              </div>
+              <Select label="Invoice Type" {...register('invoice_type')}>
+                <option value="">Not Set (defaults to 2nd Week)</option>
+                <option value="Monthly">Monthly</option>
+                <option value="2nd Week">2nd Week</option>
+                <option value="After Last Class">After Last Class</option>
+              </Select>
               <Toggle label="Invoice at District Level" checked={!!watch('invoice_at_district')} onChange={v => setValue('invoice_at_district', v ? 1 : 0, { shouldDirty: true })} />
             </div>
             <div className="grid grid-cols-3 gap-4 mt-4">
@@ -230,9 +247,7 @@ export default function LocationDetailPage() {
               <Input label="Invoice Contact Phone" {...register('invoice_contact_phone')} />
             </div>
             <div className="mt-4">
-              <label className="text-xs font-medium text-gray-700 block mb-1">Invoicing Notes</label>
-              <textarea {...register('invoicing_notes')} rows={3}
-                className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              <Textarea label="Invoicing Notes" {...register('invoicing_notes')} rows={3} />
             </div>
           </Section>
 
@@ -247,17 +262,13 @@ export default function LocationDetailPage() {
               </div>
               {watch('custom_flyer_required') ? (
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Custom Flyer Items Required</label>
-                  <textarea {...register('custom_flyer_items_required')} rows={2}
-                    placeholder="What needs to be included on the custom flyer?"
-                    className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                  <Textarea label="Custom Flyer Items Required" {...register('custom_flyer_items_required')} rows={2}
+                    placeholder="What needs to be included on the custom flyer?" />
                 </div>
               ) : null}
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Flyer Instructions</label>
-                <textarea {...register('flyer_instructions')} rows={2}
-                  placeholder="Anything to remember when making this location's flyer (e.g. include their logo, specific font, special wording)…"
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Flyer Instructions" {...register('flyer_instructions')} rows={2}
+                  placeholder="Anything to remember when making this location's flyer (e.g. include their logo, specific font, special wording)…" />
               </div>
             </div>
           </Section>
@@ -272,44 +283,30 @@ export default function LocationDetailPage() {
                 {(ref.parkingDifficulties || []).map(p => <option key={p.id} value={p.id}>{p.parking_difficulty_name}</option>)}
               </Select>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Parking Information</label>
-                <textarea {...register('parking_information')} rows={2} placeholder="Parking instructions, lots, street parking, etc."
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Parking Information" {...register('parking_information')} rows={2} placeholder="Parking instructions, lots, street parking, etc." />
               </div>
               <div className="flex items-end pb-1">
                 <Toggle label="Attendance Required" checked={!!watch('attendance_required')} onChange={v => setValue('attendance_required', v ? 1 : 0, { shouldDirty: true })} />
               </div>
               {watch('attendance_required') && (
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Attendance Directions</label>
-                  <textarea {...register('attendance_directions')} rows={2} placeholder="How to take attendance at this location…"
-                    className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                  <Textarea label="Attendance Directions" {...register('attendance_directions')} rows={2} placeholder="How to take attendance at this location…" />
                 </div>
               )}
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Arrival & Check-in Procedures</label>
-                <textarea {...register('arrival_checkin_procedures')} rows={2} placeholder="How to arrive and check in…"
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Arrival & Check-in Procedures" {...register('arrival_checkin_procedures')} rows={2} placeholder="How to arrive and check in…" />
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Student Pick-up & Classroom Procedures</label>
-                <textarea {...register('student_pickup_procedures')} rows={2} placeholder="How students are brought to class…"
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Student Pick-up & Classroom Procedures" {...register('student_pickup_procedures')} rows={2} placeholder="How students are brought to class…" />
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Student Dismissal Procedures</label>
-                <textarea {...register('dismissal_procedures')} rows={2} placeholder="How students are dismissed after class…"
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Student Dismissal Procedures" {...register('dismissal_procedures')} rows={2} placeholder="How students are dismissed after class…" />
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Emergency Procedures</label>
-                <textarea {...register('emergency_procedures')} rows={2} placeholder="Leave blank for standard Egghead procedures…"
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Emergency Procedures" {...register('emergency_procedures')} rows={2} placeholder="Leave blank for standard Egghead procedures…" />
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Egghead Tips for Success</label>
-                <textarea {...register('egghead_tips')} rows={2} placeholder="Behavioral tips, school-specific instructions…"
-                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+                <Textarea label="Egghead Tips for Success" {...register('egghead_tips')} rows={2} placeholder="Behavioral tips, school-specific instructions…" />
               </div>
             </div>
             {!isNew && (
@@ -371,24 +368,28 @@ export default function LocationDetailPage() {
               const invStatus = getInvoiceStatus(p);
               const current = isCurrent(p);
               return (
-                <tr key={p.id} className={current && invStatus === 'paid' ? 'bg-green-50/30' : invStatus === 'not_sent' && !current ? 'bg-red-50/30' : invStatus === 'sent' && !current ? 'bg-amber-50/30' : ''}>
+                <tr key={p.id} className={current && invStatus === 'paid' ? 'bg-green-50/30' : invStatus === 'not_sent' && !current ? 'bg-amber-50/30' : invStatus === 'sent' && !current ? 'bg-amber-50/30' : ''}>
                   <td className="px-3 py-2"><Link to={`/programs/${p.id}`} className="text-[#1e3a5f] hover:underline font-medium">{p.program_nickname}</Link></td>
                   <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
                   <td className="px-3 py-2 text-gray-600">{p.lead_professor || '—'}</td>
                   <td className="px-3 py-2 text-xs text-gray-500">{p.first_session_date ? formatDate(p.first_session_date) : '—'}{p.last_session_date ? ` — ${formatDate(p.last_session_date)}` : ''}</td>
                   <td className="px-3 py-1 text-center">
-                    <select defaultValue={invStatus}
-                      onChange={e => {
-                        const v = e.target.value;
-                        if (v === 'paid') inlineInvoiceUpdate(p.id, { invoice_paid: 1, invoice_date_sent: p.invoice_date_sent || new Date().toISOString().split('T')[0] });
-                        else if (v === 'sent') inlineInvoiceUpdate(p.id, { invoice_paid: 0, invoice_date_sent: new Date().toISOString().split('T')[0] });
-                        else inlineInvoiceUpdate(p.id, { invoice_paid: 0, invoice_date_sent: null });
-                      }}
-                      className={`rounded border px-1.5 py-0.5 text-[10px] font-medium appearance-none cursor-pointer ${statusColor[invStatus]}`}>
-                      <option value="not_sent">Not Sent</option>
-                      <option value="sent">Sent</option>
-                      <option value="paid">Paid</option>
-                    </select>
+                    {viewMode ? (
+                      <span className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium ${statusColor[invStatus]}`}>{statusLabel[invStatus]}</span>
+                    ) : (
+                      <select defaultValue={invStatus}
+                        onChange={e => {
+                          const v = e.target.value;
+                          if (v === 'paid') inlineInvoiceUpdate(p.id, { invoice_paid: 1, invoice_date_sent: p.invoice_date_sent || new Date().toISOString().split('T')[0] });
+                          else if (v === 'sent') inlineInvoiceUpdate(p.id, { invoice_paid: 0, invoice_date_sent: new Date().toISOString().split('T')[0] });
+                          else inlineInvoiceUpdate(p.id, { invoice_paid: 0, invoice_date_sent: null });
+                        }}
+                        className={`rounded border px-1.5 py-0.5 text-[10px] font-medium appearance-none cursor-pointer ${statusColor[invStatus]}`}>
+                        <option value="not_sent">Not Sent</option>
+                        <option value="sent">Sent</option>
+                        <option value="paid">Paid</option>
+                      </select>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500">{p.invoice_date_sent ? formatDate(p.invoice_date_sent) : '—'}</td>
                 </tr>
@@ -467,17 +468,21 @@ export default function LocationDetailPage() {
           {!isNew && <AuditHistory table="location" recordId={id} />}
         </div>
 
-        <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
-          {mutation.isError && <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>}
-          {mutation.isSuccess && <p className="text-sm text-green-600">Saved successfully</p>}
-          <div className="ml-auto flex gap-3">
-            <Link to="/locations" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Saving…' : 'Save Changes'}
-            </Button>
+        {!viewMode && (
+          <div className="fixed bottom-0 left-[220px] right-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center gap-4">
+            {mutation.isError && <p className="text-sm text-red-600">{mutation.error?.response?.data?.error || 'Save failed'}</p>}
+            {mutation.isSuccess && <p className="text-sm text-green-600">Saved successfully</p>}
+            <div className="ml-auto flex gap-3">
+              <Link to="/locations" className="text-sm text-gray-500 hover:text-gray-700 py-2">Discard</Link>
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </form>
+      </ViewModeProvider>
+      </FormProvider>
     </AppShell>
   );
 }
