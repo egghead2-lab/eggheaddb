@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { addSession, updateSession, deleteSession, bulkGenerateSessions } from '../api/programs';
 import { Button } from './ui/Button';
 import { formatDate, formatTime, formatCurrency } from '../lib/utils';
+import { useViewMode } from '../contexts/ViewModeContext';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -20,7 +21,7 @@ function isWrongDay(dateStr, allowedDays) {
   return dow !== null && !allowedDays.includes(dow);
 }
 
-function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDays, defaultTime, showAssistant, showObserver, onUpdate, onDelete, onDeleteAndShift, onToggleBilled }) {
+function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDays, defaultTime, showAssistant, showObserver, onUpdate, onDelete, onDeleteAndShift, onToggleBilled, viewMode }) {
   const dateStr = (s.session_date || '').split('T')[0];
   const dow = getDayOfWeek(dateStr);
   const isWrong = isWrongDay(dateStr, allowedDays);
@@ -34,6 +35,45 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
   const handleChange = (field, value) => {
     onUpdate(s.id, { [field]: value || null });
   };
+
+  if (viewMode) {
+    const profName = (pid) => {
+      if (!pid) return <span className="text-gray-300">—</span>;
+      const p = professors.find(x => String(x.id) === String(pid));
+      return p ? `${p.display_name || p.professor_nickname}${p.is_field_manager ? ' (FM)' : ''}` : `#${pid}`;
+    };
+    const lessonName = (lid) => {
+      if (!lid) return <span className="text-gray-300">—</span>;
+      const l = allLessons.find(x => String(x.id) === String(lid));
+      return l?.lesson_name || s.lesson_name || `#${lid}`;
+    };
+    const payDisplay = (pay, isFm) => {
+      if (isFm) return <span className="text-gray-400">$0</span>;
+      if (pay == null || pay === '') return <span className="text-gray-300">—</span>;
+      return `$${pay}`;
+    };
+    return (
+      <tr className={`${s.not_billed ? 'bg-gray-50 text-gray-400' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+        <td className="px-2 py-1.5 text-gray-400 text-center">{idx + 1}</td>
+        <td className="px-2 py-1.5 text-xs text-gray-700">{dateStr ? formatDate(dateStr) : '—'}</td>
+        <td className={`px-2 py-1.5 text-xs ${isWrong ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
+          {dow !== null ? DAY_NAMES[dow].slice(0, 3) : '—'}
+        </td>
+        <td className="px-2 py-1.5 text-xs text-gray-700">{s.session_time ? formatTime(s.session_time) : '—'}</td>
+        <td className="px-2 py-1.5 text-xs text-gray-700">{profName(s.professor_id)}</td>
+        <td className="px-2 py-1.5 text-xs text-right text-gray-700">{payDisplay(s.professor_pay, leadIsFM)}</td>
+        {showAssistant && <td className="px-2 py-1.5 text-xs text-gray-700">{profName(s.assistant_id)}</td>}
+        {showAssistant && <td className="px-2 py-1.5 text-xs text-right text-gray-700">{payDisplay(s.assistant_pay, assistIsFM)}</td>}
+        {showObserver && <td className="px-2 py-1.5 text-xs text-gray-700">{profName(s.observer_id)}</td>}
+        {showObserver && <td className="px-2 py-1.5 text-xs text-right text-gray-700">{payDisplay(s.observer_pay, obsIsFM)}</td>}
+        <td className="px-2 py-1.5 text-xs text-gray-700">{lessonName(s.lesson_id)}</td>
+        <td className="px-1 py-1.5 text-center text-xs">
+          {s.not_billed ? <span className="text-gray-400" title="Not billed">—</span> : <span className="text-emerald-500" title="Billed">✓</span>}
+        </td>
+        <td className="w-8"></td>
+      </tr>
+    );
+  }
 
   return (
     <tr className={`${s.not_billed ? 'bg-gray-50 text-gray-400' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
@@ -217,6 +257,7 @@ function DeleteCell({ s, idx, dateStr, onDelete, onDeleteAndShift }) {
 }
 
 export function SessionsPanel({ programId, sessions, professors, lessons, holidays, programClassId, defaultTime, program }) {
+  const viewMode = useViewMode();
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [newDate, setNewDate] = useState('');
@@ -375,7 +416,7 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
           )}
           {programDayNames && <span className="text-blue-500 text-xs">({programDayNames})</span>}
           <div className="ml-auto flex gap-2">
-            {showBulk ? (
+            {viewMode ? null : showBulk ? (
               <div className="flex items-center gap-2">
                 <input type="date" value={bulkStart} onChange={e => setBulkStart(e.target.value)}
                   className="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
@@ -426,8 +467,8 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
           </div>
         )}
 
-        {/* Column toggles — show only when the column is hidden */}
-        {(!showAssistant || !showObserver) && (
+        {/* Column toggles — show only when the column is hidden, and only in edit mode */}
+        {!viewMode && (!showAssistant || !showObserver) && (
           <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
             <span>Columns hidden:</span>
             {!showAssistant && (
@@ -473,7 +514,7 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
                   professors={professors} allLessons={lessons} filteredLessons={filteredLessons}
                   allowedDays={allowedDays} defaultTime={defaultTime}
                   showAssistant={showAssistant} showObserver={showObserver}
-                  onUpdate={handleUpdate} onDelete={handleDelete} onDeleteAndShift={handleDeleteAndShift} onToggleBilled={handleToggleBilled} />
+                  onUpdate={handleUpdate} onDelete={handleDelete} onDeleteAndShift={handleDeleteAndShift} onToggleBilled={handleToggleBilled} viewMode={viewMode} />
               ))}
             </tbody>
           </table>
