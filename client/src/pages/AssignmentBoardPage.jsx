@@ -481,9 +481,9 @@ function ProfessorLabel({ prof }) {
   return (
     <div className="bg-white border-b border-r border-gray-200 px-2 py-1 sticky left-0 z-[5] bg-white">
       <div className="flex items-center gap-1 flex-wrap cursor-pointer" onClick={() => setExpanded(v => !v)}>
-        <span className="text-[11px] font-medium leading-tight">{prof.name}</span>
+        <span className="text-[11px] font-medium leading-tight">{prof.name || '—'}</span>
         <span className={`px-1 py-0 text-[8px] font-medium rounded ${STATUS_PILL[prof.status] || 'bg-gray-100 text-gray-600'}`}
-          title={prof.status}>{prof.status.charAt(0)}</span>
+          title={prof.status || ''}>{(prof.status || '?').charAt(0)}</span>
       </div>
       <div className="flex gap-0.5 mt-0.5">
         {WEEKDAYS.map(d => (

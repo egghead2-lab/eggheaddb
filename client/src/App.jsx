@@ -18,6 +18,7 @@ import BulkInputPage from './pages/BulkInputPage';
 import ToolManagerPage from './pages/ToolManagerPage';
 import ProfessorSchedulePage from './pages/ProfessorSchedulePage';
 import AssignmentBoardPage from './pages/AssignmentBoardPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import PayrollDashboardPage from './pages/PayrollDashboardPage';
 import MiscPayPage from './pages/MiscPayPage';
 import FmDailyLogPage from './pages/FmDailyLogPage';
@@ -167,7 +168,7 @@ export default function App() {
       <Route path="/parents" element={<ProtectedRoute><ParentsPage /></ProtectedRoute>} />
       <Route path="/parents/new" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
       <Route path="/parents/:id" element={<ProtectedRoute><ParentDetailPage /></ProtectedRoute>} />
-      <Route path="/assignment-board" element={<ProtectedRoute><AssignmentBoardPage /></ProtectedRoute>} />
+      <Route path="/assignment-board" element={<ProtectedRoute><ErrorBoundary><AssignmentBoardPage /></ErrorBoundary></ProtectedRoute>} />
       <Route path="/schedule" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/schedule/:id" element={<ProtectedRoute><ProfessorSchedulePage /></ProtectedRoute>} />
       <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
