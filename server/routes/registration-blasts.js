@@ -8,7 +8,7 @@ router.use(authenticate);
 // GET /api/registration-blasts — all programs grouped by blast stage
 router.get('/', async (req, res, next) => {
   try {
-    const { days_override } = req.query;
+    const { days_override, area_id, scope } = req.query;
 
     // Get configurable settings
     const [settings] = await pool.query("SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('registration_link_days', 'open_blast_days', 'final_blast_days')");
@@ -17,6 +17,20 @@ router.get('/', async (req, res, next) => {
     const regDays = parseInt(days_override) || cfg.registration_link_days || 30;
     const openDays = cfg.open_blast_days || 21;
     const finalDays = cfg.final_blast_days || 3;
+
+    // Area scoping: scope='mine' → filter to programs whose location or area CM is the current user
+    //               area_id=<id>  → filter to a specific area
+    //               default      → all
+    const extraWhere = [];
+    const extraParams = [];
+    if (scope === 'mine') {
+      extraWhere.push('(loc.client_manager_user_id = ? OR ga.client_manager_user_id = ?)');
+      extraParams.push(req.user.userId, req.user.userId);
+    } else if (area_id) {
+      extraWhere.push('loc.geographic_area_id_online = ?');
+      extraParams.push(area_id);
+    }
+    const extraSql = extraWhere.length ? ' AND ' + extraWhere.join(' AND ') : '';
 
     // Base query: programs with payment_through_us, not cancelled, starting within range
     const [programs] = await pool.query(
@@ -37,8 +51,9 @@ router.get('/', async (req, res, next) => {
          AND prog.first_session_date IS NOT NULL
          AND prog.first_session_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
          AND (prog.last_session_date >= CURDATE() OR prog.last_session_date IS NULL)
+         ${extraSql}
        ORDER BY prog.first_session_date ASC`,
-      [regDays]
+      [regDays, ...extraParams]
     );
 
     // Categorize

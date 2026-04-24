@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { useGeneralData } from '../hooks/useReferenceData';
+import { useAuth } from '../hooks/useAuth';
 import { AppShell } from '../components/layout/AppShell';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -27,15 +29,25 @@ function daysUntil(date) {
 
 export default function EmailBlastToolPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isClientManager = user?.role === 'Client Manager';
   const [tab, setTab] = useState('link');
   const [daysOverride, setDaysOverride] = useState('');
   const [showFull, setShowFull] = useState(false);
+  const [areaScope, setAreaScope] = useState(isClientManager ? 'mine' : 'all'); // 'mine' | 'all' | <area_id string>
   const [selected, setSelected] = useState(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
 
+  const { data: refData } = useGeneralData();
+  const areas = refData?.data?.areas || [];
+
+  const scopeParams = areaScope === 'mine' ? { scope: 'mine' }
+    : areaScope === 'all' ? {}
+    : { area_id: areaScope };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['registration-blasts', daysOverride, showFull],
-    queryFn: () => api.get('/registration-blasts', { params: { days_override: daysOverride || undefined, show_full: showFull ? 1 : undefined } }).then(r => r.data),
+    queryKey: ['registration-blasts', daysOverride, showFull, areaScope],
+    queryFn: () => api.get('/registration-blasts', { params: { days_override: daysOverride || undefined, show_full: showFull ? 1 : undefined, ...scopeParams } }).then(r => r.data),
   });
 
   const markMutation = useMutation({
@@ -75,6 +87,14 @@ export default function EmailBlastToolPage() {
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-gray-900">Email Blast Tool</h1>
           <div className="flex items-center gap-3 text-sm text-gray-500">
+            <select value={areaScope} onChange={e => setAreaScope(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1 text-sm">
+              <option value="mine">My Areas</option>
+              <option value="all">All Areas</option>
+              <optgroup label="Single area">
+                {areas.map(a => <option key={a.id} value={String(a.id)}>{a.geographic_area_name}</option>)}
+              </optgroup>
+            </select>
             <label className="flex items-center gap-1.5 cursor-pointer text-xs" title="Include full classes so you can diagnose their blast state">
               <input type="checkbox" checked={showFull} onChange={e => setShowFull(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
