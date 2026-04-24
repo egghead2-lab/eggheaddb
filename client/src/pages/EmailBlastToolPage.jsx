@@ -29,12 +29,13 @@ export default function EmailBlastToolPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState('link');
   const [daysOverride, setDaysOverride] = useState('');
+  const [showFull, setShowFull] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['registration-blasts', daysOverride],
-    queryFn: () => api.get('/registration-blasts', { params: { days_override: daysOverride || undefined } }).then(r => r.data),
+    queryKey: ['registration-blasts', daysOverride, showFull],
+    queryFn: () => api.get('/registration-blasts', { params: { days_override: daysOverride || undefined, show_full: showFull ? 1 : undefined } }).then(r => r.data),
   });
 
   const markMutation = useMutation({
@@ -73,12 +74,19 @@ export default function EmailBlastToolPage() {
       <div className="bg-white border-b border-gray-200 px-6 pt-4 pb-0">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-gray-900">Email Blast Tool</h1>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span>Show programs starting within</span>
-            <input type="number" value={daysOverride || cfg.regDays || 30}
-              onChange={e => setDaysOverride(e.target.value)}
-              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-center" />
-            <span>days</span>
+          <div className="flex items-center gap-3 text-sm text-gray-500">
+            <label className="flex items-center gap-1.5 cursor-pointer text-xs" title="Include full classes so you can diagnose their blast state">
+              <input type="checkbox" checked={showFull} onChange={e => setShowFull(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+              <span>Show full</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span>Show programs starting within</span>
+              <input type="number" value={daysOverride || cfg.regDays || 30}
+                onChange={e => setDaysOverride(e.target.value)}
+                className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-center" />
+              <span>days</span>
+            </div>
           </div>
         </div>
         <div className="flex gap-1">

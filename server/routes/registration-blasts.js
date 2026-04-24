@@ -43,12 +43,17 @@ router.get('/', async (req, res, next) => {
 
     // Categorize
     const isFull = (p) => p.maximum_students && p.number_enrolled >= p.maximum_students;
+    const showFull = req.query.show_full === '1' || req.query.show_full === 'true';
+    // Tag each program with its "full" state so the UI can show a badge
+    programs.forEach(p => { p.is_full = isFull(p) ? 1 : 0; });
+
+    const notFullOrShow = p => showFull || !isFull(p);
 
     const needsLink = programs.filter(p => !p.registration_opened_online);
-    const needsOpen = programs.filter(p => p.registration_opened_online && !p.open_blast_sent && !isFull(p) && daysUntil(p.first_session_date) <= openDays);
-    const needs2Week = programs.filter(p => p.registration_opened_online && p.open_blast_sent && !p.two_week_blast_sent && !isFull(p) && daysUntil(p.first_session_date) <= 14);
-    const needs1Week = programs.filter(p => p.registration_opened_online && p.two_week_blast_sent && !p.one_week_blast_sent && !isFull(p) && daysUntil(p.first_session_date) <= 7);
-    const needsFinal = programs.filter(p => p.registration_opened_online && p.one_week_blast_sent && !p.final_blast_sent && !isFull(p) && daysUntil(p.first_session_date) <= finalDays);
+    const needsOpen = programs.filter(p => p.registration_opened_online && !p.open_blast_sent && notFullOrShow(p) && daysUntil(p.first_session_date) <= openDays);
+    const needs2Week = programs.filter(p => p.registration_opened_online && p.open_blast_sent && !p.two_week_blast_sent && notFullOrShow(p) && daysUntil(p.first_session_date) <= 14);
+    const needs1Week = programs.filter(p => p.registration_opened_online && p.two_week_blast_sent && !p.one_week_blast_sent && notFullOrShow(p) && daysUntil(p.first_session_date) <= 7);
+    const needsFinal = programs.filter(p => p.registration_opened_online && p.one_week_blast_sent && !p.final_blast_sent && notFullOrShow(p) && daysUntil(p.first_session_date) <= finalDays);
 
     res.json({
       success: true,
