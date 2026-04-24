@@ -13,7 +13,7 @@ export function CopyableTable({ children, className = '' }) {
       <div className="flex justify-end mb-1">
         <CopyTableButton tableRef={ref} />
       </div>
-      <div ref={ref}>
+      <div ref={ref} className="overflow-x-auto">
         {children}
       </div>
     </div>
