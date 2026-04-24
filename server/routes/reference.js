@@ -771,6 +771,29 @@ router.get('/bug-reports', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// PUT /bug-reports/amounts — must come BEFORE PUT /bug-reports/:id or Express captures "amounts" as an id
+router.put('/bug-reports/amounts', authenticate, async (req, res, next) => {
+  try {
+    if (!['Admin', 'CEO'].includes(req.user.role)) return res.status(403).json({ success: false, error: 'Admin only' });
+    const map = {
+      bug_minor: 'bug_bounty_minor_amount',
+      bug_major: 'bug_bounty_major_amount',
+      idea_minor: 'idea_bounty_minor_amount',
+      idea_major: 'idea_bounty_major_amount',
+    };
+    for (const [k, setting] of Object.entries(map)) {
+      if (req.body[k] !== undefined) {
+        await pool.query(
+          `INSERT INTO app_settings (setting_key, setting_value, updated_by) VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)`,
+          [setting, String(req.body[k]), req.user.name || 'admin']
+        );
+      }
+    }
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 router.put('/bug-reports/:id', authenticate, async (req, res, next) => {
   try {
     const { status, fixed, category } = req.body;
@@ -978,28 +1001,6 @@ router.get('/bug-reports/amounts', authenticate, async (req, res, next) => {
       if (r.setting_key === 'idea_bounty_major_amount') out.idea_major = v;
     });
     res.json({ success: true, data: out });
-  } catch (err) { next(err); }
-});
-
-router.put('/bug-reports/amounts', authenticate, async (req, res, next) => {
-  try {
-    if (!['Admin', 'CEO'].includes(req.user.role)) return res.status(403).json({ success: false, error: 'Admin only' });
-    const map = {
-      bug_minor: 'bug_bounty_minor_amount',
-      bug_major: 'bug_bounty_major_amount',
-      idea_minor: 'idea_bounty_minor_amount',
-      idea_major: 'idea_bounty_major_amount',
-    };
-    for (const [k, setting] of Object.entries(map)) {
-      if (req.body[k] !== undefined) {
-        await pool.query(
-          `INSERT INTO app_settings (setting_key, setting_value, updated_by) VALUES (?, ?, ?)
-           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)`,
-          [setting, String(req.body[k]), req.user.name || 'admin']
-        );
-      }
-    }
-    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
