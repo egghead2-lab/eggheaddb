@@ -944,10 +944,13 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
       r.award_amount = awardMap[r.user_id] || 0;  // shown separately, not in ranking
     });
 
-    // Cap approval earnings at $100 per person
+    // Cap approval earnings at $100 per person (for per-row display + ranking)
     rows.forEach(r => { r.earnings = Math.min(r.earnings, 100); });
-    const totalPayout = Math.min(rows.reduce((sum, r) => sum + r.earnings, 0), 1000);
-    res.json({ success: true, data: rows, totalPayout });
+    // Total payout = all leaderboard earnings + all bonus awards this month, capped at $1000
+    const earningsTotal = rows.reduce((sum, r) => sum + r.earnings, 0);
+    const awardsTotal = awards.reduce((sum, a) => sum + (parseFloat(a.award_total) || 0), 0);
+    const totalPayout = Math.min(earningsTotal + awardsTotal, 1000);
+    res.json({ success: true, data: rows, totalPayout, earningsTotal, awardsTotal });
   } catch (err) { next(err); }
 });
 
