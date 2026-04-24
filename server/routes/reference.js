@@ -735,11 +735,12 @@ router.get('/weekly-overview', authenticate, async (req, res, next) => {
 
 router.post('/bug-reports', authenticate, async (req, res, next) => {
   try {
-    const { description, page_url, page_name } = req.body;
+    const { description, page_url, page_name, category } = req.body;
     if (!description?.trim()) return res.status(400).json({ success: false, error: 'Description required' });
+    const cat = category === 'idea' ? 'idea' : 'bug';
     const [result] = await pool.query(
-      'INSERT INTO bug_report (description, page_url, page_name, submitted_by_user_id, submitted_by_name) VALUES (?,?,?,?,?)',
-      [description.trim(), page_url || null, page_name || null, req.user.userId, req.user.name]
+      'INSERT INTO bug_report (description, page_url, page_name, category, submitted_by_user_id, submitted_by_name) VALUES (?,?,?,?,?,?)',
+      [description.trim(), page_url || null, page_name || null, cat, req.user.userId, req.user.name]
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) { next(err); }
@@ -747,68 +748,141 @@ router.post('/bug-reports', authenticate, async (req, res, next) => {
 
 router.get('/bug-reports', authenticate, async (req, res, next) => {
   try {
-    const { status } = req.query;
+    const { status, category } = req.query;
     let where = '1=1';
     const params = [];
     if (status) { where += ' AND status = ?'; params.push(status); }
+    if (category) { where += ' AND category = ?'; params.push(category); }
     const [rows] = await pool.query(`SELECT * FROM bug_report WHERE ${where} ORDER BY ts_inserted DESC LIMIT 500`, params);
+    // Attach message counts
+    if (rows.length) {
+      const ids = rows.map(r => r.id);
+      const [msgs] = await pool.query(
+        `SELECT bug_report_id, COUNT(*) AS msg_count, MAX(ts_inserted) AS last_msg_at
+         FROM bug_report_message WHERE active = 1 AND bug_report_id IN (${ids.map(() => '?').join(',')})
+         GROUP BY bug_report_id`,
+        ids
+      );
+      const map = {};
+      msgs.forEach(m => { map[m.bug_report_id] = m; });
+      rows.forEach(r => { r.msg_count = map[r.id]?.msg_count || 0; r.last_msg_at = map[r.id]?.last_msg_at || null; });
+    }
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 });
 
 router.put('/bug-reports/:id', authenticate, async (req, res, next) => {
   try {
-    const { status, admin_notes, fixed } = req.body;
-
-    // Snapshot before-state so we can detect a new/changed reply
-    const [[before]] = await pool.query(
-      'SELECT submitted_by_user_id, description, admin_notes FROM bug_report WHERE id = ?',
-      [req.params.id]
-    );
+    const { status, fixed, category } = req.body;
+    const [[before]] = await pool.query('SELECT id FROM bug_report WHERE id = ?', [req.params.id]);
     if (!before) return res.status(404).json({ success: false, error: 'Bug not found' });
 
     const sets = []; const vals = [];
     if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
-    if (admin_notes !== undefined) { sets.push('admin_notes = ?'); vals.push(admin_notes); }
+    if (category !== undefined) { sets.push('category = ?'); vals.push(category === 'idea' ? 'idea' : 'bug'); }
     if (fixed === true) { sets.push('fixed_at = NOW()'); }
     if (fixed === false) { sets.push('fixed_at = NULL'); }
     if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
     await pool.query(`UPDATE bug_report SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
 
-    // If admin_notes changed to a new non-empty value, email the bug submitter
-    const newNotes = (admin_notes || '').trim();
-    const oldNotes = (before.admin_notes || '').trim();
-    if (admin_notes !== undefined && newNotes && newNotes !== oldNotes && before.submitted_by_user_id) {
-      (async () => {
-        try {
-          const { sendEmail } = require('../lib/gmail');
-          // Sender = admin who made the change; recipient = bug submitter
-          const [[sender]] = await pool.query(
-            'SELECT google_refresh_token, email_signature FROM user WHERE id = ?', [req.user.userId]
-          );
-          const [[recipient]] = await pool.query(
-            'SELECT email, first_name FROM user WHERE id = ? AND active = 1', [before.submitted_by_user_id]
-          );
-          if (!sender?.google_refresh_token || !recipient?.email) return;
-          const truncatedDesc = (before.description || '').substring(0, 400);
-          const htmlBody = `
-            <p>Hey ${recipient.first_name || ''},</p>
-            <p>Nick replied to your bug report:</p>
-            <blockquote style="border-left:3px solid #1e3a5f;padding:8px 12px;background:#f5f7fa;color:#333">${newNotes.replace(/\n/g, '<br>')}</blockquote>
-            <p style="color:#666;font-size:12px"><strong>Your original report:</strong><br>${truncatedDesc.replace(/\n/g, '<br>')}${before.description?.length > 400 ? '…' : ''}</p>
-            <p style="font-size:12px"><a href="${process.env.CLIENT_URL || 'https://db.professoregghead.com'}/bug-bounty">View in Bug Bounty →</a></p>
-          `;
-          await sendEmail({
-            refreshToken: sender.google_refresh_token,
-            to: recipient.email,
-            subject: 'Response to your bug report',
-            htmlBody,
-            signature: sender.email_signature,
-          });
-        } catch (e) { console.warn('[bug-reply email] non-fatal:', e.message); }
-      })();
+// ── Threaded messages on a bug report ──────────────────────────────
+// GET /api/bug-reports/:id/messages — anyone can read messages on their own bug; admin can read any
+router.get('/bug-reports/:id/messages', authenticate, async (req, res, next) => {
+  try {
+    const [[bug]] = await pool.query('SELECT submitted_by_user_id FROM bug_report WHERE id = ?', [req.params.id]);
+    if (!bug) return res.status(404).json({ success: false, error: 'Bug not found' });
+    const isAdmin = ['Admin', 'CEO'].includes(req.user.role);
+    if (!isAdmin && bug.submitted_by_user_id !== req.user.userId) {
+      return res.status(403).json({ success: false, error: 'Not your bug' });
+    }
+    const [rows] = await pool.query(
+      `SELECT m.*, CONCAT(u.first_name, ' ', u.last_name) AS author_name
+       FROM bug_report_message m LEFT JOIN user u ON u.id = m.user_id
+       WHERE m.bug_report_id = ? AND m.active = 1
+       ORDER BY m.ts_inserted ASC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/bug-reports/:id/messages — post a reply. Admins or the original submitter.
+router.post('/bug-reports/:id/messages', authenticate, async (req, res, next) => {
+  try {
+    const { body } = req.body;
+    if (!body?.trim()) return res.status(400).json({ success: false, error: 'Message body required' });
+    const [[bug]] = await pool.query(
+      'SELECT id, submitted_by_user_id, submitted_by_name, description FROM bug_report WHERE id = ?',
+      [req.params.id]
+    );
+    if (!bug) return res.status(404).json({ success: false, error: 'Bug not found' });
+    const isAdmin = ['Admin', 'CEO'].includes(req.user.role);
+    if (!isAdmin && bug.submitted_by_user_id !== req.user.userId) {
+      return res.status(403).json({ success: false, error: 'Not your bug' });
     }
 
+    const fromAdmin = isAdmin ? 1 : 0;
+    const [result] = await pool.query(
+      `INSERT INTO bug_report_message (bug_report_id, user_id, body, from_admin) VALUES (?, ?, ?, ?)`,
+      [req.params.id, req.user.userId, body.trim(), fromAdmin]
+    );
+    // Update the last_admin_reply_at timestamp so we can tell at a glance when admin last responded
+    if (fromAdmin) {
+      await pool.query(`UPDATE bug_report SET last_admin_reply_at = NOW() WHERE id = ?`, [req.params.id]);
+    }
+
+    // Email the other party
+    (async () => {
+      try {
+        const { sendEmail } = require('../lib/gmail');
+        const base = process.env.CLIENT_URL || 'https://db.professoregghead.com';
+        const truncatedDesc = (bug.description || '').substring(0, 400);
+        if (fromAdmin && bug.submitted_by_user_id) {
+          // Admin replied → email the submitter
+          const [[sender]] = await pool.query('SELECT google_refresh_token, email_signature, first_name FROM user WHERE id = ?', [req.user.userId]);
+          const [[recipient]] = await pool.query('SELECT email, first_name FROM user WHERE id = ? AND active = 1', [bug.submitted_by_user_id]);
+          if (!sender?.google_refresh_token || !recipient?.email) return;
+          const html = `
+            <p>Hey ${recipient.first_name || ''},</p>
+            <p>${sender.first_name || 'Nick'} replied to your bug report:</p>
+            <blockquote style="border-left:3px solid #1e3a5f;padding:8px 12px;background:#f5f7fa;color:#333">${body.trim().replace(/\n/g, '<br>')}</blockquote>
+            <p><strong>You can reply directly in Bug Bounty</strong> to keep the thread going — the admins will be notified.</p>
+            <p style="font-size:12px"><a href="${base}/bug-bounty">Open your bug in Bug Bounty →</a></p>
+            <p style="color:#666;font-size:11px"><strong>Your original report:</strong><br>${truncatedDesc.replace(/\n/g, '<br>')}${bug.description?.length > 400 ? '…' : ''}</p>
+          `;
+          await sendEmail({ refreshToken: sender.google_refresh_token, to: recipient.email, subject: 'Response to your bug report', htmlBody: html, signature: sender.email_signature });
+        } else if (!fromAdmin) {
+          // Submitter replied → email all admins (find admins with refresh tokens and pick the first one as sender/receiver)
+          const [admins] = await pool.query(`SELECT u.id, u.email, u.first_name, u.google_refresh_token, u.email_signature FROM user u JOIN role r ON r.id = u.role_id WHERE r.role_name IN ('Admin','CEO') AND u.active = 1 AND u.email IS NOT NULL`);
+          if (admins.length === 0) return;
+          const sender = admins.find(a => a.google_refresh_token) || admins[0];
+          if (!sender.google_refresh_token) return;
+          const recipients = admins.map(a => a.email).filter(Boolean).join(',');
+          const html = `
+            <p>${bug.submitted_by_name || 'Someone'} replied to their bug report:</p>
+            <blockquote style="border-left:3px solid #1e3a5f;padding:8px 12px;background:#f5f7fa;color:#333">${body.trim().replace(/\n/g, '<br>')}</blockquote>
+            <p style="font-size:12px"><a href="${base}/bug-bounty">Open in Bug Bounty →</a></p>
+            <p style="color:#666;font-size:11px"><strong>Original report:</strong><br>${truncatedDesc.replace(/\n/g, '<br>')}${bug.description?.length > 400 ? '…' : ''}</p>
+          `;
+          await sendEmail({ refreshToken: sender.google_refresh_token, to: recipients, subject: `Bug reply from ${bug.submitted_by_name || 'user'}`, htmlBody: html });
+        }
+      } catch (e) { console.warn('[bug-message email] non-fatal:', e.message); }
+    })();
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+router.delete('/bug-reports/messages/:msgId', authenticate, async (req, res, next) => {
+  try {
+    const isAdmin = ['Admin', 'CEO'].includes(req.user.role);
+    const [[msg]] = await pool.query('SELECT user_id FROM bug_report_message WHERE id = ?', [req.params.msgId]);
+    if (!msg) return res.status(404).json({ success: false, error: 'Message not found' });
+    if (!isAdmin && msg.user_id !== req.user.userId) return res.status(403).json({ success: false, error: 'Not yours' });
+    await pool.query('UPDATE bug_report_message SET active = 0 WHERE id = ?', [req.params.msgId]);
     res.json({ success: true });
   } catch (err) { next(err); }
 });
@@ -823,17 +897,41 @@ router.delete('/bug-reports/:id', authenticate, async (req, res, next) => {
 // Leaderboard
 router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
   try {
+    // Read configurable award amounts per category
+    const [settings] = await pool.query(
+      `SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN
+        ('bug_bounty_minor_amount','bug_bounty_major_amount','idea_bounty_minor_amount','idea_bounty_major_amount')`
+    );
+    const sMap = {};
+    settings.forEach(s => { sMap[s.setting_key] = parseFloat(s.setting_value) || 0; });
+    const bugMinor = sMap.bug_bounty_minor_amount ?? 2;
+    const bugMajor = sMap.bug_bounty_major_amount ?? 4;
+    const ideaMinor = sMap.idea_bounty_minor_amount ?? 1;
+    const ideaMajor = sMap.idea_bounty_major_amount ?? 3;
+
     const [rows] = await pool.query(
       `SELECT submitted_by_name AS name, submitted_by_user_id AS user_id,
-              SUM(CASE WHEN status = 'approved_minor' THEN 1 ELSE 0 END) AS minor_count,
-              SUM(CASE WHEN status = 'approved_major' THEN 1 ELSE 0 END) AS major_count,
-              SUM(CASE WHEN status = 'approved_minor' THEN 2 WHEN status = 'approved_major' THEN 4 ELSE 0 END) AS earnings,
+              SUM(CASE WHEN status = 'approved_minor' AND category = 'bug' THEN 1 ELSE 0 END) AS bug_minor_count,
+              SUM(CASE WHEN status = 'approved_major' AND category = 'bug' THEN 1 ELSE 0 END) AS bug_major_count,
+              SUM(CASE WHEN status = 'approved_minor' AND category = 'idea' THEN 1 ELSE 0 END) AS idea_minor_count,
+              SUM(CASE WHEN status = 'approved_major' AND category = 'idea' THEN 1 ELSE 0 END) AS idea_major_count,
               COUNT(*) AS total_submitted
        FROM bug_report
        WHERE MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())
-       GROUP BY submitted_by_user_id, submitted_by_name
-       ORDER BY earnings DESC`
+       GROUP BY submitted_by_user_id, submitted_by_name`
     );
+    rows.forEach(r => {
+      r.bug_minor_count = parseInt(r.bug_minor_count) || 0;
+      r.bug_major_count = parseInt(r.bug_major_count) || 0;
+      r.idea_minor_count = parseInt(r.idea_minor_count) || 0;
+      r.idea_major_count = parseInt(r.idea_major_count) || 0;
+      // Backwards-compat aggregates
+      r.minor_count = r.bug_minor_count + r.idea_minor_count;
+      r.major_count = r.bug_major_count + r.idea_major_count;
+      r.earnings = (r.bug_minor_count * bugMinor) + (r.bug_major_count * bugMajor)
+                 + (r.idea_minor_count * ideaMinor) + (r.idea_major_count * ideaMajor);
+    });
+    rows.sort((a, b) => b.earnings - a.earnings);
     // Track award amounts per user for display only (NOT included in leaderboard earnings/ranking)
     const [awards] = await pool.query(
       `SELECT user_id, SUM(amount) AS award_total FROM bug_bounty_award
@@ -843,7 +941,6 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
     const awardMap = {};
     awards.forEach(a => { awardMap[a.user_id] = parseFloat(a.award_total) || 0; });
     rows.forEach(r => {
-      r.earnings = parseInt(r.earnings);  // earnings stays as bug-approvals only
       r.award_amount = awardMap[r.user_id] || 0;  // shown separately, not in ranking
     });
 
@@ -859,6 +956,47 @@ router.get('/bug-reports/awards', authenticate, async (req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT * FROM bug_bounty_award ORDER BY ts_inserted DESC');
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET/PUT the configurable award amounts
+router.get('/bug-reports/amounts', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN
+        ('bug_bounty_minor_amount','bug_bounty_major_amount','idea_bounty_minor_amount','idea_bounty_major_amount')`
+    );
+    const out = { bug_minor: 2, bug_major: 4, idea_minor: 1, idea_major: 3 };
+    rows.forEach(r => {
+      const v = parseFloat(r.setting_value) || 0;
+      if (r.setting_key === 'bug_bounty_minor_amount') out.bug_minor = v;
+      if (r.setting_key === 'bug_bounty_major_amount') out.bug_major = v;
+      if (r.setting_key === 'idea_bounty_minor_amount') out.idea_minor = v;
+      if (r.setting_key === 'idea_bounty_major_amount') out.idea_major = v;
+    });
+    res.json({ success: true, data: out });
+  } catch (err) { next(err); }
+});
+
+router.put('/bug-reports/amounts', authenticate, async (req, res, next) => {
+  try {
+    if (!['Admin', 'CEO'].includes(req.user.role)) return res.status(403).json({ success: false, error: 'Admin only' });
+    const map = {
+      bug_minor: 'bug_bounty_minor_amount',
+      bug_major: 'bug_bounty_major_amount',
+      idea_minor: 'idea_bounty_minor_amount',
+      idea_major: 'idea_bounty_major_amount',
+    };
+    for (const [k, setting] of Object.entries(map)) {
+      if (req.body[k] !== undefined) {
+        await pool.query(
+          `INSERT INTO app_settings (setting_key, setting_value, updated_by) VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)`,
+          [setting, String(req.body[k]), req.user.name || 'admin']
+        );
+      }
+    }
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

@@ -9,7 +9,7 @@ import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatCurrency } from '../lib/utils';
 
 const STATUS_COLORS = {
   new: 'bg-blue-100 text-blue-700',
@@ -18,15 +18,19 @@ const STATUS_COLORS = {
   rejected: 'bg-gray-100 text-gray-400',
   fixed: 'bg-emerald-100 text-emerald-700',
 };
-const STATUS_LABELS = { new: 'New', approved_minor: 'Minor ($2)', approved_major: 'Major ($4)', rejected: 'Rejected', fixed: 'Fixed' };
+
+const BUG_LABELS = { new: 'New', approved_minor: 'Minor ($2)', approved_major: 'Major ($4)', rejected: 'Rejected', fixed: 'Fixed' };
+const IDEA_LABELS = { new: 'New', approved_minor: 'Minor QOL', approved_major: 'Major QOL', rejected: 'Rejected', fixed: 'Implemented' };
 
 export default function BugBountyPage() {
   const { user } = useAuth();
   const isAdmin = ['Admin', 'CEO'].includes(user?.role);
   const qc = useQueryClient();
+  const [tab, setTab] = useState('bug');  // 'bug' | 'idea'
   const [statusFilter, setStatusFilter] = useState('');
   const [showClosed, setShowClosed] = useState(false);
   const [confirmPay, setConfirmPay] = useState(false);
+  const [showAmounts, setShowAmounts] = useState(false);
 
   const { data: lbData } = useQuery({
     queryKey: ['bug-leaderboard'],
@@ -35,31 +39,38 @@ export default function BugBountyPage() {
   const leaderboard = lbData?.data || [];
   const totalPayout = lbData?.totalPayout || 0;
 
+  const { data: amountsData } = useQuery({
+    queryKey: ['bug-amounts'],
+    queryFn: () => api.get('/bug-reports/amounts').then(r => r.data),
+  });
+  const amounts = amountsData?.data || { bug_minor: 2, bug_major: 4, idea_minor: 1, idea_major: 3 };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['bug-reports', statusFilter],
-    queryFn: () => api.get('/bug-reports', { params: { status: statusFilter || undefined } }).then(r => r.data),
+    queryKey: ['bug-reports', statusFilter, tab],
+    queryFn: () => api.get('/bug-reports', { params: { status: statusFilter || undefined, category: tab } }).then(r => r.data),
   });
   const allBugs = data?.data || [];
 
   const updateMutation = useMutation({
     mutationFn: ({ id, ...data }) => api.put(`/bug-reports/${id}`, data),
-    onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bug-reports'] }); qc.invalidateQueries({ queryKey: ['bug-leaderboard'] }); },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/bug-reports/${id}`),
-    onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bug-reports'] }); qc.invalidateQueries({ queryKey: ['bug-leaderboard'] }); },
   });
 
   const markPaidMutation = useMutation({
     mutationFn: () => api.post('/bug-reports/mark-paid'),
-    onSuccess: () => { qc.invalidateQueries(['bug-reports']); qc.invalidateQueries(['bug-leaderboard']); setConfirmPay(false); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bug-reports'] }); qc.invalidateQueries({ queryKey: ['bug-leaderboard'] }); setConfirmPay(false); },
   });
 
-  // Split active vs closed — fixed is now a separate flag, not a status
   const activeBugs = allBugs.filter(b => !b.fixed_at && b.status !== 'rejected');
   const closedBugs = allBugs.filter(b => b.fixed_at || b.status === 'rejected');
   const unpaidCount = allBugs.filter(b => ['approved_minor', 'approved_major'].includes(b.status) && !b.paid_at).length;
+
+  const labelsForTab = tab === 'idea' ? IDEA_LABELS : BUG_LABELS;
 
   return (
     <AppShell>
@@ -79,18 +90,40 @@ export default function BugBountyPage() {
               </Button>
             )
           )}
+          {isAdmin && (
+            <button type="button" onClick={() => setShowAmounts(v => !v)}
+              className="text-[10px] px-2 py-0.5 rounded border border-gray-200 text-gray-500 hover:border-[#1e3a5f] hover:text-[#1e3a5f]">
+              Award amounts
+            </button>
+          )}
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36">
             <option value="">All</option>
             <option value="new">New</option>
-            <option value="approved_minor">Minor</option>
-            <option value="approved_major">Major</option>
-            <option value="fixed">Fixed</option>
+            <option value="approved_minor">{tab === 'idea' ? 'Minor QOL' : 'Minor'}</option>
+            <option value="approved_major">{tab === 'idea' ? 'Major QOL' : 'Major'}</option>
+            <option value="fixed">{tab === 'idea' ? 'Implemented' : 'Fixed'}</option>
             <option value="rejected">Rejected</option>
           </Select>
         </div>
       } />
 
       <div className="p-6">
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4 border-b border-gray-200">
+          {[
+            { key: 'bug', label: 'Bugs' },
+            { key: 'idea', label: 'Ideas / QOL' },
+          ].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t.key ? 'border-[#1e3a5f] text-[#1e3a5f]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Admin: edit award amounts */}
+        {isAdmin && showAmounts && <AmountsEditor amounts={amounts} onClose={() => setShowAmounts(false)} />}
+
         {/* Leaderboard */}
         <div className="bg-white rounded-lg border border-gray-200 mb-6">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
@@ -99,7 +132,7 @@ export default function BugBountyPage() {
           </div>
           <div className="p-4">
             {leaderboard.length === 0 ? (
-              <div className="text-sm text-gray-400 text-center py-4">No approved bugs this month yet</div>
+              <div className="text-sm text-gray-400 text-center py-4">No approved items this month yet</div>
             ) : (
               <div className="space-y-2">
                 {leaderboard.map((entry, i) => (
@@ -110,9 +143,10 @@ export default function BugBountyPage() {
                     <div className="flex-1">
                       <div className="text-sm font-medium text-gray-800">{entry.name}</div>
                       <div className="text-xs text-gray-400">
-                        {entry.minor_count > 0 && `${entry.minor_count} minor`}
-                        {entry.minor_count > 0 && entry.major_count > 0 && ' · '}
-                        {entry.major_count > 0 && `${entry.major_count} major`}
+                        {entry.bug_minor_count > 0 && `${entry.bug_minor_count} bug-minor`}
+                        {entry.bug_major_count > 0 && (entry.bug_minor_count ? ' · ' : '') + `${entry.bug_major_count} bug-major`}
+                        {entry.idea_minor_count > 0 && ((entry.bug_minor_count || entry.bug_major_count) ? ' · ' : '') + `${entry.idea_minor_count} idea-minor`}
+                        {entry.idea_major_count > 0 && ((entry.bug_minor_count || entry.bug_major_count || entry.idea_minor_count) ? ' · ' : '') + `${entry.idea_major_count} idea-major`}
                         {' · '}{entry.total_submitted} submitted
                       </div>
                     </div>
@@ -124,37 +158,36 @@ export default function BugBountyPage() {
           </div>
         </div>
 
-        {/* Admin Awards */}
         {isAdmin && <AwardSection />}
 
-        {/* Active bugs */}
+        {/* Active */}
         {isLoading ? (
           <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>
         ) : activeBugs.length === 0 && closedBugs.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">No bug reports</div>
+          <div className="text-center py-12 text-gray-400 text-sm">No {tab === 'idea' ? 'ideas' : 'bug reports'} yet</div>
         ) : (
           <>
             {activeBugs.length > 0 && (
               <div className="space-y-2 mb-6">
                 {activeBugs.map(b => (
-                  <BugCard key={b.id} bug={b} isAdmin={isAdmin}
+                  <BugCard key={b.id} bug={b} isAdmin={isAdmin} currentUserId={user?.id}
+                    labels={labelsForTab} tab={tab}
                     onUpdate={updateMutation} onDelete={deleteMutation} />
                 ))}
               </div>
             )}
-
-            {/* Closed bugs — collapsible */}
             {closedBugs.length > 0 && (
               <div>
                 <button onClick={() => setShowClosed(!showClosed)}
                   className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 mb-2">
                   <span>{showClosed ? '▾' : '▸'}</span>
-                  <span>{closedBugs.length} fixed/rejected bug{closedBugs.length !== 1 ? 's' : ''}</span>
+                  <span>{closedBugs.length} fixed/rejected {tab === 'idea' ? 'idea' : 'bug'}{closedBugs.length !== 1 ? 's' : ''}</span>
                 </button>
                 {showClosed && (
                   <div className="space-y-2 opacity-60">
                     {closedBugs.map(b => (
-                      <BugCard key={b.id} bug={b} isAdmin={isAdmin}
+                      <BugCard key={b.id} bug={b} isAdmin={isAdmin} currentUserId={user?.id}
+                        labels={labelsForTab} tab={tab}
                         onUpdate={updateMutation} onDelete={deleteMutation} />
                     ))}
                   </div>
@@ -168,20 +201,19 @@ export default function BugBountyPage() {
   );
 }
 
-function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
-  const [responding, setResponding] = useState(false);
-  const [notes, setNotes] = useState(b.admin_notes || '');
-
-  const saveNotes = () => {
-    onUpdate.mutate({ id: b.id, admin_notes: notes });
-    setResponding(false);
-  };
+function BugCard({ bug: b, isAdmin, currentUserId, labels, tab, onUpdate, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const isOwn = currentUserId && b.submitted_by_user_id === currentUserId;
+  const canMessage = isAdmin || isOwn;
+  const minorStatusLabel = tab === 'idea' ? 'Minor QOL' : 'Minor';
+  const majorStatusLabel = tab === 'idea' ? 'Major QOL' : 'Major';
+  const fixedLabel = tab === 'idea' ? 'Implemented' : 'Fixed';
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
-          <div className="text-sm text-gray-800">{b.description}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-gray-800 whitespace-pre-wrap">{b.description}</div>
           <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
             <span>{b.submitted_by_name}</span>
             <span>{formatDate(b.ts_inserted)}</span>
@@ -194,18 +226,18 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${STATUS_COLORS[b.status]}`}>
-            {STATUS_LABELS[b.status]}
+            {labels[b.status]}
           </span>
-          {b.fixed_at && <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700">Fixed</span>}
+          {b.fixed_at && <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700">{fixedLabel}</span>}
           {isAdmin && (
             <div className="flex gap-1">
               {b.status !== 'approved_minor' && (
                 <button onClick={() => onUpdate.mutate({ id: b.id, status: 'approved_minor' })}
-                  className="text-[10px] text-green-600 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-50">Minor</button>
+                  className="text-[10px] text-green-600 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-50">{minorStatusLabel}</button>
               )}
               {b.status !== 'approved_major' && (
                 <button onClick={() => onUpdate.mutate({ id: b.id, status: 'approved_major' })}
-                  className="text-[10px] text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded hover:bg-violet-50">Major</button>
+                  className="text-[10px] text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded hover:bg-violet-50">{majorStatusLabel}</button>
               )}
               {b.status !== 'rejected' && (
                 <button onClick={() => onUpdate.mutate({ id: b.id, status: 'rejected' })}
@@ -213,19 +245,15 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
               )}
               {!b.fixed_at ? (
                 <button onClick={() => onUpdate.mutate({ id: b.id, fixed: true })}
-                  className="text-[10px] text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded hover:bg-emerald-50">Fixed</button>
+                  className="text-[10px] text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded hover:bg-emerald-50">{fixedLabel}</button>
               ) : (
                 <button onClick={() => onUpdate.mutate({ id: b.id, fixed: false })}
-                  className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Unfixed</button>
+                  className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Un-{fixedLabel.toLowerCase()}</button>
               )}
               {b.status !== 'new' && (
                 <button onClick={() => onUpdate.mutate({ id: b.id, status: 'new' })}
                   className="text-[10px] text-blue-500 border border-blue-200 px-1.5 py-0.5 rounded hover:bg-blue-50">Reset</button>
               )}
-              <button onClick={() => setResponding(r => !r)}
-                className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                  responding ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]' : 'text-[#1e3a5f] border-[#1e3a5f]/30 hover:bg-[#1e3a5f]/5'
-                }`}>Reply</button>
               <ConfirmButton onConfirm={() => onDelete.mutate(b.id)}
                 className="text-[10px] text-red-400 hover:text-red-600">×</ConfirmButton>
             </div>
@@ -233,28 +261,117 @@ function BugCard({ bug: b, isAdmin, onUpdate, onDelete }) {
         </div>
       </div>
 
-      {b.admin_notes && !responding && (
-        <div className="mt-2 px-3 py-2 bg-gray-50 rounded border border-gray-100 text-xs text-gray-600">
-          <span className="font-medium text-gray-500">Admin response:</span> {b.admin_notes}
-        </div>
+      {/* Thread toggle */}
+      <div className="mt-2 flex items-center gap-2">
+        <button type="button" onClick={() => setExpanded(v => !v)}
+          className="text-[11px] text-[#1e3a5f] hover:underline font-medium">
+          {expanded ? 'Hide thread' : `${b.msg_count > 0 ? `${b.msg_count} message${b.msg_count !== 1 ? 's' : ''}` : 'Start a thread'}`}
+        </button>
+        {b.msg_count > 0 && !expanded && <span className="text-[10px] text-gray-400">Last: {formatDate(b.last_msg_at)}</span>}
+      </div>
+      {expanded && <MessageThread bugId={b.id} canPost={canMessage} isAdmin={isAdmin} />}
+    </div>
+  );
+}
+
+function MessageThread({ bugId, canPost, isAdmin }) {
+  const qc = useQueryClient();
+  const [body, setBody] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['bug-messages', bugId],
+    queryFn: () => api.get(`/bug-reports/${bugId}/messages`).then(r => r.data),
+  });
+  const messages = data?.data || [];
+
+  const postMut = useMutation({
+    mutationFn: () => api.post(`/bug-reports/${bugId}/messages`, { body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bug-messages', bugId] });
+      qc.invalidateQueries({ queryKey: ['bug-reports'] });
+      setBody('');
+    },
+    onError: (e) => alert(e.response?.data?.error || 'Failed to post'),
+  });
+
+  const delMut = useMutation({
+    mutationFn: (msgId) => api.delete(`/bug-reports/messages/${msgId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bug-messages', bugId] }),
+  });
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+      {isLoading ? <Spinner className="w-4 h-4" /> : messages.length === 0 ? (
+        <div className="text-[11px] text-gray-400 italic">No messages yet.</div>
+      ) : (
+        messages.map(m => (
+          <div key={m.id} className={`rounded-lg px-3 py-2 text-sm border ${m.from_admin ? 'bg-blue-50 border-blue-100' : 'bg-amber-50 border-amber-100'}`}>
+            <div className="flex items-center justify-between text-[10px] text-gray-500 mb-0.5">
+              <span><strong className="text-gray-700">{m.author_name || 'User'}</strong>{m.from_admin ? ' · Admin' : ''}</span>
+              <span className="flex items-center gap-2">
+                <span>{formatDate(m.ts_inserted)}</span>
+                {(isAdmin || m.user_id) && (
+                  <button onClick={() => { if (confirm('Delete this message?')) delMut.mutate(m.id); }}
+                    className="text-red-300 hover:text-red-600">×</button>
+                )}
+              </span>
+            </div>
+            <div className="text-gray-700 whitespace-pre-wrap">{m.body}</div>
+          </div>
+        ))
       )}
 
-      {isAdmin && responding && (
-        <div className="mt-2">
-          <textarea value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="Write a response to this bug report..."
-            rows={2}
+      {canPost && (
+        <div className="pt-1">
+          <textarea value={body} onChange={e => setBody(e.target.value)} rows={2}
+            placeholder={isAdmin ? 'Reply to the submitter (they get an email)...' : 'Reply (the admins get an email)...'}
             className="w-full text-sm rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f] resize-none" />
           <div className="flex items-center gap-2 mt-1">
-            <button onClick={saveNotes} disabled={onUpdate.isPending}
-              className="text-xs px-3 py-1 rounded bg-[#1e3a5f] text-white font-medium hover:bg-[#152a47] disabled:opacity-50 transition-colors">
-              {onUpdate.isPending ? 'Saving...' : 'Save Response'}
+            <button onClick={() => body.trim() && postMut.mutate()} disabled={!body.trim() || postMut.isPending}
+              className="text-xs px-3 py-1 rounded bg-[#1e3a5f] text-white font-medium hover:bg-[#152a47] disabled:opacity-50">
+              {postMut.isPending ? 'Posting...' : 'Reply'}
             </button>
-            <button onClick={() => { setResponding(false); setNotes(b.admin_notes || ''); }}
-              className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AmountsEditor({ amounts, onClose }) {
+  const qc = useQueryClient();
+  const [vals, setVals] = useState(amounts);
+
+  const saveMut = useMutation({
+    mutationFn: () => api.put('/bug-reports/amounts', vals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bug-amounts'] });
+      qc.invalidateQueries({ queryKey: ['bug-leaderboard'] });
+      onClose();
+    },
+  });
+
+  return (
+    <div className="mb-4 bg-white rounded-lg border border-gray-200 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-gray-800">Award Amounts (per approved item)</h3>
+        <button onClick={onClose} className="text-xs text-gray-400">Close</button>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        <Input label="Bug Minor $" type="number" step="0.5" value={vals.bug_minor}
+          onChange={e => setVals({ ...vals, bug_minor: parseFloat(e.target.value) || 0 })} />
+        <Input label="Bug Major $" type="number" step="0.5" value={vals.bug_major}
+          onChange={e => setVals({ ...vals, bug_major: parseFloat(e.target.value) || 0 })} />
+        <Input label="Idea Minor QOL $" type="number" step="0.5" value={vals.idea_minor}
+          onChange={e => setVals({ ...vals, idea_minor: parseFloat(e.target.value) || 0 })} />
+        <Input label="Idea Major QOL $" type="number" step="0.5" value={vals.idea_major}
+          onChange={e => setVals({ ...vals, idea_major: parseFloat(e.target.value) || 0 })} />
+      </div>
+      <div className="mt-3">
+        <Button size="sm" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
+          {saveMut.isPending ? 'Saving...' : 'Save Amounts'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -278,13 +395,12 @@ function AwardSection() {
     queryFn: () => api.get('/bug-reports/awards').then(r => r.data),
   });
   const awards = awardsData?.data || [];
-  const unpaidAwards = awards.filter(a => !a.paid_at);
 
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/bug-reports/awards', data),
     onSuccess: () => {
-      qc.invalidateQueries(['bug-awards']);
-      qc.invalidateQueries(['bug-leaderboard']);
+      qc.invalidateQueries({ queryKey: ['bug-awards'] });
+      qc.invalidateQueries({ queryKey: ['bug-leaderboard'] });
       setUserId(''); setAmount(''); setDescription(''); setShowForm(false);
     },
   });
