@@ -176,9 +176,10 @@ function DeleteCell({ s, idx, dateStr, onDelete, onDeleteAndShift }) {
 
   if (confirming) {
     return (
-      <td className="px-2 py-1 text-center">
-        <div className="flex flex-col gap-1 items-center min-w-[120px]">
-          <span className="text-[10px] text-red-600 font-medium">Delete #{idx + 1}?</span>
+      <td className="px-2 py-1 text-center relative">
+        {/* Popover anchored to the cell, opens LEFT so it doesn't clip on narrow screens */}
+        <div className="absolute right-2 top-1 z-20 bg-white border border-red-300 rounded shadow-lg p-2 w-[160px] flex flex-col gap-1">
+          <span className="text-[10px] text-red-600 font-medium text-center">Delete #{idx + 1}?</span>
           <select value={reason} onChange={e => setReason(e.target.value)}
             className="text-[10px] w-full rounded border border-gray-300 px-1 py-0.5">
             <option value="">Reason (optional)</option>
