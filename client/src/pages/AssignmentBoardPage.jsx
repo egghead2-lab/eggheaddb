@@ -668,7 +668,7 @@ function DroppableCell({ day, profId, programs, assignments, originals, unavaila
                 {(() => {
                   // Out-of-area badge: assigned lead prof's area ≠ location's area
                   const currentProfId = p.id in assignments ? assignments[p.id] : p.professorId;
-                  const currentProf = currentProfId ? professors.find(pr => pr.id === currentProfId) : null;
+                  const currentProf = currentProfId ? allProfessors.find(pr => pr.id === currentProfId) : null;
                   const profAreaId = currentProf?.areaId ?? (currentProfId === p.professorId ? p.leadProfessorAreaId : null);
                   const ooa = p.locationAreaId && profAreaId && profAreaId !== p.locationAreaId;
                   return ooa ? <span className="text-[7px] px-0.5 rounded bg-orange-100 text-orange-700 font-bold shrink-0" title={`Out of area: assigned prof's area does not match location area`}>OOA</span> : null;
