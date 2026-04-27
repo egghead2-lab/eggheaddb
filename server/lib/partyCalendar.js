@@ -29,15 +29,33 @@ function formatPhone(phone) {
   return phone;
 }
 
+// Return { dateStr, timeStr } so we can emit an ISO-like string with NO offset.
+// Google Calendar resolves such strings in the provided `timeZone`, which avoids
+// the server-local-TZ trap (Railway is UTC — `new Date("2026-05-15T14:00:00")`
+// there lands at 14:00 UTC, not 14:00 PDT).
 function combineDateAndTime(dateVal, timeVal) {
   const dateStr = dateVal instanceof Date ? dateVal.toISOString().split('T')[0] : String(dateVal).split('T')[0];
-  const timeStr = timeVal ? String(timeVal) : '12:00:00';
-  return new Date(`${dateStr}T${timeStr}`);
+  let timeStr = timeVal ? String(timeVal) : '12:00:00';
+  if (/^\d{2}:\d{2}$/.test(timeStr)) timeStr += ':00';
+  return { dateStr, timeStr };
+}
+
+// Add minutes to a { dateStr, timeStr } pair using UTC-anchored math so local TZ is irrelevant.
+function addMinutes({ dateStr, timeStr }, minutes) {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, m, s] = timeStr.split(':').map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d, h, m, s || 0));
+  dt.setUTCMinutes(dt.getUTCMinutes() + minutes);
+  const pad = n => String(n).padStart(2, '0');
+  return {
+    dateStr: `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`,
+    timeStr: `${pad(dt.getUTCHours())}:${pad(dt.getUTCMinutes())}:${pad(dt.getUTCSeconds())}`,
+  };
 }
 
 function buildCalendarEvent(party) {
-  const startDateTime = combineDateAndTime(party.first_session_date, party.start_time);
-  const endDateTime = new Date(startDateTime.getTime() + (party.class_length_minutes || 60) * 60000);
+  const start = combineDateAndTime(party.first_session_date, party.start_time);
+  const end = addMinutes(start, party.class_length_minutes || 60);
 
   const lines = [
     `Pay - Lead: $${party.lead_professor_pay || 0}`,
@@ -70,8 +88,8 @@ function buildCalendarEvent(party) {
     summary: `Professor Egghead ${party.class_name || 'Party'}`,
     location,
     description: lines,
-    start: { dateTime: startDateTime.toISOString(), timeZone: 'America/Los_Angeles' },
-    end: { dateTime: endDateTime.toISOString(), timeZone: 'America/Los_Angeles' },
+    start: { dateTime: `${start.dateStr}T${start.timeStr}`, timeZone: 'America/Los_Angeles' },
+    end: { dateTime: `${end.dateStr}T${end.timeStr}`, timeZone: 'America/Los_Angeles' },
     attendees,
   };
 }
