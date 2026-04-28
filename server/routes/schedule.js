@@ -518,6 +518,99 @@ router.post('/claim-sub', authenticate, async (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// POST-CLASS FEEDBACK (curriculum signal)
+// ═══════════════════════════════════════════════════════════════════
+
+// Filter for sessions that need feedback from the lead professor.
+// Excludes parties and camps (curriculum-only signal); excludes today and future.
+const FEEDBACK_NEEDED_WHERE = `
+  s.active = 1
+  AND s.not_billed = 0
+  AND s.session_date < CURDATE()
+  AND s.lesson_id IS NOT NULL
+  AND (s.actual_kids_count IS NULL OR s.fun_for_students IS NULL OR s.easy_to_teach IS NULL)
+  AND prog.active = 1
+  AND prog.party_format_id IS NULL
+  AND (pt.program_type_name IS NULL OR pt.program_type_name <> 'Camp')
+`;
+
+// GET /api/schedule/feedback-pending — up to 5 most recent past sessions where THIS prof was lead
+router.get('/feedback-pending', authenticate, async (req, res, next) => {
+  try {
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof) return res.json({ success: true, data: [] });
+
+    const [rows] = await pool.query(
+      `SELECT s.id, s.session_date, s.session_time,
+              s.actual_kids_count, s.lead_notes, s.fun_for_students, s.easy_to_teach,
+              prog.id AS program_id, prog.program_nickname,
+              loc.nickname AS location_nickname,
+              cl.class_name,
+              l.lesson_name
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
+       WHERE s.professor_id = ?
+         AND ${FEEDBACK_NEEDED_WHERE}
+       ORDER BY s.session_date DESC, s.session_time DESC
+       LIMIT 5`,
+      [prof.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/schedule/session-feedback/:sessionId — upsert feedback fields
+router.post('/session-feedback/:sessionId', authenticate, async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const { actual_kids_count, lead_notes, fun_for_students, easy_to_teach } = req.body;
+
+    // Verify the current user is the lead professor on this session
+    const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    if (!prof) return res.status(403).json({ success: false, error: 'No professor profile' });
+    const [[s]] = await pool.query('SELECT professor_id FROM session WHERE id = ? AND active = 1', [sessionId]);
+    if (!s) return res.status(404).json({ success: false, error: 'Session not found' });
+    if (String(s.professor_id) !== String(prof.id)) {
+      return res.status(403).json({ success: false, error: 'Only the lead may submit feedback for this session' });
+    }
+
+    const sets = [];
+    const vals = [];
+    if (actual_kids_count !== undefined) { sets.push('actual_kids_count = ?'); vals.push(actual_kids_count === null || actual_kids_count === '' ? null : parseInt(actual_kids_count)); }
+    if (lead_notes !== undefined)        { sets.push('lead_notes = ?'); vals.push(lead_notes || null); }
+    if (fun_for_students !== undefined)  { sets.push('fun_for_students = ?'); vals.push(fun_for_students === null ? null : (fun_for_students ? 1 : 0)); }
+    if (easy_to_teach !== undefined)     { sets.push('easy_to_teach = ?'); vals.push(easy_to_teach === null ? null : (easy_to_teach ? 1 : 0)); }
+    if (sets.length === 0) return res.status(400).json({ success: false, error: 'No fields' });
+
+    sets.push('ts_updated = NOW()');
+    await pool.query(`UPDATE session SET ${sets.join(', ')} WHERE id = ?`, [...vals, sessionId]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/schedule/feedback-pending-count/:professorId — admin badge for pending feedback
+router.get('/feedback-pending-count/:professorId', authenticate, async (req, res, next) => {
+  try {
+    const { professorId } = req.params;
+    const [[row]] = await pool.query(
+      `SELECT COUNT(*) AS pending
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       WHERE s.professor_id = ?
+         AND ${FEEDBACK_NEEDED_WHERE}`,
+      [professorId]
+    );
+    res.json({ success: true, pending: parseInt(row.pending) || 0 });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // FULL SCHEDULE VIEW (used by both professors and schedulers)
 // ═══════════════════════════════════════════════════════════════════
 

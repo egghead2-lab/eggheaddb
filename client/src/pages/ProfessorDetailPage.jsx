@@ -804,6 +804,14 @@ export default function ProfessorDetailPage() {
 
   const [viewMode, setViewMode] = useState(!isNew);
 
+  // Pending post-class feedback count (admin/CM visibility into compliance)
+  const { data: feedbackPendingData } = useQuery({
+    queryKey: ['professor-feedback-pending', id],
+    queryFn: () => api.get(`/schedule/feedback-pending-count/${id}`).then(r => r.data),
+    enabled: !isNew,
+  });
+  const feedbackPending = feedbackPendingData?.pending || 0;
+
   useEffect(() => {
     if (profData?.data) {
       const fd = toFormData(profData.data);
@@ -944,6 +952,11 @@ export default function ProfessorDetailPage() {
                   Needs Observations
                 </span>
               ) : null}
+              {feedbackPending > 0 && (
+                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium" title="Past sessions where the lead hasn't filled out kids count + fun/easy ratings">
+                  {feedbackPending} session{feedbackPending !== 1 ? 's' : ''} awaiting feedback
+                </span>
+              )}
             </div>
           </div>
           {!isNew && (

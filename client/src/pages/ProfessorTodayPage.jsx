@@ -61,6 +61,13 @@ export default function ProfessorTodayPage() {
   const pendingClaims = myClaims.filter(c => c.status === 'pending');
   const rejectedClaims = myClaims.filter(c => c.status === 'rejected');
 
+  // Past sessions awaiting post-class feedback (lead only, regular classes, no parties/camps)
+  const { data: feedbackData } = useQuery({
+    queryKey: ['feedback-pending'],
+    queryFn: () => api.get('/schedule/feedback-pending').then(r => r.data),
+  });
+  const feedbackPending = feedbackData?.data || [];
+
   if (isLoading) return <AppShell><div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div></AppShell>;
 
   return (
@@ -140,6 +147,20 @@ export default function ProfessorTodayPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Past sessions awaiting feedback */}
+        {feedbackPending.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="text-sm font-bold text-amber-700">Class Feedback Needed</h2>
+              <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">{feedbackPending.length}</span>
+              <span className="text-[10px] text-gray-400 ml-auto">~1 minute each</span>
+            </div>
+            <div className="space-y-3">
+              {feedbackPending.map(s => <FeedbackCard key={s.id} session={s} />)}
             </div>
           </div>
         )}
@@ -374,6 +395,89 @@ function PendingPartyCard({ party: p, onRespond }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function FeedbackCard({ session: s }) {
+  const qc = useQueryClient();
+  const [kids, setKids] = useState(s.actual_kids_count ?? '');
+  const [notes, setNotes] = useState(s.lead_notes ?? '');
+  const [fun, setFun] = useState(s.fun_for_students); // null | 0 | 1
+  const [easy, setEasy] = useState(s.easy_to_teach);
+
+  const submitMut = useMutation({
+    mutationFn: (data) => api.post(`/schedule/session-feedback/${s.id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback-pending'] }),
+  });
+
+  const dateStr = (s.session_date || '').split('T')[0];
+  const canSubmit = kids !== '' && fun !== null && fun !== undefined && easy !== null && easy !== undefined;
+
+  const submit = () => {
+    submitMut.mutate({
+      actual_kids_count: kids === '' ? null : parseInt(kids),
+      lead_notes: notes || null,
+      fun_for_students: fun,
+      easy_to_teach: easy,
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 px-4 py-3 shadow-sm">
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-900 text-sm truncate">{s.program_nickname}</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {formatDate(dateStr)}{s.session_time ? ` · ${formatTime(s.session_time)}` : ''}
+            {s.location_nickname ? ` · ${s.location_nickname}` : ''}
+          </div>
+          {s.lesson_name && <div className="text-xs text-[#1e3a5f] font-medium mt-0.5">{s.lesson_name}</div>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <div>
+          <label className="text-[11px] font-medium text-gray-600 block mb-1">How many kids?</label>
+          <input type="number" min="0" value={kids} onChange={e => setKids(e.target.value)}
+            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[11px] font-medium text-gray-600 block mb-1">Fun for students?</label>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => setFun(1)}
+                className={`flex-1 py-1.5 rounded border text-base ${fun === 1 ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 text-gray-400 hover:border-emerald-400'}`}>👍</button>
+              <button type="button" onClick={() => setFun(0)}
+                className={`flex-1 py-1.5 rounded border text-base ${fun === 0 ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-400 hover:border-red-400'}`}>👎</button>
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-gray-600 block mb-1">Easy to teach?</label>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => setEasy(1)}
+                className={`flex-1 py-1.5 rounded border text-base ${easy === 1 ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 text-gray-400 hover:border-emerald-400'}`}>👍</button>
+              <button type="button" onClick={() => setEasy(0)}
+                className={`flex-1 py-1.5 rounded border text-base ${easy === 0 ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-400 hover:border-red-400'}`}>👎</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <label className="text-[11px] font-medium text-gray-600 block mb-1">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+          placeholder="Anything worth noting about this class…"
+          className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-3">
+        {submitMut.isError && <span className="text-xs text-red-600">{submitMut.error?.response?.data?.error || 'Save failed'}</span>}
+        <button type="button" onClick={submit} disabled={!canSubmit || submitMut.isPending}
+          className="px-4 py-1.5 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#152a47] active:scale-95 transition-all disabled:opacity-40">
+          {submitMut.isPending ? 'Saving…' : 'Submit'}
+        </button>
+      </div>
     </div>
   );
 }
