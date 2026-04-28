@@ -524,7 +524,7 @@ router.post('/claim-sub', authenticate, async (req, res, next) => {
 // "Who actually taught" = program_session_pay.professor_id where role='Lead' (set by nightly cron),
 // falling back to session.professor_id (explicit sub/override) and finally program.lead_professor_id.
 // This decouples feedback attribution from any stale session.professor_id pre-populations.
-const ACTUAL_LEAD_EXPR = `COALESCE(psp.professor_id, s.professor_id, prog.lead_professor_id)`;
+const ACTUAL_LEAD_EXPR = `COALESCE(s.professor_id, psp.professor_id, prog.lead_professor_id)`;
 
 // Filter for sessions that need feedback from the lead professor.
 // Excludes parties and camps (curriculum-only signal); excludes today and future.
@@ -579,7 +579,7 @@ router.post('/session-feedback/:sessionId', authenticate, async (req, res, next)
     const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
     if (!prof) return res.status(403).json({ success: false, error: 'No professor profile' });
     const [[s]] = await pool.query(
-      `SELECT COALESCE(psp.professor_id, s.professor_id, prog.lead_professor_id) AS actual_lead
+      `SELECT COALESCE(s.professor_id, psp.professor_id, prog.lead_professor_id) AS actual_lead
        FROM session s
        JOIN program prog ON prog.id = s.program_id
        LEFT JOIN program_session_pay psp ON psp.session_id = s.id AND psp.role = 'Lead'
