@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { addSession, updateSession, deleteSession, bulkGenerateSessions } from '../api/programs';
 import { Button } from './ui/Button';
@@ -19,6 +19,22 @@ function isWrongDay(dateStr, allowedDays) {
   if (!dateStr || allowedDays.length === 0) return false;
   const dow = getDayOfWeek(dateStr);
   return dow !== null && !allowedDays.includes(dow);
+}
+
+// Controlled pay input that syncs from props but doesn't fight typing.
+// Saves to parent on blur if the value actually changed.
+function PayInput({ value, disabled, title, onSave }) {
+  const [v, setV] = useState(value ?? '');
+  useEffect(() => { setV(disabled ? '0' : (value ?? '')); }, [value, disabled]);
+  return (
+    <input type="number" step="0.01" value={v}
+      disabled={disabled}
+      onChange={e => setV(e.target.value)}
+      onBlur={() => { if (!disabled && v !== String(value ?? '')) onSave(v); }}
+      title={title}
+      className={`w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${disabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+      placeholder="$" />
+  );
 }
 
 function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDays, defaultTime, showAssistant, showObserver, onUpdate, onDelete, onDeleteAndShift, onToggleBilled, viewMode }) {
@@ -110,12 +126,9 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
         </select>
       </td>
       <td className="px-2 py-1">
-        <input type="number" step="0.01" value={leadIsFM ? 0 : (s.professor_pay ?? '')}
-          disabled={leadIsFM}
-          onBlur={e => { if (!leadIsFM && e.target.value !== String(s.professor_pay ?? '')) handleChange('professor_pay', e.target.value); }}
-          onChange={() => {}}
+        <PayInput value={s.professor_pay} disabled={leadIsFM}
           title={leadIsFM ? 'Field Managers are not paid for class sessions' : undefined}
-          className={`w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${leadIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+          onSave={v => handleChange('professor_pay', v)} />
       </td>
       {showAssistant && (
         <>
@@ -137,12 +150,9 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
             </select>
           </td>
           <td className="px-2 py-1">
-            <input type="number" step="0.01" value={assistIsFM ? 0 : (s.assistant_pay ?? '')}
-              disabled={assistIsFM}
-              onBlur={e => { if (!assistIsFM && e.target.value !== String(s.assistant_pay ?? '')) handleChange('assistant_pay', e.target.value); }}
-              onChange={() => {}}
+            <PayInput value={s.assistant_pay} disabled={assistIsFM}
               title={assistIsFM ? 'Field Managers are not paid for class sessions' : undefined}
-              className={`w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${assistIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+              onSave={v => handleChange('assistant_pay', v)} />
           </td>
         </>
       )}
@@ -166,12 +176,9 @@ function SessionRow({ s, idx, professors, allLessons, filteredLessons, allowedDa
             </select>
           </td>
           <td className="px-2 py-1">
-            <input type="number" step="0.01" value={obsIsFM ? 0 : (s.observer_pay ?? '')}
-              disabled={obsIsFM}
-              onBlur={e => { if (!obsIsFM && e.target.value !== String(s.observer_pay ?? '')) handleChange('observer_pay', e.target.value); }}
-              onChange={() => {}}
+            <PayInput value={s.observer_pay} disabled={obsIsFM}
               title={obsIsFM ? 'Field Managers are not paid for observation on class sessions' : undefined}
-              className={`w-16 rounded border border-gray-200 px-1.5 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${obsIsFM ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} placeholder="$" />
+              onSave={v => handleChange('observer_pay', v)} />
           </td>
         </>
       )}
