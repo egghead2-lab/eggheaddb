@@ -521,6 +521,11 @@ router.post('/claim-sub', authenticate, async (req, res, next) => {
 // POST-CLASS FEEDBACK (curriculum signal)
 // ═══════════════════════════════════════════════════════════════════
 
+// "Who actually taught" = program_session_pay.professor_id where role='Lead' (set by nightly cron),
+// falling back to session.professor_id (explicit sub/override) and finally program.lead_professor_id.
+// This decouples feedback attribution from any stale session.professor_id pre-populations.
+const ACTUAL_LEAD_EXPR = `COALESCE(psp.professor_id, s.professor_id, prog.lead_professor_id)`;
+
 // Filter for sessions that need feedback from the lead professor.
 // Excludes parties and camps (curriculum-only signal); excludes today and future.
 const FEEDBACK_NEEDED_WHERE = `
@@ -553,7 +558,8 @@ router.get('/feedback-pending', authenticate, async (req, res, next) => {
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN lesson l ON l.id = s.lesson_id
-       WHERE s.professor_id = ?
+       LEFT JOIN program_session_pay psp ON psp.session_id = s.id AND psp.role = 'Lead'
+       WHERE ${ACTUAL_LEAD_EXPR} = ?
          AND ${FEEDBACK_NEEDED_WHERE}
        ORDER BY s.session_date DESC, s.session_time DESC
        LIMIT 5`,
@@ -569,12 +575,18 @@ router.post('/session-feedback/:sessionId', authenticate, async (req, res, next)
     const { sessionId } = req.params;
     const { actual_kids_count, lead_notes, fun_for_students, easy_to_teach } = req.body;
 
-    // Verify the current user is the lead professor on this session
+    // Verify the current user actually taught this session (per program_session_pay or fallbacks)
     const [[prof]] = await pool.query('SELECT id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
     if (!prof) return res.status(403).json({ success: false, error: 'No professor profile' });
-    const [[s]] = await pool.query('SELECT professor_id FROM session WHERE id = ? AND active = 1', [sessionId]);
+    const [[s]] = await pool.query(
+      `SELECT COALESCE(psp.professor_id, s.professor_id, prog.lead_professor_id) AS actual_lead
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id
+       LEFT JOIN program_session_pay psp ON psp.session_id = s.id AND psp.role = 'Lead'
+       WHERE s.id = ? AND s.active = 1`, [sessionId]
+    );
     if (!s) return res.status(404).json({ success: false, error: 'Session not found' });
-    if (String(s.professor_id) !== String(prof.id)) {
+    if (String(s.actual_lead) !== String(prof.id)) {
       return res.status(403).json({ success: false, error: 'Only the lead may submit feedback for this session' });
     }
 
@@ -602,11 +614,115 @@ router.get('/feedback-pending-count/:professorId', authenticate, async (req, res
        JOIN program prog ON prog.id = s.program_id
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
-       WHERE s.professor_id = ?
+       LEFT JOIN program_session_pay psp ON psp.session_id = s.id AND psp.role = 'Lead'
+       WHERE ${ACTUAL_LEAD_EXPR} = ?
          AND ${FEEDBACK_NEEDED_WHERE}`,
       [professorId]
     );
     res.json({ success: true, pending: parseInt(row.pending) || 0 });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// FUTURE-LEAD MISMATCH DIAGNOSTIC (admin tool)
+// ═══════════════════════════════════════════════════════════════════
+// Surfaces programs where future sessions have a session.professor_id
+// that doesn't match the program's current lead_professor_id. Most often
+// these are stale pre-populations from before the program was reassigned.
+// (Sessions with NULL professor_id are correct — that's the new default.)
+
+// GET /api/schedule/lead-mismatches — programs with stale future-session leads
+router.get('/lead-mismatches', authenticate, async (req, res, next) => {
+  try {
+    if (!['Admin', 'CEO', 'Client Manager', 'Scheduling Coordinator'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+    const [rows] = await pool.query(
+      `SELECT prog.id AS program_id, prog.program_nickname,
+              prog.lead_professor_id AS current_lead_id,
+              CONCAT(curr.professor_nickname, ' ', curr.last_name) AS current_lead_name,
+              COUNT(*) AS mismatched_count,
+              MIN(s.session_date) AS earliest_date,
+              MAX(s.session_date) AS latest_date,
+              GROUP_CONCAT(DISTINCT CONCAT(stale.professor_nickname, ' ', stale.last_name)
+                ORDER BY stale.professor_nickname SEPARATOR ', ') AS stale_leads
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id
+       LEFT JOIN professor curr ON curr.id = prog.lead_professor_id
+       LEFT JOIN professor stale ON stale.id = s.professor_id
+       WHERE s.active = 1 AND prog.active = 1
+         AND s.session_date >= CURDATE()
+         AND s.professor_id IS NOT NULL
+         AND prog.lead_professor_id IS NOT NULL
+         AND s.professor_id <> prog.lead_professor_id
+       GROUP BY prog.id
+       ORDER BY mismatched_count DESC, prog.program_nickname`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/schedule/lead-mismatches/:programId — sessions in one program that need review
+router.get('/lead-mismatches/:programId', authenticate, async (req, res, next) => {
+  try {
+    if (!['Admin', 'CEO', 'Client Manager', 'Scheduling Coordinator'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+    const { programId } = req.params;
+    const [rows] = await pool.query(
+      `SELECT s.id, s.session_date, s.session_time, s.professor_id,
+              CONCAT(stale.professor_nickname, ' ', stale.last_name) AS stale_lead_name
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id
+       LEFT JOIN professor stale ON stale.id = s.professor_id
+       WHERE s.program_id = ? AND s.active = 1
+         AND s.session_date >= CURDATE()
+         AND s.professor_id IS NOT NULL
+         AND prog.lead_professor_id IS NOT NULL
+         AND s.professor_id <> prog.lead_professor_id
+       ORDER BY s.session_date`,
+      [programId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/schedule/clear-lead-mismatch/:programId — clear professor_id on the program's
+// FUTURE sessions where it doesn't match the current program lead
+router.post('/clear-lead-mismatch/:programId', authenticate, async (req, res, next) => {
+  try {
+    if (!['Admin', 'CEO', 'Client Manager', 'Scheduling Coordinator'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+    const { programId } = req.params;
+    const [r] = await pool.query(
+      `UPDATE session s
+         JOIN program prog ON prog.id = s.program_id
+       SET s.professor_id = NULL, s.professor_pay = NULL, s.ts_updated = NOW()
+       WHERE s.program_id = ? AND s.active = 1
+         AND s.session_date >= CURDATE()
+         AND s.professor_id IS NOT NULL
+         AND prog.lead_professor_id IS NOT NULL
+         AND s.professor_id <> prog.lead_professor_id`,
+      [programId]
+    );
+    res.json({ success: true, cleared: r.affectedRows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/schedule/clear-lead-mismatch-session/:sessionId — clear a single session
+router.post('/clear-lead-mismatch-session/:sessionId', authenticate, async (req, res, next) => {
+  try {
+    if (!['Admin', 'CEO', 'Client Manager', 'Scheduling Coordinator'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+    const { sessionId } = req.params;
+    await pool.query(
+      `UPDATE session SET professor_id = NULL, professor_pay = NULL, ts_updated = NOW()
+       WHERE id = ? AND session_date >= CURDATE()`,
+      [sessionId]
+    );
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

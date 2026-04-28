@@ -310,10 +310,11 @@ export function SessionsPanel({ programId, sessions, professors, lessons, holida
 
   const handleAdd = () => {
     if (!newDate) return;
+    // Don't pre-populate professor_id from program.lead_professor_id —
+    // future sessions stay unassigned until explicitly subbed or the day arrives.
+    // Pay also resolves at runtime via session > program > base hierarchy.
     addMutation.mutate({
       session_date: newDate, session_time: defaultTime || null,
-      professor_id: program?.lead_professor_id || null, assistant_id: program?.assistant_professor_id || null,
-      professor_pay: program?.lead_professor_pay || null, assistant_pay: program?.assistant_professor_pay || null,
     });
   };
 
