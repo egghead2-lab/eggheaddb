@@ -100,6 +100,7 @@ import FmWorkdayPage from './pages/FmWorkdayPage';
 import ClassRoomPage from './pages/ClassRoomPage';
 import ProfessorTodayPage from './pages/ProfessorTodayPage';
 import LeadMismatchPage from './pages/LeadMismatchPage';
+import CurriculumFeedbackPage from './pages/CurriculumFeedbackPage';
 import ProfessorPayPage from './pages/ProfessorPayPage';
 import ProfessorAttendancePage from './pages/ProfessorAttendancePage';
 import ClassroomAttendancePage from './pages/ClassroomAttendancePage';
@@ -138,6 +139,7 @@ export default function App() {
       <Route path="/programs/:id/classroom" element={<ProtectedRoute><ClassRoomPage /></ProtectedRoute>} />
       <Route path="/my-today" element={<ProtectedRoute><ProfessorTodayPage /></ProtectedRoute>} />
       <Route path="/lead-mismatches" element={<ProtectedRoute><LeadMismatchPage /></ProtectedRoute>} />
+      <Route path="/curriculum-feedback" element={<ProtectedRoute><CurriculumFeedbackPage /></ProtectedRoute>} />
       <Route path="/my-pay" element={<ProtectedRoute><ProfessorPayPage /></ProtectedRoute>} />
       <Route path="/my-attendance" element={<ProtectedRoute><ProfessorAttendancePage /></ProtectedRoute>} />
       <Route path="/classroom-attendance" element={<ProtectedRoute><ClassroomAttendancePage /></ProtectedRoute>} />

@@ -325,4 +325,135 @@ router.get('/unscheduled', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ════════════════════════════════════════════════════════════════
+// LESSON FEEDBACK ROLLUPS (curriculum macro view)
+// ════════════════════════════════════════════════════════════════
+
+// Threshold: a lesson is flagged if ≥25% of either fun or easy ratings are 👎.
+// Min sample size keeps single bad ratings from creating noise.
+const FLAG_THRESHOLD = 0.25;
+const MIN_RATINGS_TO_FLAG = 4;
+
+// GET /api/curriculum/feedback-summary?since=YYYY-MM-DD
+// Returns total submissions in the window + list of flagged lessons.
+router.get('/feedback-summary', async (req, res, next) => {
+  try {
+    const since = req.query.since || null; // ISO date; default = last 7 days
+    const sinceClause = since
+      ? `s.ts_updated >= ?`
+      : `s.ts_updated >= DATE_SUB(NOW(), INTERVAL 7 DAY)`;
+    const params = since ? [since] : [];
+
+    const [[totals]] = await pool.query(
+      `SELECT COUNT(*) AS submissions
+       FROM session s
+       WHERE s.active = 1
+         AND s.actual_kids_count IS NOT NULL
+         AND s.fun_for_students IS NOT NULL
+         AND s.easy_to_teach IS NOT NULL
+         AND ${sinceClause}`,
+      params
+    );
+
+    // All lessons with feedback in the window — used for both flagged and full list
+    const [lessons] = await pool.query(
+      `SELECT l.id AS lesson_id, l.lesson_name,
+              COUNT(*) AS total_responses,
+              SUM(CASE WHEN s.fun_for_students = 1 THEN 1 ELSE 0 END) AS fun_yes,
+              SUM(CASE WHEN s.fun_for_students = 0 THEN 1 ELSE 0 END) AS fun_no,
+              SUM(CASE WHEN s.easy_to_teach = 1 THEN 1 ELSE 0 END) AS easy_yes,
+              SUM(CASE WHEN s.easy_to_teach = 0 THEN 1 ELSE 0 END) AS easy_no,
+              MAX(s.ts_updated) AS last_rating_at
+       FROM session s
+       JOIN lesson l ON l.id = s.lesson_id
+       WHERE s.active = 1
+         AND s.fun_for_students IS NOT NULL
+         AND s.easy_to_teach IS NOT NULL
+         AND ${sinceClause}
+       GROUP BY l.id, l.lesson_name
+       ORDER BY total_responses DESC`,
+      params
+    );
+
+    const enriched = lessons.map(r => {
+      const total = parseInt(r.total_responses) || 0;
+      const funNo = parseInt(r.fun_no) || 0;
+      const easyNo = parseInt(r.easy_no) || 0;
+      const funDownPct = total ? funNo / total : 0;
+      const easyDownPct = total ? easyNo / total : 0;
+      const flags = [];
+      if (total >= MIN_RATINGS_TO_FLAG && funDownPct >= FLAG_THRESHOLD) flags.push('fun');
+      if (total >= MIN_RATINGS_TO_FLAG && easyDownPct >= FLAG_THRESHOLD) flags.push('easy');
+      return {
+        ...r,
+        total_responses: total,
+        fun_yes: parseInt(r.fun_yes) || 0,
+        fun_no: funNo,
+        easy_yes: parseInt(r.easy_yes) || 0,
+        easy_no: easyNo,
+        fun_down_pct: funDownPct,
+        easy_down_pct: easyDownPct,
+        flags,
+      };
+    });
+
+    const flagged = enriched.filter(l => l.flags.length > 0)
+      .sort((a, b) => Math.max(b.fun_down_pct, b.easy_down_pct) - Math.max(a.fun_down_pct, a.easy_down_pct));
+
+    res.json({
+      success: true,
+      submissions: parseInt(totals.submissions) || 0,
+      flag_threshold: FLAG_THRESHOLD,
+      min_ratings_to_flag: MIN_RATINGS_TO_FLAG,
+      flagged,
+      all_rated: enriched,
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/curriculum/lesson-feedback/:lessonId — rollup for a single lesson (all-time)
+router.get('/lesson-feedback/:lessonId', async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const [[stats]] = await pool.query(
+      `SELECT COUNT(*) AS total_responses,
+              SUM(CASE WHEN s.fun_for_students = 1 THEN 1 ELSE 0 END) AS fun_yes,
+              SUM(CASE WHEN s.fun_for_students = 0 THEN 1 ELSE 0 END) AS fun_no,
+              SUM(CASE WHEN s.easy_to_teach = 1 THEN 1 ELSE 0 END) AS easy_yes,
+              SUM(CASE WHEN s.easy_to_teach = 0 THEN 1 ELSE 0 END) AS easy_no,
+              AVG(s.actual_kids_count) AS avg_kids
+       FROM session s
+       WHERE s.active = 1 AND s.lesson_id = ?
+         AND s.fun_for_students IS NOT NULL AND s.easy_to_teach IS NOT NULL`,
+      [lessonId]
+    );
+    const [recent] = await pool.query(
+      `SELECT s.id AS session_id, s.session_date, s.ts_updated,
+              s.fun_for_students, s.easy_to_teach, s.lead_notes, s.actual_kids_count,
+              prog.program_nickname,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name
+       FROM session s
+       JOIN program prog ON prog.id = s.program_id
+       LEFT JOIN professor p ON p.id = s.professor_id
+       WHERE s.active = 1 AND s.lesson_id = ?
+         AND s.fun_for_students IS NOT NULL AND s.easy_to_teach IS NOT NULL
+       ORDER BY s.ts_updated DESC
+       LIMIT 20`,
+      [lessonId]
+    );
+    res.json({
+      success: true,
+      stats: {
+        total_responses: parseInt(stats.total_responses) || 0,
+        fun_yes: parseInt(stats.fun_yes) || 0,
+        fun_no: parseInt(stats.fun_no) || 0,
+        easy_yes: parseInt(stats.easy_yes) || 0,
+        easy_no: parseInt(stats.easy_no) || 0,
+        avg_kids: stats.avg_kids ? parseFloat(stats.avg_kids) : null,
+      },
+      recent,
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

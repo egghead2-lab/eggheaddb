@@ -140,6 +140,7 @@ export default function LessonDetailPage() {
         </div>
 
         <div className="p-6 space-y-4 pb-32">
+          {!isNew && <LessonFeedbackPanel lessonId={id} />}
           <Section title="Lesson Info" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
               <Input label="Lesson Name" required {...register('lesson_name', { required: 'Required' })} error={errors.lesson_name?.message} />
@@ -292,5 +293,66 @@ export default function LessonDetailPage() {
         </div>
       </form>
     </AppShell>
+  );
+}
+
+function LessonFeedbackPanel({ lessonId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['lesson-feedback', lessonId],
+    queryFn: () => api.get(`/curriculum/lesson-feedback/${lessonId}`).then(r => r.data),
+  });
+
+  if (isLoading) return null;
+  const stats = data?.stats || {};
+  const recent = data?.recent || [];
+  if (!stats.total_responses) return null;
+
+  const funYesPct = stats.total_responses ? Math.round((stats.fun_yes / stats.total_responses) * 100) : 0;
+  const easyYesPct = stats.total_responses ? Math.round((stats.easy_yes / stats.total_responses) * 100) : 0;
+  const funFlagged = stats.total_responses >= 4 && stats.fun_no / stats.total_responses >= 0.25;
+  const easyFlagged = stats.total_responses >= 4 && stats.easy_no / stats.total_responses >= 0.25;
+
+  return (
+    <Section title={`Feedback (${stats.total_responses} ${stats.total_responses === 1 ? 'response' : 'responses'})`} defaultOpen={true}>
+      <div className="grid grid-cols-3 gap-4">
+        <div className={`rounded-lg border px-4 py-3 ${funFlagged ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'}`}>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Fun for Students</div>
+          <div className={`text-2xl font-bold mt-0.5 ${funFlagged ? 'text-red-700' : 'text-gray-800'}`}>{funYesPct}% 👍</div>
+          <div className="text-xs text-gray-500 mt-0.5">{stats.fun_yes} / {stats.fun_yes + stats.fun_no}</div>
+        </div>
+        <div className={`rounded-lg border px-4 py-3 ${easyFlagged ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'}`}>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Easy to Teach</div>
+          <div className={`text-2xl font-bold mt-0.5 ${easyFlagged ? 'text-red-700' : 'text-gray-800'}`}>{easyYesPct}% 👍</div>
+          <div className="text-xs text-gray-500 mt-0.5">{stats.easy_yes} / {stats.easy_yes + stats.easy_no}</div>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Avg Kids</div>
+          <div className="text-2xl font-bold text-gray-800 mt-0.5">{stats.avg_kids?.toFixed(1) ?? '—'}</div>
+        </div>
+      </div>
+      {recent.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2">Recent Notes</div>
+          <div className="space-y-2">
+            {recent.filter(r => r.lead_notes?.trim()).slice(0, 5).map(r => (
+              <div key={r.session_id} className="bg-gray-50 rounded px-3 py-2 text-xs">
+                <div className="flex items-center justify-between text-gray-500">
+                  <span><strong className="text-gray-700">{r.professor_name}</strong> · {r.program_nickname}</span>
+                  <span className="flex items-center gap-2">
+                    <span>{r.fun_for_students ? '👍' : '👎'} fun</span>
+                    <span>{r.easy_to_teach ? '👍' : '👎'} easy</span>
+                    <span className="text-[10px]">{new Date(r.session_date).toLocaleDateString()}</span>
+                  </span>
+                </div>
+                <div className="mt-1 text-gray-700 whitespace-pre-wrap">{r.lead_notes}</div>
+              </div>
+            ))}
+            {recent.filter(r => r.lead_notes?.trim()).length === 0 && (
+              <div className="text-xs text-gray-400 italic">No written notes yet</div>
+            )}
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
