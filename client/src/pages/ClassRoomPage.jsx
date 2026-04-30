@@ -207,6 +207,26 @@ export default function ClassRoomPage() {
                   {!isMarked && <span className="text-amber-600">Not yet marked</span>}
                 </div>
               )}
+              {/* Lead's post-class report (kids count + notes) */}
+              {activeSession && (activeSession.actual_kids_count != null || activeSession.lead_notes?.trim()) && (
+                <div className="mt-3 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-blue-700 font-semibold mb-1">Lead's Report</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700">
+                    {activeSession.actual_kids_count != null && (
+                      <span><strong>{activeSession.actual_kids_count}</strong> kid{activeSession.actual_kids_count === 1 ? '' : 's'} attended</span>
+                    )}
+                    {activeSession.fun_for_students != null && (
+                      <span>Fun: {activeSession.fun_for_students ? '👍' : '👎'}</span>
+                    )}
+                    {activeSession.easy_to_teach != null && (
+                      <span>Easy: {activeSession.easy_to_teach ? '👍' : '👎'}</span>
+                    )}
+                  </div>
+                  {activeSession.lead_notes?.trim() && (
+                    <div className="text-xs text-gray-700 mt-1.5 whitespace-pre-wrap">{activeSession.lead_notes}</div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Attendance grid */}

@@ -1141,6 +1141,7 @@ router.get('/:id/classroom', authenticate, async (req, res, next) => {
     // Sessions
     const [sessions] = await pool.query(
       `SELECT s.id, s.session_date, s.session_time, s.lesson_id, s.specific_notes,
+              s.actual_kids_count, s.lead_notes, s.fun_for_students, s.easy_to_teach,
               l.lesson_name
        FROM session s
        LEFT JOIN lesson l ON l.id = s.lesson_id
