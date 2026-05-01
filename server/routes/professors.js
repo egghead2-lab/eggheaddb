@@ -258,17 +258,19 @@ router.get('/:id', authenticate, async (req, res, next) => {
     );
 
     const [upcomingSessions] = await pool.query(
-      `SELECT s.session_date, s.session_time,
+      `SELECT s.session_date, s.session_time, s.lesson_id,
               s.professor_id AS session_professor_id,
               s.assistant_id AS session_assistant_id,
               prog.program_nickname, prog.location_id,
               prog.lead_professor_id, prog.assistant_professor_id,
               cs.class_status_name,
-              loc.nickname AS location_nickname, prog.party_city
+              loc.nickname AS location_nickname, prog.party_city,
+              l.lesson_name
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN lesson l ON l.id = s.lesson_id
        WHERE s.active = 1 AND s.session_date >= CURDATE()
          AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
          AND (s.professor_id = ? OR s.assistant_id = ? OR prog.lead_professor_id = ? OR prog.assistant_professor_id = ?)

@@ -1262,6 +1262,7 @@ export default function ProfessorDetailPage() {
                       <th className="text-left px-3 py-2 font-medium text-gray-600">Time</th>
                       <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
                       <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Lesson</th>
                       <th className="text-center px-3 py-2 font-medium text-gray-600">Status</th>
                     </tr>
                   </thead>
@@ -1277,6 +1278,7 @@ export default function ProfessorDetailPage() {
                             <td className="px-3 py-2 text-gray-500">{s.session_time ? formatTime(s.session_time) : '—'}</td>
                             <td className="px-3 py-2 text-gray-600">{s.program_nickname}</td>
                             <td className="px-3 py-2 text-gray-500">{s.location_nickname || s.party_city || '—'}</td>
+                            <td className="px-3 py-2 text-gray-500">{s.lesson_name || <span className="text-gray-300">—</span>}</td>
                             <td className="px-3 py-2 text-center">
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
                                 {s.is_paid ? (s.pay_amount ? `$${s.pay_amount}` : 'Paid') : 'Unpaid'}
@@ -1294,6 +1296,7 @@ export default function ProfessorDetailPage() {
                           <td className="px-3 py-2 text-gray-500">{s.session_time ? formatTime(s.session_time) : '—'}</td>
                           <td className="px-3 py-2 text-gray-600">{s.program_nickname}</td>
                           <td className="px-3 py-2 text-gray-500">{s.location_id ? <Link to={`/locations/${s.location_id}`} className="text-[#1e3a5f] hover:underline">{s.location_nickname}</Link> : (s.location_nickname || s.party_city || '—')}</td>
+                          <td className="px-3 py-2 text-gray-500">{s.lesson_name || <span className="text-gray-300 italic">not set</span>}</td>
                           <td className="px-3 py-2 text-center">
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
                               s.class_status_name === 'Confirmed' ? 'bg-green-100 text-green-700' :
