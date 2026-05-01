@@ -57,6 +57,13 @@ export default function BugBountyPage() {
   const leaderboard = lbData?.data || [];
   const totalPayout = lbData?.totalPayout || 0;
 
+  const { data: payoutHistoryData } = useQuery({
+    queryKey: ['bug-payout-history'],
+    queryFn: () => api.get('/bug-reports/payout-history').then(r => r.data),
+    enabled: isAdmin,
+  });
+  const payoutHistory = payoutHistoryData?.data || [];
+
   const { data: amountsData } = useQuery({
     queryKey: ['bug-amounts'],
     queryFn: () => api.get('/bug-reports/amounts').then(r => r.data),
@@ -187,6 +194,36 @@ export default function BugBountyPage() {
         </div>
 
         {isAdmin && <AwardSection />}
+
+        {isAdmin && payoutHistory.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 mb-6">
+            <div className="px-4 py-3 border-b border-gray-200">
+              <h2 className="text-sm font-bold text-gray-900">Payout History</h2>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Paid Date</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600 w-20">Bugs</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600 w-20">Ideas</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600 w-20">Awards</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600 w-24">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {payoutHistory.map(p => (
+                  <tr key={p.paid_date} className="hover:bg-gray-50/50">
+                    <td className="px-3 py-1.5 text-xs text-gray-700">{formatDate(p.paid_date)}</td>
+                    <td className="px-3 py-1.5 text-right text-xs tabular-nums text-gray-500">{p.bug_count || '—'}</td>
+                    <td className="px-3 py-1.5 text-right text-xs tabular-nums text-gray-500">{p.idea_count || '—'}</td>
+                    <td className="px-3 py-1.5 text-right text-xs tabular-nums text-gray-500">{p.awards_count || '—'}</td>
+                    <td className="px-3 py-1.5 text-right text-xs font-medium tabular-nums text-green-700">{formatCurrency(p.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Active */}
         {isLoading ? (

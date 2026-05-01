@@ -43,6 +43,7 @@ export default function ProgramsPage() {
   const [timeframe, setTimeframe] = useState('current');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [missingLessons, setMissingLessons] = useState(false);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('');
   const [dir, setDir] = useState('desc');
@@ -66,6 +67,7 @@ export default function ProgramsPage() {
     timeframe,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
+    missing_lessons: missingLessons ? 1 : undefined,
     sort: sort || undefined,
     dir: sort ? dir : undefined,
     page,
@@ -152,10 +154,10 @@ export default function ProgramsPage() {
   };
 
   const reset = () => {
-    setSearch(''); setStatus(''); setArea(''); setLocation(''); setContractor('');
+    setSearch(''); setStatus(''); setArea(''); setLocation(''); setContractor(''); setMissingLessons(false);
     setProgramType(''); setTimeframe('current'); setDateFrom(''); setDateTo(''); setPage(1);
   };
-  const hasFilters = search || status || area || location || contractor || programType || timeframe !== 'current' || dateFrom || dateTo;
+  const hasFilters = search || status || area || location || contractor || programType || timeframe !== 'current' || dateFrom || dateTo || missingLessons;
 
   return (
     <AppShell>
@@ -222,6 +224,11 @@ export default function ProgramsPage() {
           <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-36" />
           <label className="text-[10px] text-gray-400">To</label>
         </div>
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer whitespace-nowrap" title="Show only programs with at least one upcoming session that has no lesson assigned">
+          <input type="checkbox" checked={missingLessons} onChange={e => { setMissingLessons(e.target.checked); setPage(1); }}
+            className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a5f]" />
+          Lessons not set
+        </label>
         {hasFilters && (
           <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-700 underline">Clear</button>
         )}

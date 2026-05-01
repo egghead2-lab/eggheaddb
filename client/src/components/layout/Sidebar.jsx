@@ -17,7 +17,25 @@ const ALWAYS_OPEN = new Set(['Dashboard', 'Operations', 'My Classes']);
 // Groups with <= this many tools auto-collapse
 const AUTO_COLLAPSE_THRESHOLD = 2;
 
-function SidebarGroup({ group, isOpen, onToggle, compact, pins = [], onTogglePin }) {
+// Map of nav path → numeric badge count (e.g. pending feedback for /my-today).
+// The Sidebar fetches this once and merges it into items.
+function useNavBadges(user) {
+  const isProf = user?.role === 'Professor' || user?.role === 'Field Manager';
+  const { data } = useQuery({
+    queryKey: ['nav-feedback-pending'],
+    queryFn: () => api.get('/schedule/feedback-pending').then(r => r.data),
+    enabled: isProf,
+    staleTime: 60 * 1000,
+  });
+  return useMemo(() => {
+    const out = {};
+    const n = (data?.data || []).length;
+    if (n > 0) out['/my-today'] = n;
+    return out;
+  }, [data]);
+}
+
+function SidebarGroup({ group, isOpen, onToggle, compact, pins = [], onTogglePin, badges = {} }) {
   const location = useLocation();
   const isActive = group.items.some(item =>
     item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
@@ -29,11 +47,16 @@ function SidebarGroup({ group, isOpen, onToggle, compact, pins = [], onTogglePin
         {group.items.map(item => (
           <NavLink key={item.to} to={item.to} end
             className={({ isActive }) =>
-              `flex items-center ${compact ? 'justify-center px-1 py-2' : 'px-3 py-2'} rounded text-sm transition-colors ${
+              `flex items-center justify-between ${compact ? 'justify-center px-1 py-2' : 'px-3 py-2'} rounded text-sm transition-colors ${
                 isActive ? 'bg-white/15 text-white font-medium' : 'text-white/70 hover:text-white hover:bg-white/10'
               }`
             } title={compact ? item.label : undefined}>
-            {compact ? item.label.charAt(0) : item.label}
+            <span>{compact ? item.label.charAt(0) : item.label}</span>
+            {badges[item.to] > 0 && (
+              <span className="ml-1 text-[9px] font-bold bg-amber-400 text-[#1e3a5f] px-1 rounded leading-tight">
+                {badges[item.to]}
+              </span>
+            )}
           </NavLink>
         ))}
       </div>
@@ -57,11 +80,16 @@ function SidebarGroup({ group, isOpen, onToggle, compact, pins = [], onTogglePin
               <div key={item.to} className="flex items-center group/item">
                 <NavLink to={item.to}
                   className={({ isActive }) =>
-                    `flex-1 flex items-center ${compact ? 'pl-1 pr-1 py-1 text-[10px]' : 'pl-6 pr-1 py-1.5 text-sm'} rounded transition-colors ${
+                    `flex-1 flex items-center justify-between ${compact ? 'pl-1 pr-1 py-1 text-[10px]' : 'pl-6 pr-1 py-1.5 text-sm'} rounded transition-colors ${
                       isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/10'
                     }`
                   } title={compact ? item.label : undefined}>
-                  {compact ? item.label.slice(0, 6) : item.label}
+                  <span>{compact ? item.label.slice(0, 6) : item.label}</span>
+                  {badges[item.to] > 0 && (
+                    <span className="ml-1 text-[9px] font-bold bg-amber-400 text-[#1e3a5f] px-1 rounded leading-tight">
+                      {badges[item.to]}
+                    </span>
+                  )}
                 </NavLink>
                 {onTogglePin && group.label !== 'Dashboard' && (
                   <button onClick={() => onTogglePin(item.to)} title={isPinned ? 'Unpin' : 'Pin to top'}
@@ -82,6 +110,7 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const qc = useQueryClient();
+  const badges = useNavBadges(user);
 
   // Compact mode
   const [compact, setCompact] = useState(() => localStorage.getItem('sidebar-compact') === 'true');
@@ -266,7 +295,8 @@ export function Sidebar() {
             className={reordering ? 'cursor-grab' : ''}>
             <SidebarGroup group={group} compact={compact}
               isOpen={openGroups.has(group.label)} onToggle={() => toggleGroup(group.label)}
-              pins={pins} onTogglePin={!compact && !reordering ? togglePin : null} />
+              pins={pins} onTogglePin={!compact && !reordering ? togglePin : null}
+              badges={badges} />
           </div>
         ))}
       </nav>

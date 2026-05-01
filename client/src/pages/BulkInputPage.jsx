@@ -188,6 +188,26 @@ function NavButtons({ onBack, onNext, nextLabel, nextDisabled, loading }) {
   );
 }
 
+// Inline-confirm "Clear all" button — no browser dialogs.
+function ClearAllRowsButton({ onClear }) {
+  const [confirming, setConfirming] = useState(false);
+  if (!confirming) {
+    return (
+      <button type="button" onClick={() => setConfirming(true)}
+        className="text-xs text-gray-400 hover:text-red-600">Clear all rows</button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-2 text-xs">
+      <span className="text-red-600">Clear all rows and start over?</span>
+      <button type="button" onClick={() => { onClear(); setConfirming(false); }}
+        className="px-2 py-0.5 bg-red-500 text-white rounded font-medium hover:bg-red-600">Yes, clear</button>
+      <button type="button" onClick={() => setConfirming(false)}
+        className="text-gray-400 hover:text-gray-600">Cancel</button>
+    </span>
+  );
+}
+
 function BulkBtn({ onClick, label }) {
   return <button type="button" onClick={onClick} className="px-1.5 py-1 text-xs bg-[#1e3a5f] hover:bg-[#152a47] text-white rounded font-medium whitespace-nowrap flex-shrink-0">
     {label ?? '↓'}
@@ -666,7 +686,15 @@ export default function BulkInputPage() {
                 </tbody>
               </table>
             </div>
-            <button onClick={() => setRows(p => [...p, makeBlankRow()])} className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium">+ Add Row</button>
+            <div className="mt-3 flex items-center gap-4">
+              <button onClick={() => setRows(p => [...p, makeBlankRow()])} className="text-sm text-blue-600 hover:text-blue-800 font-medium">+ Add Row</button>
+              {rows.length > 0 && (
+                <ClearAllRowsButton onClear={() => {
+                  setRows([]);
+                  setProgramData([]); setEnrollRows([]); setRows4([]); setRows5([]);
+                }} />
+              )}
+            </div>
             <NavButtons onBack={() => setStep(1)} onNext={goToStep3} nextLabel="Next → Enrollment" nextDisabled={rows.length === 0} />
           </div>
         )}

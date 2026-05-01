@@ -92,6 +92,15 @@ router.get('/', authenticate, async (req, res, next) => {
       whereClauses.push(`prog.first_session_date <= ?`);
       params.push(date_to);
     }
+    if (req.query.missing_lessons === '1' || req.query.missing_lessons === 'true') {
+      // Programs with at least one future or in-progress session that has no lesson_id assigned
+      whereClauses.push(`EXISTS (
+        SELECT 1 FROM session s
+        WHERE s.program_id = prog.id AND s.active = 1 AND s.not_billed = 0
+          AND s.lesson_id IS NULL AND s.no_lesson_taught = 0
+          AND s.session_date >= CURDATE()
+      )`);
+    }
 
     const where = `WHERE ${whereClauses.join(' AND ')}`;
     const sortMap = {

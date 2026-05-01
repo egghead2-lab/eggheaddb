@@ -20,16 +20,16 @@ router.post('/', authenticate, async (req, res, next) => {
       `INSERT INTO incident_report (professor_id, program_id, location_id, site_name,
         incident_date, incident_time, severity,
         category_physical, category_verbal, category_accident, category_behavior,
-        category_illness, category_injury, category_bullying,
+        category_illness, category_injury, category_bullying, category_chemical,
         professors_involved, students_involved, description)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         professorId, d.program_id || null, d.location_id || null, d.site_name || null,
         d.incident_date, d.incident_time || null, d.severity || 'minor',
         d.category_physical ? 1 : 0, d.category_verbal ? 1 : 0,
         d.category_accident ? 1 : 0, d.category_behavior ? 1 : 0,
         d.category_illness ? 1 : 0, d.category_injury ? 1 : 0,
-        d.category_bullying ? 1 : 0,
+        d.category_bullying ? 1 : 0, d.category_chemical ? 1 : 0,
         d.professors_involved || null, d.students_involved || null, d.description,
       ]
     );

@@ -16,11 +16,12 @@ const CATEGORIES = [
   { key: 'category_illness', label: 'Illness' },
   { key: 'category_injury', label: 'Injury' },
   { key: 'category_bullying', label: 'Bullying' },
+  { key: 'category_chemical', label: 'Chemical' },
 ];
 
 const SEVERITY_DESC = {
   minor: 'Scrapes, bruises, disagreements, falling, crying — not related to serious injury',
-  major: 'Violence, broken bones, blood, fainting, repeated/severe bullying, "stranger danger", bathroom accidents, chemical spill, accidental ingestion (see Chemical Safety Sheet)',
+  major: 'Violence, broken bones, blood, fainting, repeated/severe bullying, "stranger danger", bathroom accidents, chemical spill, accidental ingestion',
 };
 
 export default function IncidentReportPage() {
@@ -55,6 +56,15 @@ export default function IncidentReportPage() {
 function ReportForm({ isAdmin, onSubmitted }) {
   const qc = useQueryClient();
   const today = new Date().toISOString().split('T')[0];
+
+  // Optional URL pointer to the Chemical Safety Sheet — admin-configurable via app_settings.
+  const { data: chemUrlData } = useQuery({
+    queryKey: ['settings', 'chemical_safety_sheet_url'],
+    queryFn: () => api.get('/settings/chemical_safety_sheet_url').then(r => r.data),
+    staleTime: 10 * 60 * 1000,
+  });
+  const chemUrl = chemUrlData?.value || '';
+
   const [form, setForm] = useState({
     incident_date: today,
     incident_time: '',
@@ -70,6 +80,7 @@ function ReportForm({ isAdmin, onSubmitted }) {
     category_illness: false,
     category_injury: false,
     category_bullying: false,
+    category_chemical: false,
   });
 
   const mutation = useMutation({
@@ -80,7 +91,8 @@ function ReportForm({ isAdmin, onSubmitted }) {
         incident_date: today, incident_time: '', severity: 'minor',
         professors_involved: '', students_involved: '', description: '', program_id: '',
         category_physical: false, category_verbal: false, category_accident: false,
-        category_behavior: false, category_illness: false, category_injury: false, category_bullying: false,
+        category_behavior: false, category_illness: false, category_injury: false,
+        category_bullying: false, category_chemical: false,
       });
       onSubmitted();
     },
@@ -150,7 +162,15 @@ function ReportForm({ isAdmin, onSubmitted }) {
 
           {/* Severity */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Severity *</label>
+            <div className="flex items-baseline justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">Severity *</label>
+              {chemUrl && (
+                <a href={chemUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-[#1e3a5f] hover:underline font-medium">
+                  Chemical Safety Sheet ↗
+                </a>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {['minor', 'major'].map(sev => (
                 <button key={sev} type="button" onClick={() => set('severity', sev)}

@@ -1026,6 +1026,72 @@ router.get('/bug-reports/amounts', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /bug-reports/payout-history — past payout runs (one per paid_at date), with totals
+router.get('/bug-reports/payout-history', authenticate, async (req, res, next) => {
+  try {
+    const [settings] = await pool.query(
+      `SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN
+        ('bug_bounty_minor_amount','bug_bounty_major_amount','idea_bounty_minor_amount','idea_bounty_major_amount')`
+    );
+    const sMap = {};
+    settings.forEach(s => { sMap[s.setting_key] = parseFloat(s.setting_value) || 0; });
+    const bugMinor = sMap.bug_bounty_minor_amount ?? 2;
+    const bugMajor = sMap.bug_bounty_major_amount ?? 4;
+    const ideaMinor = sMap.idea_bounty_minor_amount ?? 1;
+    const ideaMajor = sMap.idea_bounty_major_amount ?? 3;
+
+    const [bugRows] = await pool.query(
+      `SELECT DATE(paid_at) AS paid_date, status, category, COUNT(*) AS cnt
+       FROM bug_report
+       WHERE paid_at IS NOT NULL
+       GROUP BY DATE(paid_at), status, category
+       ORDER BY paid_date DESC`
+    );
+    const [awardRows] = await pool.query(
+      `SELECT DATE(paid_at) AS paid_date, SUM(amount) AS total, COUNT(*) AS cnt
+       FROM bug_bounty_award
+       WHERE paid_at IS NOT NULL
+       GROUP BY DATE(paid_at)
+       ORDER BY paid_date DESC`
+    );
+
+    const days = {};
+    const day = (d) => (typeof d === 'string' ? d : d.toISOString().split('T')[0]);
+    bugRows.forEach(r => {
+      const d = day(r.paid_date);
+      if (!days[d]) days[d] = { paid_date: d, bug_count: 0, idea_count: 0, awards_count: 0, total: 0 };
+      const cnt = parseInt(r.cnt) || 0;
+      let amt = 0;
+      if (r.status === 'approved_minor' && r.category === 'bug') amt = cnt * bugMinor;
+      else if (r.status === 'approved_major' && r.category === 'bug') amt = cnt * bugMajor;
+      else if (r.status === 'approved_minor' && r.category === 'idea') amt = cnt * ideaMinor;
+      else if (r.status === 'approved_major' && r.category === 'idea') amt = cnt * ideaMajor;
+      if (r.category === 'bug') days[d].bug_count += cnt;
+      else days[d].idea_count += cnt;
+      days[d].total += amt;
+    });
+    awardRows.forEach(r => {
+      const d = day(r.paid_date);
+      if (!days[d]) days[d] = { paid_date: d, bug_count: 0, idea_count: 0, awards_count: 0, total: 0 };
+      days[d].awards_count += parseInt(r.cnt) || 0;
+      days[d].total += parseFloat(r.total) || 0;
+    });
+
+    const out = Object.values(days).sort((a, b) => b.paid_date.localeCompare(a.paid_date));
+    res.json({ success: true, data: out });
+  } catch (err) { next(err); }
+});
+
+// Generic single-setting fetch (read-only). Whitelist enforced.
+const PUBLIC_SETTINGS = new Set(['chemical_safety_sheet_url']);
+router.get('/settings/:key', authenticate, async (req, res, next) => {
+  try {
+    if (!PUBLIC_SETTINGS.has(req.params.key)) return res.status(404).json({ success: false });
+    const [[row]] = await pool.query('SELECT setting_value FROM app_settings WHERE setting_key = ?', [req.params.key]);
+    res.json({ success: true, value: row?.setting_value || '' });
+  } catch (err) { next(err); }
+});
+
 router.post('/bug-reports/awards', authenticate, async (req, res, next) => {
   try {
     const { user_id, user_name, amount, description } = req.body;
