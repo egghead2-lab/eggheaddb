@@ -438,7 +438,7 @@ function FeedbackCard({ session: s }) {
 
       <div className="grid grid-cols-2 gap-3 mt-3">
         <div>
-          <label className="text-[11px] font-medium text-gray-600 block mb-1">How many kids?</label>
+          <label className="text-[11px] font-medium text-gray-600 block mb-1">How many kids attended that day?</label>
           <input type="number" min="0" value={kids} onChange={e => setKids(e.target.value)}
             className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
         </div>
