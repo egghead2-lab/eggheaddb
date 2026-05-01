@@ -334,21 +334,28 @@ export default function BulkInputPage() {
     setNickToId(nti);
     if (!globalStatus && setup.classStatuses?.length) setGlobalStatus(String(setup.classStatuses[0].id));
     if (!globalProgramType && setup.programTypes?.length) setGlobalProgramType(setup.programTypes[0].program_type_name);
-    const initRows = Array.from({ length: rowCount }, () => ({
-      locNickname: locs[0] || '', locId: nti[locs[0]] || '',
-      programType: '', classType: '', classId: '',
-      grades: '', startTime: '', classLength: '60', day: ['Monday'], notes: '',
-    }));
-    setRows(initRows);
+    // Preserve existing rows if user is navigating Back→Forward without changing rowCount.
+    if (!rows.length || rows.length !== rowCount) {
+      const initRows = Array.from({ length: rowCount }, () => ({
+        locNickname: locs[0] || '', locId: nti[locs[0]] || '',
+        programType: '', classType: '', classId: '',
+        grades: '', startTime: '', classLength: '60', day: ['Monday'], notes: '',
+      }));
+      setRows(initRows);
+    }
     setStep(2);
   }
 
   function goToStep3() {
     const existingSet = new Set((setup.existingNicknames || []).map(n => n.toUpperCase()));
-    const data = rows.map(r => {
+    const data = rows.map((r, i) => {
       const cls = classById[r.classId];
       const nickname = makeNickname(r.locNickname, r.grades, cls?.class_code || '', existingSet);
+      // Preserve previously-entered downstream fields (min/max, startDate, sessions, perCost…)
+      // when the row identity is stable.
+      const prior = programData[i] || {};
       return {
+        ...prior,
         nickname, day: coerceDays(r.day), classStatusId: globalStatus, programType: globalProgramType,
         locId: r.locId, locNickname: r.locNickname, classType: r.classType, classId: r.classId,
         className: cls?.class_name || '', classCode: cls?.class_code || '',
@@ -356,14 +363,20 @@ export default function BulkInputPage() {
       };
     });
     setProgramData(data);
-    setEnrollRows(data.map(() => ({ min: '0', max: '20' })));
+    // Only reset enrollment if length changed (user added/removed rows). Otherwise keep entries.
+    setEnrollRows(prev => {
+      if (prev && prev.length === data.length) return prev;
+      return data.map((p, i) => prev?.[i] || { min: '0', max: '20' });
+    });
     setStep(3);
   }
 
   function goToStep4() {
     setProgramData(prev => prev.map((p, i) => ({ ...p, min: enrollRows[i]?.min || '', max: enrollRows[i]?.max || '' })));
-    setRows4(programData.map(() => ({ startDate: '', sessions: '' })));
-    setBulkStartDate('');
+    setRows4(prev => {
+      if (prev && prev.length === programData.length) return prev;
+      return programData.map((_, i) => prev?.[i] || { startDate: '', sessions: '' });
+    });
     setStep(4);
   }
 
@@ -391,8 +404,10 @@ export default function BulkInputPage() {
       return { ...base, nickname: final };
     });
     setProgramData(updated);
-    setRows5(updated.map(() => ({ perCost: '' })));
-    setBulkPerCost('');
+    setRows5(prev => {
+      if (prev && prev.length === updated.length) return prev;
+      return updated.map((_, i) => prev?.[i] || { perCost: '' });
+    });
     setStep(5);
   }
 
