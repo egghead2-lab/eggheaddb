@@ -1137,4 +1137,171 @@ router.post('/nightly-job/backfill', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ============================================================
+// PAYSTUB CHECK — cross-check a professor's pay across all categories
+// ============================================================
+// GET /api/payroll/paystub-check?professor_id=X&start=YYYY-MM-DD&end=YYYY-MM-DD
+router.get('/paystub-check', authenticate, async (req, res, next) => {
+  try {
+    const { professor_id, start, end } = req.query;
+    if (!professor_id || !start || !end) {
+      return res.status(400).json({ success: false, error: 'professor_id, start, end required' });
+    }
+
+    const num = (v) => parseFloat(v) || 0;
+
+    // Professor info
+    const [[prof]] = await pool.query(
+      `SELECT p.id, p.first_name, p.last_name, p.professor_nickname, p.email, p.user_id
+       FROM professor p WHERE p.id = ? AND p.active = 1`, [professor_id]
+    );
+    if (!prof) return res.status(404).json({ success: false, error: 'Professor not found' });
+
+    // 1. Class sessions (program_session_pay) — Lead + Assistant
+    const [classSessions] = await pool.query(
+      `SELECT psp.session_date, psp.role, psp.lesson_name, psp.is_substitute,
+              psp.pay_amount, psp.reimbursement_amount, psp.pay_source, psp.assist_pay_flag,
+              psp.class_hours, prog.program_nickname, loc.nickname AS location_nickname,
+              psp.session_id
+       FROM program_session_pay psp
+       LEFT JOIN program prog ON prog.id = psp.program_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       WHERE psp.professor_id = ? AND psp.session_date >= ? AND psp.session_date <= ?
+       ORDER BY psp.session_date, psp.role`,
+      [professor_id, start, end]
+    );
+
+    // 2. Parties (party_session_pay) — join program for date/name
+    const [partySessions] = await pool.query(
+      `SELECT psp.role, psp.pay_amount, psp.drive_fee, psp.tip_amount,
+              psp.dry_ice_reimbursement, psp.total_reimbursement,
+              prog.first_session_date AS session_date,
+              prog.program_nickname,
+              prog.party_address, prog.party_city
+       FROM party_session_pay psp
+       JOIN program prog ON prog.id = psp.party_id
+       WHERE psp.professor_id = ?
+         AND prog.first_session_date >= ? AND prog.first_session_date <= ?
+       ORDER BY prog.first_session_date, psp.role`,
+      [professor_id, start, end]
+    );
+
+    // 3. Misc pay
+    const [miscPay] = await pool.query(
+      `SELECT mp.pay_date, mp.pay_type, mp.subtype, mp.description, mp.location,
+              mp.hourly_pay, mp.hours, mp.dollar_amount, mp.manual_total_override,
+              mp.total_pay, mp.total_reimbursement, mp.is_reviewed,
+              prog.program_nickname
+       FROM misc_pay_entries mp
+       LEFT JOIN program prog ON prog.id = mp.program_id
+       WHERE mp.professor_id = ? AND mp.pay_date >= ? AND mp.pay_date <= ?
+       ORDER BY mp.pay_date`,
+      [professor_id, start, end]
+    );
+
+    // 4. Onboarding / training pay
+    const [training] = await pool.query(
+      `SELECT op.training_date, op.trainer, op.trainual_pay, op.virtual_training_pay,
+              op.total_training_pay, op.bg_check_cost, op.training_outcome, op.is_reviewed
+       FROM onboarding_pay_entries op
+       WHERE op.professor_id = ? AND op.training_date >= ? AND op.training_date <= ?
+       ORDER BY op.training_date`,
+      [professor_id, start, end]
+    );
+
+    // 5. Mileage (mileage_weeks — week_start within range, status approved/pushed)
+    const [mileage] = await pool.query(
+      `SELECT mw.week_start, mw.week_end, mw.total_miles, mw.reimbursement_rate,
+              mw.reimbursement_total, mw.status
+       FROM mileage_weeks mw
+       WHERE mw.professor_id = ? AND mw.week_start >= ? AND mw.week_start <= ?
+       ORDER BY mw.week_start`,
+      [professor_id, start, end]
+    );
+
+    // 6. Gas reimbursement (gas_reimbursement_entry — uses cycle dates)
+    const [gas] = await pool.query(
+      `SELECT gre.id, gre.total_amount, gre.num_sessions, gre.status, gre.pushed_at,
+              grc.cycle_name, grc.start_date, grc.end_date
+       FROM gas_reimbursement_entry gre
+       JOIN gas_reimbursement_cycle grc ON grc.id = gre.cycle_id
+       WHERE gre.professor_id = ?
+         AND grc.end_date >= ? AND grc.start_date <= ?
+       ORDER BY grc.start_date`,
+      [professor_id, start, end]
+    );
+
+    // Subtotals
+    const classPay = classSessions.reduce((a, r) => a + num(r.pay_amount), 0);
+    const classReimb = classSessions.reduce((a, r) => a + num(r.reimbursement_amount), 0);
+
+    const partyPay = partySessions.reduce((a, r) => a + num(r.pay_amount), 0);
+    const partyDrive = partySessions.reduce((a, r) => a + num(r.drive_fee), 0);
+    const partyTip = partySessions.reduce((a, r) => a + num(r.tip_amount), 0);
+    const partyReimb = partySessions.reduce((a, r) => a + num(r.total_reimbursement), 0);
+
+    const miscPayTotal = miscPay.reduce((a, r) => {
+      const total = num(r.manual_total_override) || num(r.total_pay) || num(r.dollar_amount) || (num(r.hourly_pay) * num(r.hours));
+      return a + total;
+    }, 0);
+    const miscReimbTotal = miscPay.reduce((a, r) => a + num(r.total_reimbursement), 0);
+
+    const trainingTotal = training.reduce((a, r) => a + num(r.total_training_pay) + num(r.bg_check_cost), 0);
+
+    const mileageTotal = mileage.reduce((a, r) => a + num(r.reimbursement_total), 0);
+    const gasTotal = gas.reduce((a, r) => a + num(r.total_amount), 0);
+
+    const payTotal = classPay + partyPay + partyDrive + partyTip + miscPayTotal + trainingTotal;
+    const reimbursementTotal = classReimb + partyReimb + miscReimbTotal + mileageTotal + gasTotal;
+
+    res.json({
+      success: true,
+      professor: prof,
+      range: { start, end },
+      categories: {
+        class_sessions: {
+          rows: classSessions,
+          pay_total: classPay,
+          reimbursement_total: classReimb,
+          count: classSessions.length,
+        },
+        party_sessions: {
+          rows: partySessions,
+          pay_total: partyPay,
+          drive_fee_total: partyDrive,
+          tip_total: partyTip,
+          reimbursement_total: partyReimb,
+          count: partySessions.length,
+        },
+        misc_pay: {
+          rows: miscPay,
+          pay_total: miscPayTotal,
+          reimbursement_total: miscReimbTotal,
+          count: miscPay.length,
+        },
+        training: {
+          rows: training,
+          pay_total: trainingTotal,
+          count: training.length,
+        },
+        mileage: {
+          rows: mileage,
+          total: mileageTotal,
+          count: mileage.length,
+        },
+        gas_reimbursement: {
+          rows: gas,
+          total: gasTotal,
+          count: gas.length,
+        },
+      },
+      totals: {
+        pay_total: payTotal,
+        reimbursement_total: reimbursementTotal,
+        grand_total: payTotal + reimbursementTotal,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
