@@ -24,6 +24,7 @@ router.get('/setup', authenticate, async (req, res, next) => {
     );
     const [classes] = await pool.query(
       `SELECT c.id, c.class_name, c.class_code, c.program_type_id, c.class_type_id,
+              c.min_grade, c.max_grade,
               pt.program_type_name, ct.class_type_name
        FROM class c
        LEFT JOIN program_type pt ON pt.id = c.program_type_id
@@ -96,13 +97,16 @@ router.post('/save', authenticate, async (req, res, next) => {
             prog.class_id || null,
             prog.start_time || null,
             prog.class_length_minutes || null,
-            prog.day === 'Monday' || prog.day === 'M-F' ? 1 : 0,
-            prog.day === 'Tuesday' || prog.day === 'M-F' ? 1 : 0,
-            prog.day === 'Wednesday' || prog.day === 'M-F' ? 1 : 0,
-            prog.day === 'Thursday' || prog.day === 'M-F' ? 1 : 0,
-            prog.day === 'Friday' || prog.day === 'M-F' ? 1 : 0,
-            prog.day === 'Saturday' ? 1 : 0,
-            prog.day === 'Sunday' ? 1 : 0,
+            ...(() => {
+              // prog.day is either an array of day names or a legacy string ('Monday' | 'M-F').
+              const days = Array.isArray(prog.day)
+                ? prog.day
+                : (prog.day === 'M-F'
+                    ? ['Monday','Tuesday','Wednesday','Thursday','Friday']
+                    : (prog.day ? [prog.day] : []));
+              return ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+                .map(d => days.includes(d) ? 1 : 0);
+            })(),
             prog.minimum_students || null,
             prog.maximum_students || null,
             prog.parent_cost || null,

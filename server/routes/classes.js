@@ -78,6 +78,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'class_name', 'formal_class_name', 'class_code', 'description', 'keywords',
       'standards', 'trainual_link', 'parent_portal_link', 'parent_portal_qr_path',
       'program_type_id', 'class_type_id',
+      'min_grade', 'max_grade',
     ];
 
     const updateFields = fields.filter(f => data[f] !== undefined);

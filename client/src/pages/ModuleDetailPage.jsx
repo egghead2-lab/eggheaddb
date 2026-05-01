@@ -14,6 +14,21 @@ import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { toFormData } from '../lib/utils';
 
+// Internal: K = 0, 1..12 = 1..12. NULL = "no constraint".
+const GRADES = [
+  { v: '', label: 'No limit' },
+  { v: '0', label: 'TK/K' },
+  ...Array.from({ length: 12 }, (_, i) => ({ v: String(i + 1), label: String(i + 1) })),
+];
+
+function GradeSelect({ label, value, onChange }) {
+  return (
+    <Select label={label} value={value ?? ''} onChange={e => onChange(e.target.value === '' ? null : parseInt(e.target.value))}>
+      {GRADES.map(g => <option key={g.v} value={g.v}>{g.label}</option>)}
+    </Select>
+  );
+}
+
 export default function ModuleDetailPage() {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -89,6 +104,15 @@ export default function ModuleDetailPage() {
                   <option key={pt.id} value={pt.id}>{pt.program_type_name}</option>
                 ))}
               </Select>
+            </div>
+            <div className="grid grid-cols-4 gap-4 mt-4">
+              <GradeSelect label="Min Grade" value={watch('min_grade')}
+                onChange={v => setValue('min_grade', v, { shouldDirty: true })} />
+              <GradeSelect label="Max Grade" value={watch('max_grade')}
+                onChange={v => setValue('max_grade', v, { shouldDirty: true })} />
+              <div className="col-span-2 flex items-end pb-1">
+                <span className="text-[11px] text-gray-400">Used to soft-warn schedulers when a program's grade range falls outside this module.</span>
+              </div>
             </div>
             <div className="mt-4">
               <div className="flex items-center justify-between mb-1">

@@ -4,10 +4,58 @@ import { getBulkSetup, saveBulkPrograms } from '../api/bulk-input';
 import { AppShell } from '../components/layout/AppShell';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { SearchSelect } from '../components/ui/SearchSelect';
 import { formatCurrency } from '../lib/utils';
 import PastProgramsPanel from '../components/PastProgramsPanel';
 
-const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','M-F'];
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const WEEKDAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+const ALL_DAYS = [...WEEKDAYS, 'Saturday', 'Sunday'];
+
+// Array-of-day-names helpers
+function isMF(arr) {
+  return Array.isArray(arr) && arr.length === 5 && WEEKDAYS.every(d => arr.includes(d));
+}
+function daysDisplay(arr) {
+  if (!arr || arr.length === 0) return '—';
+  if (isMF(arr)) return 'M-F';
+  // Order canonically and use single-letter abbreviations: Mon→M, Tue→Tu, etc.
+  const ABBR = { Monday: 'M', Tuesday: 'Tu', Wednesday: 'W', Thursday: 'Th', Friday: 'F', Saturday: 'Sa', Sunday: 'Su' };
+  return ALL_DAYS.filter(d => arr.includes(d)).map(d => ABBR[d]).join('/');
+}
+// Coerce legacy single-string values (from older state) into array form
+function coerceDays(d) {
+  if (Array.isArray(d)) return d;
+  if (d === 'M-F') return [...WEEKDAYS];
+  if (typeof d === 'string' && d) return [d];
+  return [];
+}
+
+// Parse "K-5", "TK-2", "3-4", "5", etc → [lo, hi] with K=TK=0
+function parseGradeRange(s) {
+  if (!s) return null;
+  const norm = String(s).toUpperCase().replace(/\s+/g, '').replace(/–|—/g, '-');
+  const toInt = (p) => (p === 'TK' || p === 'K') ? 0 : (Number.isFinite(parseInt(p)) ? parseInt(p) : null);
+  const parts = norm.split('-');
+  if (parts.length === 1) {
+    const v = toInt(parts[0]);
+    return v == null ? null : [v, v];
+  }
+  const lo = toInt(parts[0]);
+  const hi = toInt(parts[1]);
+  return (lo == null || hi == null) ? null : [Math.min(lo, hi), Math.max(lo, hi)];
+}
+function gradeLabel(g) { return g === 0 ? 'TK/K' : String(g); }
+function gradeWarning(gradesStr, cls) {
+  if (!cls || cls.min_grade == null || cls.max_grade == null) return null;
+  const range = parseGradeRange(gradesStr);
+  if (!range) return null;
+  const [lo, hi] = range;
+  if (hi < cls.min_grade || lo > cls.max_grade) {
+    return `Module is for grades ${gradeLabel(cls.min_grade)}–${gradeLabel(cls.max_grade)}`;
+  }
+  return null;
+}
 const chevronSvg = "bg-[length:16px_16px] bg-[position:right_0.5rem_center] bg-no-repeat bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%236b7280%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5.23%207.21a.75.75%200%20011.06.02L10%2011.168l3.71-3.938a.75.75%200%20111.08%201.04l-4.25%204.5a.75.75%200%2001-1.08%200l-4.25-4.5a.75.75%200%2001.02-1.06z%22%20clip-rule%3D%22evenodd%22%2F%3E%3C%2Fsvg%3E')]";
 const dd = `w-full rounded border border-gray-300 pl-3 pr-8 py-1.5 text-sm appearance-none bg-white focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] ${chevronSvg}`;
 const ii = "w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]";
@@ -15,32 +63,39 @@ const dds = `w-full rounded border border-gray-300 pl-2 pr-6 py-1 text-xs appear
 const iis = "w-full rounded border border-gray-300 px-2 py-1 text-xs focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]";
 
 // --- Helpers ---
-function isInvalidDay(dateStr, day, freqMode) {
+// `days` is an array of day-name strings, e.g. ['Monday','Wednesday'].
+function isInvalidDay(dateStr, days, freqMode) {
   if (!dateStr) return false;
+  if (!Array.isArray(days) || days.length === 0) return false;
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
-  const names = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const actual = names[dt.getDay()];
-  if (day === 'M-F') return actual === 'Saturday' || actual === 'Sunday';
-  if (freqMode === 'weekly') return actual !== day;
+  const actual = DAY_NAMES[dt.getDay()];
+  if (freqMode === 'weekly') return !days.includes(actual);
+  // daily mode: only flag start dates on Saturday/Sunday if those aren't selected
   return false;
 }
 
-function generateDates(startDateStr, sessions, day, freqMode, skipSet) {
+function generateDates(startDateStr, sessions, days, freqMode, skipSet) {
   if (!startDateStr || sessions <= 0) return { valid: [], skipped: [] };
-  if (isInvalidDay(startDateStr, day, freqMode)) return { valid: [], skipped: [] };
+  if (!Array.isArray(days) || days.length === 0) return { valid: [], skipped: [] };
+  if (isInvalidDay(startDateStr, days, freqMode)) return { valid: [], skipped: [] };
   const [y, m, d] = startDateStr.split('-').map(Number);
   const toKey = dt => dt.toISOString().split('T')[0];
   const fmt = dt => `${dt.getMonth()+1}/${dt.getDate()}/${String(dt.getFullYear()).slice(-2)}`;
   const valid = [], skipped = [];
-  const cap = Math.min(sessions, 20);
+  const cap = Math.min(sessions, 50);
   if (freqMode === 'weekly') {
-    let count = 0, i = 0;
-    while (count < cap && i < 200) {
-      const dt = new Date(y, m - 1, d + i * 7);
-      if (skipSet.has(toKey(dt))) skipped.push(fmt(dt));
-      else { valid.push({ key: toKey(dt), display: fmt(dt) }); count++; }
-      i++;
+    // Walk forward day-by-day. Add a session on every day whose name is in `days`.
+    const dt = new Date(y, m - 1, d);
+    let count = 0, iter = 0;
+    while (count < cap && iter < 400) {
+      const dow = DAY_NAMES[dt.getDay()];
+      if (days.includes(dow)) {
+        if (skipSet.has(toKey(dt))) skipped.push(fmt(new Date(dt)));
+        else { valid.push({ key: toKey(new Date(dt)), display: fmt(new Date(dt)) }); count++; }
+      }
+      dt.setDate(dt.getDate() + 1);
+      iter++;
     }
   } else {
     let count = 0;
@@ -57,6 +112,39 @@ function generateDates(startDateStr, sessions, day, freqMode, skipSet) {
     }
   }
   return { valid, skipped };
+}
+
+// Compact per-row day picker. Multi-select pills + "M-F" quick fill.
+function DayPickerCell({ value, onChange, compact = true }) {
+  const v = coerceDays(value);
+  const toggle = (d) => {
+    if (v.includes(d)) onChange(v.filter(x => x !== d));
+    else onChange([...v, d]);
+  };
+  const ABBR_LIST = [
+    ['Monday', 'M'], ['Tuesday', 'T'], ['Wednesday', 'W'], ['Thursday', 'T'], ['Friday', 'F'],
+    ['Saturday', 'S'], ['Sunday', 'S'],
+  ];
+  const sz = compact ? 'w-5 h-5 text-[9px]' : 'w-6 h-6 text-[10px]';
+  return (
+    <div className="flex items-center gap-0.5">
+      {ABBR_LIST.map(([day, letter], i) => {
+        const on = v.includes(day);
+        return (
+          <button key={day} type="button" onClick={() => toggle(day)}
+            title={day}
+            className={`${sz} rounded-full font-bold transition-colors ${on ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+            {letter}
+          </button>
+        );
+      })}
+      <button type="button" onClick={() => onChange(isMF(v) ? [] : [...WEEKDAYS])}
+        title="Mon-Fri"
+        className={`ml-1 px-1 py-0.5 rounded text-[9px] font-medium border ${isMF(v) ? 'bg-[#1e3a5f] border-[#1e3a5f] text-white' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}>
+        M-F
+      </button>
+    </div>
+  );
 }
 
 function makeNickname(locNick, grades, classCode, existingSet) {
@@ -124,7 +212,7 @@ export default function BulkInputPage() {
   const [rows, setRows] = useState([]);
   const [locations, setLocations] = useState([]);
   const [nickToId, setNickToId] = useState({});
-  const [bulk, setBulk] = useState({ locNickname: '', programType: '', classType: '', classId: '', grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '' });
+  const [bulk, setBulk] = useState({ locNickname: '', programType: '', classType: '', classId: '', grades: '', startTime: '', classLength: '60', day: ['Monday'], notes: '' });
 
   // Accumulated program data
   const [programData, setProgramData] = useState([]);
@@ -194,7 +282,7 @@ export default function BulkInputPage() {
   // --- Row helpers ---
   function makeBlankRow() {
     const loc = locations[0] || '';
-    return { locNickname: loc, locId: nickToId[loc] || '', programType: '', classType: '', classId: '', grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '' };
+    return { locNickname: loc, locId: nickToId[loc] || '', programType: '', classType: '', classId: '', grades: '', startTime: '', classLength: '60', day: ['Monday'], notes: '' };
   }
 
   function updateRow(i, field, value) {
@@ -249,7 +337,7 @@ export default function BulkInputPage() {
     const initRows = Array.from({ length: rowCount }, () => ({
       locNickname: locs[0] || '', locId: nti[locs[0]] || '',
       programType: '', classType: '', classId: '',
-      grades: '', startTime: '', classLength: '60', day: 'Monday', notes: '',
+      grades: '', startTime: '', classLength: '60', day: ['Monday'], notes: '',
     }));
     setRows(initRows);
     setStep(2);
@@ -261,7 +349,7 @@ export default function BulkInputPage() {
       const cls = classById[r.classId];
       const nickname = makeNickname(r.locNickname, r.grades, cls?.class_code || '', existingSet);
       return {
-        nickname, day: r.day, classStatusId: globalStatus, programType: globalProgramType,
+        nickname, day: coerceDays(r.day), classStatusId: globalStatus, programType: globalProgramType,
         locId: r.locId, locNickname: r.locNickname, classType: r.classType, classId: r.classId,
         className: cls?.class_name || '', classCode: cls?.class_code || '',
         grades: r.grades, startTime: r.startTime, classLength: r.classLength, notes: r.notes,
@@ -460,9 +548,15 @@ export default function BulkInputPage() {
                     <td className={`px-2 py-1 text-center text-[10px] text-blue-400`}>—</td>
                     {mode === 'contractor' && (
                       <td className="px-2 py-1"><div className="flex items-center gap-0.5">
-                        <select value={bulk.locNickname} onChange={e => setBulk(p => ({ ...p, locNickname: e.target.value }))} className={`w-full ${dds} text-[10px] bg-blue-50`}>
-                          {locations.map(l => <option key={l}>{l}</option>)}
-                        </select>
+                        <div className="flex-1 min-w-[180px]">
+                          <SearchSelect
+                            value={bulk.locNickname}
+                            onChange={v => setBulk(p => ({ ...p, locNickname: v }))}
+                            options={locations.map(l => ({ id: l, label: l }))}
+                            displayKey="label" valueKey="id"
+                            placeholder="Search…"
+                          />
+                        </div>
                         <BulkBtn onClick={() => bulkFill('locNickname', bulk.locNickname)} />
                       </div></td>
                     )}
@@ -500,9 +594,7 @@ export default function BulkInputPage() {
                       <BulkBtn onClick={() => bulkFill('classLength', bulk.classLength)} />
                     </div></td>
                     <td className="px-2 py-1"><div className="flex items-center gap-0.5">
-                      <select value={bulk.day} onChange={e => setBulk(p => ({ ...p, day: e.target.value }))} className={`w-full ${dds} text-[10px] bg-blue-50`}>
-                        {DAYS.map(d => <option key={d}>{d}</option>)}
-                      </select>
+                      <DayPickerCell value={bulk.day} onChange={v => setBulk(p => ({ ...p, day: v }))} />
                       <BulkBtn onClick={() => bulkFill('day', bulk.day)} />
                     </div></td>
                     <td className="px-2 py-1"><div className="flex items-center gap-0.5">
@@ -518,9 +610,15 @@ export default function BulkInputPage() {
                     <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className={`px-2 py-1 font-mono text-gray-400 whitespace-nowrap px-2`}>{r.locId || '—'}</td>
                       {mode === 'contractor' && (
-                        <td className="px-2 py-1"><select value={r.locNickname} onChange={e => updateRow(i, 'locNickname', e.target.value)} className={`w-full ${dds}`}>
-                          {locations.map(l => <option key={l}>{l}</option>)}
-                        </select></td>
+                        <td className="px-2 py-1 min-w-[200px]">
+                          <SearchSelect
+                            value={r.locNickname}
+                            onChange={v => updateRow(i, 'locNickname', v)}
+                            options={locations.map(l => ({ id: l, label: l }))}
+                            displayKey="label" valueKey="id"
+                            placeholder="Search…"
+                          />
+                        </td>
                       )}
                       <td className="px-2 py-1"><select value={r.programType} onChange={e => updateRow(i, 'programType', e.target.value)} className={`w-full ${dds}`}>
                         <option value="">All</option>
@@ -534,12 +632,16 @@ export default function BulkInputPage() {
                         <option value="">Select…</option>
                         {getFilteredClasses(r.programType, r.classType).map(c => <option key={c.id} value={c.id}>{c.class_name}</option>)}
                       </select></td>
-                      <td className="px-2 py-1"><input value={r.grades} onChange={e => updateRow(i, 'grades', e.target.value)} placeholder="K-5" className={`w-full ${iis}`} /></td>
+                      <td className="px-2 py-1">
+                        <input value={r.grades} onChange={e => updateRow(i, 'grades', e.target.value)} placeholder="K-5" className={`w-full ${iis}`} />
+                        {(() => {
+                          const warn = gradeWarning(r.grades, classById[r.classId]);
+                          return warn ? <div className="text-[9px] text-amber-700 mt-0.5 leading-tight">⚠ {warn}</div> : null;
+                        })()}
+                      </td>
                       <td className="px-2 py-1"><input type="time" step="60" value={r.startTime} onChange={e => updateRow(i, 'startTime', e.target.value)} className={`w-full ${iis}`} /></td>
                       <td className="px-2 py-1"><input type="number" value={r.classLength} onChange={e => updateRow(i, 'classLength', e.target.value)} placeholder="60" className={`w-20 ${iis}`} /></td>
-                      <td className="px-2 py-1"><select value={r.day} onChange={e => updateRow(i, 'day', e.target.value)} className={`w-full ${dds}`}>
-                        {DAYS.map(d => <option key={d}>{d}</option>)}
-                      </select></td>
+                      <td className="px-2 py-1"><DayPickerCell value={r.day} onChange={v => updateRow(i, 'day', v)} /></td>
                       <td className="px-2 py-1"><input value={r.notes} onChange={e => updateRow(i, 'notes', e.target.value)} placeholder="Notes" className={`w-full ${iis}`} /></td>
                       <td className={`px-2 py-1 text-center px-2`}><button onClick={() => setRows(p => p.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">✕</button></td>
                       <td className={`px-2 py-1 px-2`}><button onClick={() => copyFromPrevious(i)}
@@ -567,7 +669,7 @@ export default function BulkInputPage() {
                   {programData.map((p, i) => (
                     <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                       <td className={`px-2 py-1 px-3 py-2 font-medium text-gray-800`}>{p.nickname}</td>
-                      <td className={`px-2 py-1 px-3 py-2 text-gray-600`}>{p.day}</td>
+                      <td className={`px-2 py-1 px-3 py-2 text-gray-600`}>{daysDisplay(p.day)}</td>
                       <td className={`px-2 py-1 w-20 px-2`}><input type="number" min={0} value={enrollRows[i]?.min ?? '0'}
                         onChange={e => setEnrollRows(prev => { const n = [...prev]; n[i] = { ...n[i], min: e.target.value }; return n; })} className={`w-full ${iis}`} /></td>
                       <td className={`px-2 py-1 w-20 px-2`}><input type="number" min={0} value={enrollRows[i]?.max ?? '20'}
@@ -624,7 +726,7 @@ export default function BulkInputPage() {
                     return (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                         <td className={`px-2 py-1 px-2 py-1 font-medium text-gray-800 whitespace-nowrap`}>{p.nickname}</td>
-                        <td className={`px-2 py-1 px-2 py-1 text-gray-600`}>{p.day}</td>
+                        <td className={`px-2 py-1 px-2 py-1 text-gray-600`}>{daysDisplay(p.day)}</td>
                         <td className={`px-2 py-1 px-1`}>
                           <input type="date" value={rows4[i]?.startDate ?? ''} onChange={e => setRows4(prev => { const n = [...prev]; n[i] = { ...n[i], startDate: e.target.value }; return n; })}
                             className={`${iis} ${c?.invalid ? 'border-red-400 bg-red-50 text-red-700' : ''}`} />
@@ -677,7 +779,7 @@ export default function BulkInputPage() {
                     return (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                         <td className={`px-2 py-1 px-2 font-medium text-gray-800 whitespace-nowrap`}>{p.nickname}</td>
-                        <td className={`px-2 py-1 px-2 text-gray-600`}>{p.day}</td>
+                        <td className={`px-2 py-1 px-2 text-gray-600`}>{daysDisplay(p.day)}</td>
                         <td className={`px-2 py-1 px-2 text-gray-600 text-center`}>{p.classLength}</td>
                         <td className={`px-2 py-1 px-2 text-gray-600 text-center`}>{p.sessions}</td>
                         <td className={`px-2 py-1 px-1`}><input type="number" step="1" min={0} value={per === '' ? '' : per ?? ''}
@@ -748,7 +850,7 @@ export default function BulkInputPage() {
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                         <td className={`px-2 py-1 px-2 py-1.5 font-medium text-gray-800`}>{p.nickname}</td>
                         <td className={`px-2 py-1 px-2 py-1.5 text-gray-600`}>{p.locNickname}</td>
-                        <td className={`px-2 py-1 px-2 py-1.5 text-gray-600`}>{p.day}</td>
+                        <td className={`px-2 py-1 px-2 py-1.5 text-gray-600`}>{daysDisplay(p.day)}</td>
                         <td className={`px-2 py-1 px-2 py-1.5 text-gray-600 whitespace-nowrap`}>{p.startTime}</td>
                         <td className={`px-2 py-1 px-2 py-1.5 text-gray-500 max-w-[160px] whitespace-normal`}>{p.generatedDates || '—'}</td>
                         <td className={`px-2 py-1 px-2 py-1.5 text-center`}>{p.sessions}</td>
