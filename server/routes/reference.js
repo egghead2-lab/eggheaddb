@@ -932,6 +932,26 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
     const ideaMinor = sMap.idea_bounty_minor_amount ?? 1;
     const ideaMajor = sMap.idea_bounty_major_amount ?? 3;
 
+    // Filter mode:
+    //   ?mode=unpaid                    — every approved/awarded item that hasn't been marked paid (any time)
+    //   ?month=YYYY-MM                  — that month's submissions
+    //   (default)                       — current month
+    const { mode, month } = req.query;
+    let bugWhere, awardWhere, bugParams = [], awardParams = [];
+    if (mode === 'unpaid') {
+      bugWhere = 'paid_at IS NULL';
+      awardWhere = 'paid_at IS NULL';
+    } else if (month && /^\d{4}-\d{2}$/.test(month)) {
+      bugWhere = 'YEAR(ts_inserted) = ? AND MONTH(ts_inserted) = ?';
+      awardWhere = 'YEAR(ts_inserted) = ? AND MONTH(ts_inserted) = ?';
+      const [y, m] = month.split('-');
+      bugParams = [parseInt(y), parseInt(m)];
+      awardParams = [parseInt(y), parseInt(m)];
+    } else {
+      bugWhere = 'MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())';
+      awardWhere = 'MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())';
+    }
+
     const [rows] = await pool.query(
       `SELECT submitted_by_name AS name, submitted_by_user_id AS user_id,
               SUM(CASE WHEN status = 'approved_minor' AND category = 'bug' THEN 1 ELSE 0 END) AS bug_minor_count,
@@ -940,8 +960,9 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
               SUM(CASE WHEN status = 'approved_major' AND category = 'idea' THEN 1 ELSE 0 END) AS idea_major_count,
               COUNT(*) AS total_submitted
        FROM bug_report
-       WHERE MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())
-       GROUP BY submitted_by_user_id, submitted_by_name`
+       WHERE ${bugWhere}
+       GROUP BY submitted_by_user_id, submitted_by_name`,
+      bugParams
     );
     rows.forEach(r => {
       r.bug_minor_count = parseInt(r.bug_minor_count) || 0;
@@ -958,8 +979,9 @@ router.get('/bug-reports/leaderboard', authenticate, async (req, res, next) => {
     // Track award amounts per user for display only (NOT included in leaderboard earnings/ranking)
     const [awards] = await pool.query(
       `SELECT user_id, SUM(amount) AS award_total FROM bug_bounty_award
-       WHERE MONTH(ts_inserted) = MONTH(CURDATE()) AND YEAR(ts_inserted) = YEAR(CURDATE())
-       GROUP BY user_id`
+       WHERE ${awardWhere}
+       GROUP BY user_id`,
+      awardParams
     );
     const awardMap = {};
     awards.forEach(a => { awardMap[a.user_id] = parseFloat(a.award_total) || 0; });

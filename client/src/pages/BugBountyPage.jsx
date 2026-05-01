@@ -22,6 +22,19 @@ const STATUS_COLORS = {
 const BUG_LABELS = { new: 'New', approved_minor: 'Minor ($2)', approved_major: 'Major ($4)', rejected: 'Rejected', fixed: 'Fixed' };
 const IDEA_LABELS = { new: 'New', approved_minor: 'Minor QOL', approved_major: 'Major QOL', rejected: 'Rejected', fixed: 'Implemented' };
 
+// Last 6 calendar months as YYYY-MM (excluding the current month).
+function pastMonths() {
+  const months = [];
+  const now = new Date();
+  for (let i = 1; i <= 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    months.push({ value, label });
+  }
+  return months;
+}
+
 export default function BugBountyPage() {
   const { user } = useAuth();
   const isAdmin = ['Admin', 'CEO'].includes(user?.role);
@@ -31,10 +44,15 @@ export default function BugBountyPage() {
   const [showClosed, setShowClosed] = useState(false);
   const [confirmPay, setConfirmPay] = useState(false);
   const [showAmounts, setShowAmounts] = useState(false);
+  // 'current' | 'unpaid' | 'YYYY-MM'
+  const [lbScope, setLbScope] = useState('current');
+
+  const lbParams = lbScope === 'unpaid' ? { mode: 'unpaid' }
+    : (lbScope === 'current' ? {} : { month: lbScope });
 
   const { data: lbData } = useQuery({
-    queryKey: ['bug-leaderboard'],
-    queryFn: () => api.get('/bug-reports/leaderboard').then(r => r.data),
+    queryKey: ['bug-leaderboard', lbScope],
+    queryFn: () => api.get('/bug-reports/leaderboard', { params: lbParams }).then(r => r.data),
   });
   const leaderboard = lbData?.data || [];
   const totalPayout = lbData?.totalPayout || 0;
@@ -126,13 +144,23 @@ export default function BugBountyPage() {
 
         {/* Leaderboard */}
         <div className="bg-white rounded-lg border border-gray-200 mb-6">
-          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-gray-900">This Month's Leaderboard</h2>
-            <div className="text-xs text-gray-500">Total payout: <span className="font-bold text-green-700">${totalPayout}</span> / $1,000 cap</div>
+          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold text-gray-900">Leaderboard</h2>
+            <div className="flex items-center gap-3">
+              <select value={lbScope} onChange={e => setLbScope(e.target.value)}
+                className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
+                <option value="current">This Month</option>
+                <option value="unpaid">All Unpaid (any time)</option>
+                <optgroup label="Past months">
+                  {pastMonths().map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </optgroup>
+              </select>
+              <div className="text-xs text-gray-500">Total payout: <span className="font-bold text-green-700">${totalPayout}</span> / $1,000 cap</div>
+            </div>
           </div>
           <div className="p-4">
             {leaderboard.length === 0 ? (
-              <div className="text-sm text-gray-400 text-center py-4">No approved items this month yet</div>
+              <div className="text-sm text-gray-400 text-center py-4">No approved items in this range</div>
             ) : (
               <div className="space-y-2">
                 {leaderboard.map((entry, i) => (
