@@ -9,6 +9,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { Badge } from '../components/ui/Badge';
 import { Section } from '../components/ui/Section';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
@@ -218,6 +219,7 @@ function OutreachPanel({ sessionId, onRequestAsk }) {
 // ─── Ask Modal ────────────────────────────────────────────────
 function AskModal({ professor, sessionId, need, onClose }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [method, setMethod] = useState('sms');
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
@@ -254,7 +256,7 @@ function AskModal({ professor, sessionId, need, onClose }) {
       qc.invalidateQueries(['outreach-all', sessionId]);
       onClose();
     },
-    onError: (e) => alert(e?.response?.data?.error || 'Failed to log outreach'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Failed to log outreach'),
   });
 
   return (
@@ -345,6 +347,7 @@ export default function SubManagementPage() {
 }
 
 function ClaimedSubsPanel() {
+  const toast = useToast();
   const qc = useQueryClient();
   const { user } = useAuth();
   const [filter, setFilter] = useState('all'); // 'all' | 'mine'
@@ -368,12 +371,12 @@ function ClaimedSubsPanel() {
   const rejectMutation = useMutation({
     mutationFn: ({ claim_id, reason }) => api.post('/sub-management/claimed/reject', { claim_id, reason }),
     onSuccess: () => { qc.invalidateQueries(['claimed-subs']); setRejecting(null); setRejectReason(''); setRejectPreset(''); },
-    onError: (e) => alert(e?.response?.data?.error || 'Reject failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Reject failed'),
   });
 
   const handleSubmitReject = () => {
     const reason = rejectPreset === 'Other' ? rejectReason.trim() : (rejectPreset || rejectReason.trim());
-    if (!reason) return alert('Please choose or enter a reason');
+    if (!reason) { toast.error('Please choose or enter a reason'); return; }
     rejectMutation.mutate({ claim_id: rejecting.claim_id, reason });
   };
 

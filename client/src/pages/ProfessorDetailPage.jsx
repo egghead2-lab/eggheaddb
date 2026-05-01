@@ -15,6 +15,7 @@ import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { Badge } from '../components/ui/Badge';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
@@ -256,6 +257,7 @@ function IncidentSection({ professorId }) {
 
 function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [evalSubType, setEvalSubType] = useState(''); // '' | 'fm' | 'peer_to_peer'
   const [evaluatorId, setEvaluatorId] = useState('');
@@ -343,7 +345,7 @@ function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult
       qc.invalidateQueries(['professors', professorId]);
       resetForm();
     },
-    onError: (e) => alert(e?.response?.data?.error || 'Failed to schedule evaluation'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Failed to schedule evaluation'),
   });
 
   const deleteMutation = useMutation({
@@ -784,6 +786,7 @@ function SubstituteDatesSection({ professorId, daysOff, substituteReasons, qc })
 }
 
 export default function ProfessorDetailPage() {
+  const toast = useToast();
   const { id } = useParams();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
@@ -847,17 +850,17 @@ export default function ProfessorDetailPage() {
   const lsCreate = useMutation({
     mutationFn: (data) => createLivescan(id, data),
     onSuccess: () => { qc.invalidateQueries(['professors', id]); setLsAdding(false); setLsForm(emptyLsForm()); },
-    onError: (e) => alert('Save failed: ' + (e?.response?.data?.error || e.message)),
+    onError: (e) => toast.error('Save failed: ' + (e?.response?.data?.error || e.message)),
   });
   const lsUpdate = useMutation({
     mutationFn: ({ lsId, data }) => updateLivescan(id, lsId, data),
     onSuccess: () => { qc.invalidateQueries(['professors', id]); setLsEdit(null); setLsForm(emptyLsForm()); },
-    onError: (e) => alert('Save failed: ' + (e?.response?.data?.error || e.message)),
+    onError: (e) => toast.error('Save failed: ' + (e?.response?.data?.error || e.message)),
   });
   const lsDelete = useMutation({
     mutationFn: (lsId) => deleteLivescan(id, lsId),
     onSuccess: () => qc.invalidateQueries(['professors', id]),
-    onError: (e) => alert('Delete failed: ' + (e?.response?.data?.error || e.message)),
+    onError: (e) => toast.error('Delete failed: ' + (e?.response?.data?.error || e.message)),
   });
 
   const startLsEdit = (ls) => {

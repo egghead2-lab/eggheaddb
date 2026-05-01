@@ -14,6 +14,7 @@ import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { formatDate, formatTime, toFormData } from '../lib/utils';
@@ -23,6 +24,7 @@ export default function PartyDetailPage() {
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const { data: partyData, isLoading } = useQuery({
     queryKey: ['parties', id],
@@ -59,7 +61,7 @@ export default function PartyDetailPage() {
       if (changed.length > 0 && party.calendar_event_id) {
         if (confirm(`Calendar-relevant fields changed (${changed.join(', ')}).\n\nSync the Google Calendar event now?`)) {
           try { await api.post(`/parties/${id}/calendar/sync`); }
-          catch (e) { alert('Calendar sync failed: ' + (e?.response?.data?.error || e.message)); }
+          catch (e) { toast.error('Calendar sync failed: ' + (e?.response?.data?.error || e.message)); }
         }
       }
       setViewMode(true);
@@ -233,7 +235,7 @@ export default function PartyDetailPage() {
                       if (m[4]) setValue('party_zip', m[4].trim(), { shouldDirty: true });
                       e.target.value = '';
                     } else {
-                      alert(`Couldn't parse address. Expected format like:\n  123 Main St, Los Angeles, CA 90001\n\nFill in the fields below manually.`);
+                      toast.error(`Couldn't parse address — expected "123 Main St, Los Angeles, CA 90001". Fill the fields below manually.`);
                     }
                   }} />
               </div>}
@@ -403,10 +405,11 @@ export default function PartyDetailPage() {
 
 function CalendarCreateButton({ partyId }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const mut = useMutation({
     mutationFn: () => api.post(`/parties/${partyId}/calendar`),
     onSuccess: () => qc.invalidateQueries(['parties', partyId]),
-    onError: (err) => alert('Failed to add: ' + (err?.response?.data?.error || err.message)),
+    onError: (err) => toast.error('Failed to add: ' + (err?.response?.data?.error || err.message)),
   });
   return (
     <button onClick={() => mut.mutate()} disabled={mut.isPending}
@@ -418,10 +421,11 @@ function CalendarCreateButton({ partyId }) {
 
 function CalendarSyncButton({ partyId }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const mut = useMutation({
     mutationFn: () => api.post(`/parties/${partyId}/calendar/sync`),
     onSuccess: () => qc.invalidateQueries(['parties', partyId]),
-    onError: (err) => alert('Sync failed: ' + (err?.response?.data?.error || err.message)),
+    onError: (err) => toast.error('Sync failed: ' + (err?.response?.data?.error || err.message)),
   });
   return (
     <button onClick={() => mut.mutate()} disabled={mut.isPending}
