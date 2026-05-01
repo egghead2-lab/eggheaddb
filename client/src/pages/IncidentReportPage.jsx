@@ -20,7 +20,7 @@ const CATEGORIES = [
 
 const SEVERITY_DESC = {
   minor: 'Scrapes, bruises, disagreements, falling, crying — not related to serious injury',
-  major: 'Violence, broken bones, blood, fainting, repeated/severe bullying, "stranger danger", bathroom accidents',
+  major: 'Violence, broken bones, blood, fainting, repeated/severe bullying, "stranger danger", bathroom accidents, chemical spill, accidental ingestion (see Chemical Safety Sheet)',
 };
 
 export default function IncidentReportPage() {
