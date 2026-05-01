@@ -310,6 +310,8 @@ export default function ProgramsPage() {
                               'bg-gray-100 text-gray-600'
                             }`}>{p.class_type_name}</span>
                           )}
+                          {/* Whitespace text node so innerText/clipboard text don't run the badge into the class name */}
+                          {p.class_type_name ? ' ' : null}
                           <span className="text-gray-600 truncate">{p.class_name || p.program_type_name || '—'}</span>
                         </div>
                       </td>}

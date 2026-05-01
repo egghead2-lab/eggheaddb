@@ -28,7 +28,15 @@ export function CopyTableButton({ tableRef, className = '' }) {
     });
 
     const html = clone.outerHTML;
-    const text = table.innerText;
+    // Build TSV manually: cells joined by tabs, rows by newlines.
+    // Use innerText so hidden elements (display:none) are skipped.
+    // Note: callers should ensure adjacent inline siblings within a cell are separated by
+    // an explicit space text node — flex `gap` is CSS-only and doesn't appear in innerText.
+    const text = Array.from(table.querySelectorAll('tr')).map(tr => {
+      return Array.from(tr.querySelectorAll('th, td')).map(cell => {
+        return (cell.innerText || '').replace(/\s+/g, ' ').trim();
+      }).join('\t');
+    }).join('\n');
 
     try {
       await navigator.clipboard.write([
