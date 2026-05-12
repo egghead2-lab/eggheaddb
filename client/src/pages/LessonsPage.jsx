@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { SortTh } from '../components/ui/SortTh';
 
 function toProperCase(str) {
@@ -354,8 +355,8 @@ export default function LessonsPage() {
                               ) : <span className="text-xs text-gray-200">—</span>}
                             </td>
                             <td className="px-2 py-2 text-right">
-                              <button onClick={() => { if (window.confirm(`Delete "${toProperCase(l.lesson_name)}"?`)) deleteMutation.mutate(l.id); }}
-                                className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                              <ConfirmButton onConfirm={() => deleteMutation.mutate(l.id)}
+                                className="text-xs text-red-400 hover:text-red-600">Delete</ConfirmButton>
                             </td>
                           </tr>
                         );

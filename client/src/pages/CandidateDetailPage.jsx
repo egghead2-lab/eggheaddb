@@ -12,6 +12,7 @@ import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { inviteCandidate } from '../api/trainual';
@@ -221,10 +222,10 @@ export default function CandidateDetailPage() {
                 }`}>{candidate.phase === 'training' ? 'Training' : 'Onboarding'}</span>
               )}
               {!isNew && candidate.phase === 'onboarding' && candidate.status !== 'hired' && (
-                <button type="button" onClick={() => { if (confirm('Move to Training phase? This marks onboarding as complete.')) phaseMutation.mutate('training'); }}
+                <ConfirmButton tone="primary" onConfirm={() => phaseMutation.mutate('training')}
                   className="text-[10px] text-violet-600 border border-violet-200 px-2 py-1 rounded-lg hover:bg-violet-50">
                   Move to Training
-                </button>
+                </ConfirmButton>
               )}
               {!isNew && candidate.phase === 'training' && candidate.status !== 'hired' && (
                 <button type="button" onClick={() => phaseMutation.mutate('onboarding')}
@@ -348,10 +349,10 @@ export default function CandidateDetailPage() {
                       </div>
                     </div>
                   )}
-                  <button type="button" onClick={() => { if (confirm('Generate a new password?')) regenPasswordMutation.mutate(); }}
+                  <ConfirmButton tone="primary" onConfirm={() => regenPasswordMutation.mutate()}
                     className="text-xs text-[#1e3a5f] hover:underline">
                     {regenPasswordMutation.isPending ? 'Generating…' : 'Reset Password'}
-                  </button>
+                  </ConfirmButton>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -380,8 +381,8 @@ export default function CandidateDetailPage() {
                     </div>
                     {t.assigned_to_name && <span className="text-[10px] text-gray-400">{t.assigned_to_name}</span>}
                     {t.due_date && <span className={`text-[10px] ${t.due_date < today && !t.completed ? 'text-red-600' : 'text-gray-400'}`}>{formatDate(t.due_date)}</span>}
-                    <button type="button" onClick={() => { if (confirm('Delete this task?')) deleteTask.mutate(t.id); }}
-                      className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+                    <ConfirmButton onConfirm={() => deleteTask.mutate(t.id)}
+                      className="text-gray-300 hover:text-red-500 text-xs">&times;</ConfirmButton>
                   </div>
                 ))}
                 {tasks.length === 0 && !showAddTask && <p className="text-sm text-gray-400">No tasks</p>}
@@ -680,8 +681,8 @@ function CandidateScheduleSection({ candidateId, schedule, scheduleReady, schedu
                       }`}>{s.status}</span>
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <button type="button" onClick={() => { if (confirm('Remove this program?')) removeMutation.mutate(s.id); }}
-                        className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+                      <ConfirmButton onConfirm={() => removeMutation.mutate(s.id)}
+                        className="text-gray-300 hover:text-red-500 text-xs">&times;</ConfirmButton>
                     </td>
                   </tr>
                 );

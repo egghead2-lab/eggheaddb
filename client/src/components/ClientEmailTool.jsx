@@ -7,6 +7,7 @@ import { PageHeader } from './layout/PageHeader';
 import { Button } from './ui/Button';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
+import { ConfirmButton } from './ui/ConfirmButton';
 import { CopyableTable } from './ui/CopyableTable';
 import { RichTextEditor } from './ui/RichTextEditor';
 import { formatDate, formatTime } from '../lib/utils';
@@ -211,10 +212,10 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
               {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
-          <Button onClick={() => { if (confirm(`Send ${checked.size} emails using selected template?`)) bulkSend(); }}
+          <ConfirmButton tone="primary" size="md" onConfirm={() => bulkSend()}
             disabled={bulkSending || (!bulkTemplateId && !templateId)}>
             {bulkSending ? 'Sending...' : `Send All (${checked.size})`}
-          </Button>
+          </ConfirmButton>
           <button onClick={() => bulkDoneMutation.mutate()} disabled={bulkDoneMutation.isPending}
             className="text-xs text-gray-500 border border-gray-200 px-2.5 py-1.5 rounded hover:bg-gray-50 bg-white">
             {bulkDoneMutation.isPending ? 'Marking...' : `Mark all done (no email)`}
@@ -332,10 +333,10 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
                     </div>
 
                     <div className="flex gap-2 items-center">
-                      <Button onClick={() => { if (confirm(`Send email to ${testMode ? testEmail : getRecipient?.(selectedRow)}?`)) sendMutation.mutate(); }}
+                      <ConfirmButton tone="primary" size="md" onConfirm={() => sendMutation.mutate()}
                         disabled={sendMutation.isPending || (!emailSubject && !emailBody)}>
                         {sendMutation.isPending ? 'Sending...' : testMode ? 'Send Test' : 'Send'}
-                      </Button>
+                      </ConfirmButton>
                       <button onClick={() => markDoneMutation.mutate()}
                         disabled={markDoneMutation.isPending}
                         className="text-xs text-gray-500 border border-gray-200 px-2.5 py-1.5 rounded hover:bg-gray-50">

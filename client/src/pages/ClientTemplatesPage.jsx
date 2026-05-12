@@ -6,6 +6,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { RichTextEditor } from '../components/ui/RichTextEditor';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 
 const CATEGORIES = [
   { value: 'starting_email', label: 'Starting Emails' },
@@ -103,7 +104,7 @@ export default function ClientTemplatesPage() {
               <TemplateEditor
                 template={editing}
                 onSave={(tpl) => saveMutation.mutate(tpl)}
-                onDelete={(id) => { if (confirm('Delete this template?')) { deleteMutation.mutate(id); setEditing(null); } }}
+                onDelete={(id) => { deleteMutation.mutate(id); setEditing(null); }}
                 onClose={() => setEditing(null)}
                 isPending={saveMutation.isPending}
                 error={saveMutation.isError ? saveMutation.error?.response?.data?.error : null}
@@ -220,7 +221,7 @@ function TemplateEditor({ template, onSave, onDelete, onClose, isPending, error 
             {isPending ? 'Saving...' : 'Save Template'}
           </Button>
           {!template.isNew && (
-            <button onClick={() => onDelete(template.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button>
+            <ConfirmButton onConfirm={() => onDelete(template.id)} className="text-xs text-red-500 hover:text-red-700">Delete</ConfirmButton>
           )}
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}

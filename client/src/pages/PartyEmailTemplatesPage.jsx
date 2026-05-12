@@ -6,6 +6,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { RichTextEditor } from '../components/ui/RichTextEditor';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 
 const CATEGORIES = [
   { value: 'confirmation', label: 'Confirmation' },
@@ -140,7 +141,7 @@ export default function PartyEmailTemplatesPage() {
               <TemplateEditor
                 template={editing}
                 onSave={(tpl) => saveMutation.mutate(tpl)}
-                onDelete={(id) => { if (confirm('Delete this template?')) { deleteMutation.mutate(id); setEditing(null); } }}
+                onDelete={(id) => { deleteMutation.mutate(id); setEditing(null); }}
                 onClose={() => setEditing(null)}
                 onSetDefault={(id) => saveMutation.mutate({ id, is_default: 1 })}
                 isPending={saveMutation.isPending}
@@ -231,7 +232,7 @@ function TemplateEditor({ template, onSave, onDelete, onClose, onSetDefault, isP
             <button onClick={() => onSetDefault(template.id)} className="text-xs text-gray-500 hover:text-[#1e3a5f]">Set as default</button>
           )}
           {!template.isNew && (
-            <button onClick={() => onDelete(template.id)} className="text-xs text-red-500 hover:text-red-700 ml-auto">Delete</button>
+            <ConfirmButton onConfirm={() => onDelete(template.id)} className="text-xs text-red-500 hover:text-red-700 ml-auto">Delete</ConfirmButton>
           )}
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}

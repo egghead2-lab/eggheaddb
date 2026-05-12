@@ -6,6 +6,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { useAuth } from '../hooks/useAuth';
 import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
@@ -463,8 +464,8 @@ export default function FmWorkdayPage() {
                           <td className="px-3 py-2 text-gray-600">{e.description}</td>
                           {activeWeek.status === 'draft' && (
                             <td className="px-3 py-2 text-center">
-                              <button onClick={() => { if (confirm('Remove this entry?')) deleteEntryMutation.mutate(e.id); }}
-                                className="text-xs text-red-400 hover:text-red-600">Remove</button>
+                              <ConfirmButton onConfirm={() => deleteEntryMutation.mutate(e.id)}
+                                className="text-xs text-red-400 hover:text-red-600">Remove</ConfirmButton>
                             </td>
                           )}
                         </tr>

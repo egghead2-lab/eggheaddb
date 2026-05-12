@@ -12,6 +12,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { SortTh } from '../components/ui/SortTh';
 import { formatDate } from '../lib/utils';
 
@@ -151,8 +152,8 @@ export default function UsersPage() {
                       </button>
                       <span onClick={() => { setEditingRoleId(r.id); setEditingRoleName(r.role_name); }}
                         className="text-xs text-gray-300 group-hover:text-gray-500 cursor-pointer">edit</span>
-                      <button onClick={() => { if (confirm(`Delete role "${r.role_name}"?`)) roleDeleteMutation.mutate(r.id); }}
-                        className="text-xs text-gray-300 group-hover:text-red-400 ml-0.5" title="Delete role">×</button>
+                      <ConfirmButton onConfirm={() => roleDeleteMutation.mutate(r.id)}
+                        className="text-xs text-gray-300 group-hover:text-red-400 ml-0.5" title="Delete role">×</ConfirmButton>
                     </div>
                   )}
                 </div>

@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Spinner } from '../../components/ui/Spinner';
+import { ConfirmButton } from '../../components/ui/ConfirmButton';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useLocationList } from '../../hooks/useReferenceData';
 import { formatDate, formatTime, formatCurrency } from '../../lib/utils';
@@ -273,10 +274,10 @@ export default function RebookingPage() {
                     </label>
                     {testMode && <input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="Test email" className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs" />}
                   </div>
-                  <Button onClick={() => { if (confirm(`Send to ${testMode ? testEmail : recipient}?`)) sendMutation.mutate(); }}
+                  <ConfirmButton tone="primary" size="md" onConfirm={() => sendMutation.mutate()}
                     disabled={sendMutation.isPending || included.size === 0}>
                     {sendMutation.isPending ? 'Sending...' : testMode ? 'Send Test' : 'Send Rebooking Email'}
-                  </Button>
+                  </ConfirmButton>
                   {sendMutation.isSuccess && <p className="text-xs text-green-600">Sent!</p>}
                   {sendMutation.isError && <p className="text-xs text-red-600">{sendMutation.error?.response?.data?.error || 'Failed'}</p>}
                 </div>

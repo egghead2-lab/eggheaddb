@@ -11,6 +11,7 @@ import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { toFormData } from '../lib/utils';
 
@@ -96,11 +97,11 @@ export default function UserDetailPage() {
             </h1>
           </div>
           {!isNew && (
-            <button type="button"
-              onClick={() => { if (confirm(`Deactivate ${user.first_name} ${user.last_name}? They will no longer be able to log in.`)) deleteMutation.mutate(); }}
+            <ConfirmButton
+              onConfirm={() => deleteMutation.mutate()}
               className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
               {deleteMutation.isPending ? 'Deactivating…' : 'Deactivate'}
-            </button>
+            </ConfirmButton>
           )}
         </div>
 

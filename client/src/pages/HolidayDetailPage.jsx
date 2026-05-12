@@ -9,6 +9,7 @@ import { Input } from '../components/ui/Input';
 
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { toFormData } from '../lib/utils';
 
@@ -48,12 +49,6 @@ export default function HolidayDetailPage() {
 
   const onSubmit = (data) => mutation.mutate(data);
 
-  const handleDelete = () => {
-    if (window.confirm('Delete this holiday?')) {
-      deleteMutation.mutate();
-    }
-  };
-
   if (!isNew && isLoading) {
     return <AppShell><div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div></AppShell>;
   }
@@ -70,9 +65,9 @@ export default function HolidayDetailPage() {
             </h1>
           </div>
           {!isNew && (
-            <button type="button" onClick={handleDelete} className="text-sm text-red-500 hover:text-red-700">
+            <ConfirmButton onConfirm={() => deleteMutation.mutate()} className="text-sm text-red-500 hover:text-red-700">
               Delete Holiday
-            </button>
+            </ConfirmButton>
           )}
         </div>
 

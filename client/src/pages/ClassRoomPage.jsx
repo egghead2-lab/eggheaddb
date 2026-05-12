@@ -6,6 +6,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { useAuth } from '../hooks/useAuth';
 import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
@@ -352,9 +353,9 @@ export default function ClassRoomPage() {
                         </td>
                         <td className="px-3 py-2 text-center">
                           {!r.date_dropped && (
-                            <button
-                              onClick={() => { if (confirm(`Remove ${r.first_name} ${r.last_name} from roster?`)) removeStudentMutation.mutate(r.roster_id); }}
-                              className="text-xs text-gray-300 hover:text-red-500">Remove</button>
+                            <ConfirmButton
+                              onConfirm={() => removeStudentMutation.mutate(r.roster_id)}
+                              className="text-xs text-gray-300 hover:text-red-500">Remove</ConfirmButton>
                           )}
                         </td>
                       </tr>

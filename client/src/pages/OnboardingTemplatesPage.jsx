@@ -5,6 +5,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 
 export default function OnboardingTemplatesPage() {
   const qc = useQueryClient();
@@ -99,8 +100,8 @@ export default function OnboardingTemplatesPage() {
                 <h3 className="font-bold text-gray-900">{detail.name}</h3>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-400">{detail.items?.length || 0} requirements</span>
-                  <button onClick={() => { if (confirm(`Delete template "${detail.name}"? This cannot be undone.`)) deleteTemplateMutation.mutate(selectedId); }}
-                    className="text-xs text-gray-300 hover:text-red-500">Delete</button>
+                  <ConfirmButton onConfirm={() => deleteTemplateMutation.mutate(selectedId)}
+                    className="text-xs text-gray-300 hover:text-red-500">Delete</ConfirmButton>
                 </div>
               </div>
 

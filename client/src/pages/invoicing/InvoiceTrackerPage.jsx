@@ -6,6 +6,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Spinner } from '../../components/ui/Spinner';
+import { ConfirmButton } from '../../components/ui/ConfirmButton';
 import { CopyableTable } from '../../components/ui/CopyableTable';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
@@ -140,11 +141,11 @@ export default function InvoiceTrackerPage() {
                               )}
                               {inv.qb_status === 'Deleted' && (
                                 <div className="mt-1" onClick={e => e.stopPropagation()}>
-                                  <button onClick={() => { if (confirm('Void this invoice and re-queue programs for re-invoicing?')) voidMutation.mutate(inv.id); }}
+                                  <ConfirmButton onConfirm={() => voidMutation.mutate(inv.id)}
                                     disabled={voidMutation.isPending}
                                     className="text-[9px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium hover:bg-red-200">
                                     {voidMutation.isPending ? '...' : 'Void & Re-queue'}
-                                  </button>
+                                  </ConfirmButton>
                                 </div>
                               )}
                             </div>
@@ -158,11 +159,11 @@ export default function InvoiceTrackerPage() {
                                 Record Payment
                               </button>
                             )}
-                            <button onClick={() => { if (confirm('Void this invoice and re-queue all programs for re-invoicing?')) voidMutation.mutate(inv.id); }}
+                            <ConfirmButton onConfirm={() => voidMutation.mutate(inv.id)}
                               disabled={voidMutation.isPending}
                               className="text-[10px] text-red-400 border border-red-200 px-2 py-1 rounded hover:bg-red-50 hover:text-red-600">
                               Void
-                            </button>
+                            </ConfirmButton>
                           </div>
                         </td>
                       </tr>

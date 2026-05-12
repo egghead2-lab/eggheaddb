@@ -13,6 +13,7 @@ import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { Spinner } from '../components/ui/Spinner';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
@@ -189,13 +190,12 @@ export default function ParentDetailPage() {
             </h1>
           </div>
           {!isNew && (
-            <button
-              type="button"
-              onClick={() => { if (window.confirm('Deactivate this parent?')) deleteMutation.mutate(); }}
+            <ConfirmButton
+              onConfirm={() => deleteMutation.mutate()}
               className="text-xs text-red-400 hover:text-red-600"
             >
               Deactivate
-            </button>
+            </ConfirmButton>
           )}
         </div>
 

@@ -8,6 +8,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { formatDate } from '../lib/utils';
@@ -118,8 +119,8 @@ function DelegationsPanel() {
       </span>
       {d.from_role && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{d.from_role}</span>}
       {d.notes && <span className="text-xs text-gray-400 truncate max-w-[150px]" title={d.notes}>{d.notes}</span>}
-      <button onClick={() => { if (confirm('Remove this delegation?')) deleteMut.mutate(d.id); }}
-        className="text-xs text-red-400 hover:text-red-600">Remove</button>
+      <ConfirmButton onConfirm={() => deleteMut.mutate(d.id)}
+        className="text-xs text-red-400 hover:text-red-600">Remove</ConfirmButton>
     </div>
   );
 
@@ -285,8 +286,8 @@ function DefinitionsPanel() {
                     {t.page_path && <span className="text-xs text-[#1e3a5f]">{t.page_path}</span>}
                     <span className="text-xs text-gray-400">{t.task_type}</span>
                     <button onClick={() => setEditing(t.id)} className="text-xs text-gray-400 hover:text-[#1e3a5f]">Edit</button>
-                    <button onClick={() => { if (confirm(`Delete "${t.name}"?`)) deleteMut.mutate(t.id); }}
-                      className="text-xs text-gray-400 hover:text-red-500">Delete</button>
+                    <ConfirmButton onConfirm={() => deleteMut.mutate(t.id)}
+                      className="text-xs text-gray-400 hover:text-red-500">Delete</ConfirmButton>
                   </div>
                 )}
               </div>

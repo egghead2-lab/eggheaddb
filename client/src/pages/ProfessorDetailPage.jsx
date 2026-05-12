@@ -542,8 +542,8 @@ function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult
                 }`}>{EVAL_TYPE_OPTIONS.find(t => t.value === e.evaluation_type)?.label || e.evaluation_type?.replace(/_/g, ' ')}</span>
                 {isPast && <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded font-medium">Form pending</span>}
                 <span className="text-xs text-gray-500 flex-1 truncate">{e.evaluator_name || ''}</span>
-                <button type="button" onClick={() => { if (confirm('Remove this evaluation?')) deleteMutation.mutate(e.id); }}
-                  className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+                <ConfirmButton onConfirm={() => deleteMutation.mutate(e.id)}
+                  className="text-gray-300 hover:text-red-500 text-xs">&times;</ConfirmButton>
               </div>
             );
           })}
@@ -564,8 +564,8 @@ function EvaluationSection({ professorId, hireDate, lastEvalDate, lastEvalResult
               }`}>{EVAL_TYPE_OPTIONS.find(t => t.value === e.evaluation_type)?.label || e.evaluation_type?.replace(/_/g, ' ')}</span>
               {e.result && <RatingBadge rating={resultToRating(e.result)} size="xs" />}
               <span className="text-xs text-gray-500 flex-1 truncate">{e.evaluator_name || e.logged_by_name || ''}{e.notes ? ` — ${e.notes}` : ''}</span>
-              <button type="button" onClick={() => { if (confirm('Delete this evaluation?')) deleteMutation.mutate(e.id); }}
-                className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+              <ConfirmButton onConfirm={() => deleteMutation.mutate(e.id)}
+                className="text-gray-300 hover:text-red-500 text-xs">&times;</ConfirmButton>
             </div>
           ))}
         </div>
@@ -674,8 +674,8 @@ function SubstituteDatesSection({ professorId, daysOff, substituteReasons, qc })
           {substituteReasons.map(r => <option key={r.id} value={r.id}>{r.reason_name}</option>)}
         </select>
         <span className="text-xs text-gray-400 flex-1 truncate">{d.notes || ''}</span>
-        <button type="button" onClick={() => { if (confirm('Remove this sub date?')) deleteMutation.mutate(d.id); }}
-          className="text-gray-300 hover:text-red-500 text-xs flex-shrink-0">&times;</button>
+        <ConfirmButton onConfirm={() => deleteMutation.mutate(d.id)}
+          className="text-gray-300 hover:text-red-500 text-xs flex-shrink-0">&times;</ConfirmButton>
       </div>
     );
   };
@@ -719,10 +719,10 @@ function SubstituteDatesSection({ professorId, daysOff, substituteReasons, qc })
         )}
 
         {selected.size > 0 && (
-          <button type="button" onClick={() => { if (confirm(`Delete ${selected.size} selected date(s)?`)) bulkDeleteMutation.mutate([...selected]); }}
+          <ConfirmButton onConfirm={() => bulkDeleteMutation.mutate([...selected])}
             className="ml-auto text-xs text-red-600 hover:text-red-800 font-medium">
             Delete {selected.size} selected
-          </button>
+          </ConfirmButton>
         )}
       </div>
 
@@ -740,8 +740,8 @@ function SubstituteDatesSection({ professorId, daysOff, substituteReasons, qc })
                   <input type="text" defaultValue={r.reason_name}
                     onBlur={e => { if (e.target.value !== r.reason_name) updateReasonMutation.mutate({ id: r.id, reason_name: e.target.value }); }}
                     className="rounded border border-gray-200 px-2 py-1 text-xs flex-1 bg-white" />
-                  <button type="button" onClick={() => { if (confirm(`Delete "${r.reason_name}"? Existing dates using it will show "No reason".`)) deleteReasonMutation.mutate(r.id); }}
-                    className="text-gray-300 hover:text-red-500 text-xs">&times;</button>
+                  <ConfirmButton onConfirm={() => deleteReasonMutation.mutate(r.id)}
+                    className="text-gray-300 hover:text-red-500 text-xs">&times;</ConfirmButton>
                 </div>
               ))}
               <div className="flex items-center gap-2 pt-1">
@@ -1147,8 +1147,8 @@ export default function ProfessorDetailPage() {
                           <span className={`shrink-0 ${ls.pass ? 'text-green-600' : 'text-red-500'}`}>{ls.pass ? 'Pass' : 'Fail'}</span>
                           <button type="button" onClick={() => startLsEdit(ls)}
                             className="text-xs text-gray-400 hover:text-[#1e3a5f] shrink-0">Edit</button>
-                          <button type="button" onClick={() => { if (confirm('Delete this livescan?')) lsDelete.mutate(ls.id); }}
-                            className="text-xs text-gray-400 hover:text-red-500 shrink-0">Delete</button>
+                          <ConfirmButton onConfirm={() => lsDelete.mutate(ls.id)}
+                            className="text-xs text-gray-400 hover:text-red-500 shrink-0">Delete</ConfirmButton>
                         </div>
                       )}
                     </div>

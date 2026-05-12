@@ -10,6 +10,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { toFormData } from '../lib/utils';
@@ -134,8 +135,8 @@ export default function LessonDetailPage() {
             </div>
           </div>
           {!isNew && (
-            <button type="button" onClick={() => { if (window.confirm('Delete this lesson from all modules?')) deleteMutation.mutate(); }}
-              className="text-sm text-red-500 hover:text-red-700">Delete Lesson</button>
+            <ConfirmButton onConfirm={() => deleteMutation.mutate()}
+              className="text-sm text-red-500 hover:text-red-700">Delete Lesson</ConfirmButton>
           )}
         </div>
 
@@ -217,9 +218,9 @@ export default function LessonDetailPage() {
                     {c.camp_type && (
                       <span className="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700">{c.camp_type === 'full_day' ? 'Full Day' : 'Half Day'}</span>
                     )}
-                    <button type="button"
-                      onClick={() => { if (window.confirm(`Remove from ${c.class_name}?`)) removeClassMutation.mutate(c.class_id); }}
-                      className="ml-auto text-xs text-red-400 hover:text-red-600">Remove</button>
+                    <ConfirmButton
+                      onConfirm={() => removeClassMutation.mutate(c.class_id)}
+                      className="ml-auto text-xs text-red-400 hover:text-red-600">Remove</ConfirmButton>
                   </div>
                 ))}
                 {assignedClasses.length === 0 && <p className="text-sm text-gray-400">Not assigned to any modules</p>}

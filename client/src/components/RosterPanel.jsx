@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { searchStudents, addToRoster, removeFromRoster, updateRosterEntry, updateStudent } from '../api/students';
 import api from '../api/client';
 import { Input } from './ui/Input';
+import { ConfirmButton } from './ui/ConfirmButton';
 
 export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, onEnrolledSync }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -207,13 +208,13 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                 <Link to={`/students/${selected.student_id}`} className="text-xs text-[#1e3a5f] hover:underline">
                   View Full Profile →
                 </Link>
-                <button
-                  onClick={() => { if (window.confirm('Remove from roster entirely?')) removeMutation.mutate(selected.id); }}
+                <ConfirmButton
+                  onConfirm={() => removeMutation.mutate(selected.id)}
                   disabled={removeMutation.isPending}
                   className="text-xs text-red-500 hover:text-red-700"
                 >
                   Remove
-                </button>
+                </ConfirmButton>
               </div>
             </div>
           ) : (

@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { CopyableTable } from '../components/ui/CopyableTable';
 import { formatDate, formatCurrency } from '../lib/utils';
 
@@ -316,7 +317,7 @@ export default function ReportBuilderPage() {
                       <div className="flex gap-2 justify-center">
                         <button onClick={() => startEdit(r)} className="text-xs text-[#1e3a5f] hover:underline">Edit</button>
                         <button onClick={() => handlePreview(r.id)} className="text-xs text-[#1e3a5f] hover:underline">{previewId === r.id ? 'Hide' : 'Run'}</button>
-                        <button onClick={() => { if (window.confirm('Delete this report?')) deleteMutation.mutate(r.id); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                        <ConfirmButton onConfirm={() => deleteMutation.mutate(r.id)} className="text-xs text-red-400 hover:text-red-600">Delete</ConfirmButton>
                       </div>
                     </td>
                   </tr>

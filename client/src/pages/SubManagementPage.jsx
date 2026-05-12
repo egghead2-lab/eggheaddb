@@ -205,8 +205,8 @@ function OutreachPanel({ sessionId, onRequestAsk }) {
                   className={`text-[10px] rounded px-1.5 py-0.5 border-0 font-medium ${respCfg.cls}`}>
                   {RESPONSES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
-                <button onClick={() => { if (confirm('Remove this outreach log?')) deleteMut.mutate(o.id); }}
-                  className="text-gray-300 hover:text-red-500">&times;</button>
+                <ConfirmButton onConfirm={() => deleteMut.mutate(o.id)}
+                  className="text-gray-300 hover:text-red-500">&times;</ConfirmButton>
               </div>
             );
           })}
@@ -582,7 +582,7 @@ function SubNeedsPanel() {
 
   const handleAssign = (prof) => {
     if (!activeSub) return;
-    if (confirm(`Assign ${prof.professor_nickname} ${prof.last_name} as ${activeSub.role_needing_sub} sub for ${activeSub.program_nickname} on ${formatDate((activeSub.date_requested || '').split('T')[0])}?`)) {
+    if (window.confirm(`Assign ${prof.professor_nickname} ${prof.last_name} as ${activeSub.role_needing_sub} sub for ${activeSub.program_nickname} on ${formatDate((activeSub.date_requested || '').split('T')[0])}?`)) {
       assignMutation.mutate({
         session_id: activeSub.session_id,
         professor_id: prof.id,

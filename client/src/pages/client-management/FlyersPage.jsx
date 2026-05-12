@@ -8,6 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Spinner } from '../../components/ui/Spinner';
 import { useToast } from '../../components/ui/Toast';
+import { ConfirmButton } from '../../components/ui/ConfirmButton';
 import { formatDate } from '../../lib/utils';
 import api from '../../api/client';
 import {
@@ -202,9 +203,8 @@ function TemplatesTab() {
                     <Link to={`/client-management/flyers/templates/${t.id}/edit`}
                       className="text-xs text-[#1e3a5f] hover:underline mr-3">Edit fields</Link>
                     {!t.is_archived ? (
-                      <button type="button"
-                        onClick={() => { if (confirm(`Archive "${t.name}"?`)) archiveMut.mutate(t.id); }}
-                        className="text-xs text-gray-400 hover:text-red-500">Archive</button>
+                      <ConfirmButton onConfirm={() => archiveMut.mutate(t.id)}
+                        className="text-xs text-gray-400 hover:text-red-500">Archive</ConfirmButton>
                     ) : null}
                   </td>
                 </tr>
@@ -307,9 +307,8 @@ function ProgramsTab() {
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {p.flyer_made ? (
-                      <button type="button"
-                        onClick={() => { if (confirm('Unmake this flyer? It will return to the "Needed" list.')) unmakeMut.mutate(p.id); }}
-                        className="text-xs text-amber-600 hover:underline mr-2">Unmake</button>
+                      <ConfirmButton onConfirm={() => unmakeMut.mutate(p.id)}
+                        className="text-xs text-amber-600 hover:underline mr-2">Unmake</ConfirmButton>
                     ) : null}
                     <Link to={`/client-management/flyers/generate?program_id=${p.id}`}
                       className="text-xs text-[#1e3a5f] hover:underline font-medium">
@@ -407,12 +406,10 @@ function SendFlyersTab() {
                       className="text-xs text-[#1e3a5f] hover:underline font-medium disabled:text-gray-300 disabled:no-underline mr-3">
                       Send Email
                     </button>
-                    <button type="button"
-                      onClick={() => { if (confirm('Mark this flyer as sent (manual — no email will be sent)?')) markSentMut.mutate(p.id); }}
-                      className="text-xs text-gray-500 hover:underline mr-3">Mark Sent</button>
-                    <button type="button"
-                      onClick={() => { if (confirm('Unmake this flyer? It returns to the Needed list.')) unmakeMut.mutate(p.id); }}
-                      className="text-xs text-amber-600 hover:underline">Unmake</button>
+                    <ConfirmButton onConfirm={() => markSentMut.mutate(p.id)}
+                      className="text-xs text-gray-500 hover:underline mr-3">Mark Sent</ConfirmButton>
+                    <ConfirmButton onConfirm={() => unmakeMut.mutate(p.id)}
+                      className="text-xs text-amber-600 hover:underline">Unmake</ConfirmButton>
                   </td>
                 </tr>
               ))}
@@ -447,9 +444,8 @@ function SendFlyersTab() {
                   <td className="px-3 py-2 text-gray-600">{p.location_nickname || p.school_name || '—'}</td>
                   <td className="px-3 py-2 text-gray-500 text-[11px]">{formatDate(p.flyer_sent_electronic)}</td>
                   <td className="px-3 py-2 text-right">
-                    <button type="button"
-                      onClick={() => { if (confirm('Unsend this flyer? It returns to ready-to-send.')) unsendMut.mutate(p.id); }}
-                      className="text-xs text-amber-600 hover:underline">Unsend</button>
+                    <ConfirmButton onConfirm={() => unsendMut.mutate(p.id)}
+                      className="text-xs text-amber-600 hover:underline">Unsend</ConfirmButton>
                   </td>
                 </tr>
               ))}

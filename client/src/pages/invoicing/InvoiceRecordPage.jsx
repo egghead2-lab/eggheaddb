@@ -6,6 +6,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Spinner } from '../../components/ui/Spinner';
+import { ConfirmButton } from '../../components/ui/ConfirmButton';
 import { CopyableTable } from '../../components/ui/CopyableTable';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
@@ -95,8 +96,8 @@ export default function InvoiceRecordPage() {
                             {!r.sent && (
                               <button onClick={() => markSentMutation.mutate(r.id)} className="text-[10px] text-[#1e3a5f] border border-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-50">Send</button>
                             )}
-                            <button onClick={() => { if (confirm('Void this invoice?')) voidMutation.mutate(r.id); }}
-                              className="text-[10px] text-red-500 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-red-50">Void</button>
+                            <ConfirmButton onConfirm={() => voidMutation.mutate(r.id)}
+                              className="text-[10px] text-red-500 border border-gray-200 px-1.5 py-0.5 rounded hover:bg-red-50">Void</ConfirmButton>
                           </div>
                         </td>
                       </tr>

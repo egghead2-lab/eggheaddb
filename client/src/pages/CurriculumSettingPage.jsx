@@ -8,6 +8,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { Section } from '../components/ui/Section';
 import { formatDate } from '../lib/utils';
 
@@ -252,9 +253,9 @@ export default function CurriculumSettingPage() {
                         <span className="text-gray-400 ml-2">{formatDate(b.created_at)} · {b.session_count} sessions</span>
                         {b.created_by_name && <span className="text-gray-400"> · {b.created_by_name}</span>}
                       </div>
-                      <button onClick={() => { if (confirm(`Revert "${b.backup_label}"? This will undo ${b.session_count} changes.`)) revertMutation.mutate(b.id); }}
+                      <ConfirmButton onConfirm={() => revertMutation.mutate(b.id)}
                         disabled={revertMutation.isPending}
-                        className="text-xs text-amber-600 hover:text-amber-800 font-medium">Revert</button>
+                        className="text-xs text-amber-600 hover:text-amber-800 font-medium">Revert</ConfirmButton>
                     </div>
                   ))}
                 </div>

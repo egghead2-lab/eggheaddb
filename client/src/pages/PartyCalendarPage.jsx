@@ -7,6 +7,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { formatDate, formatTime } from '../lib/utils';
 
 export default function PartyCalendarPage() {
@@ -55,10 +56,10 @@ export default function PartyCalendarPage() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-amber-600 font-medium">{parties.length} pending</span>
           {parties.length > 0 && (
-            <Button onClick={() => { if (confirm(`Add all ${parties.length} parties to Google Calendar?`)) addAllMutation.mutate(); }}
+            <ConfirmButton tone="primary" size="md" onConfirm={() => addAllMutation.mutate()}
               disabled={addAllMutation.isPending}>
               {addAllMutation.isPending ? 'Adding all…' : 'Add All to Calendar'}
-            </Button>
+            </ConfirmButton>
           )}
         </div>
       } />

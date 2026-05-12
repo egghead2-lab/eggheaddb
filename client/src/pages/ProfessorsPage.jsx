@@ -12,6 +12,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { formatDate } from '../lib/utils';
 import { RatingBadge } from '../components/ui/DevelopmentalRating';
 import { formatCurrency } from '../lib/utils';
@@ -307,9 +308,9 @@ export default function ProfessorsPage() {
                           return (
                             <div className="flex items-center gap-1 justify-center">
                               {shouldArchive && (
-                                <button onClick={() => { if (confirm(`Archive ${p.professor_nickname} in Trainual?`)) archiveMutation.mutate(p.trainual_user_id); }}
+                                <ConfirmButton onConfirm={() => archiveMutation.mutate(p.trainual_user_id)}
                                   title="Status mismatch — click to archive in Trainual"
-                                  className="text-red-500 hover:text-red-700 text-[10px]">⚠</button>
+                                  className="text-red-500 hover:text-red-700 text-[10px]">⚠</ConfirmButton>
                               )}
                               <span className={`text-xs font-semibold ${cls}`}>{Math.round(n)}%</span>
                             </div>

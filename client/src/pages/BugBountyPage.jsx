@@ -376,8 +376,8 @@ function MessageThread({ bugId, canPost, isAdmin }) {
               <span className="flex items-center gap-2">
                 <span>{formatDate(m.ts_inserted)}</span>
                 {(isAdmin || m.user_id) && (
-                  <button onClick={() => { if (confirm('Delete this message?')) delMut.mutate(m.id); }}
-                    className="text-red-300 hover:text-red-600">×</button>
+                  <ConfirmButton onConfirm={() => delMut.mutate(m.id)}
+                    className="text-red-300 hover:text-red-600">×</ConfirmButton>
                 )}
               </span>
             </div>

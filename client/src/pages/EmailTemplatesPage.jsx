@@ -6,6 +6,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { RichTextEditor } from '../components/ui/RichTextEditor';
 
 // Merge fields available for hiring/onboarding email templates
@@ -215,8 +216,8 @@ export default function EmailTemplatesPage() {
                         <div key={a.storageName} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded">
                           <span className="text-sm text-gray-700 flex-1">{a.filename}</span>
                           <span className="text-xs text-gray-400">{formatSize(a.size)}</span>
-                          <button type="button" onClick={() => { if (confirm(`Remove ${a.filename}?`)) removeAttachmentMutation.mutate(a.storageName); }}
-                            className="text-xs text-gray-300 hover:text-red-500">&times;</button>
+                          <ConfirmButton onConfirm={() => removeAttachmentMutation.mutate(a.storageName)}
+                            className="text-xs text-gray-300 hover:text-red-500">&times;</ConfirmButton>
                         </div>
                       ))}
                     </div>
@@ -231,8 +232,8 @@ export default function EmailTemplatesPage() {
 
               <div className="flex justify-end gap-3 pt-2">
                 {!isNew && (
-                  <button onClick={() => { if (confirm('Delete this template?')) deleteMutation.mutate(selectedId); }}
-                    className="text-sm text-red-500 hover:text-red-700 mr-auto">Delete</button>
+                  <ConfirmButton onConfirm={() => deleteMutation.mutate(selectedId)}
+                    className="text-sm text-red-500 hover:text-red-700 mr-auto">Delete</ConfirmButton>
                 )}
                 <Button onClick={() => saveMutation.mutate(editing)} disabled={!editing.name || !editing.subject || !editing.body_html || saveMutation.isPending}>
                   {saveMutation.isPending ? 'Saving...' : 'Save Template'}
@@ -271,8 +272,8 @@ export default function EmailTemplatesPage() {
                       <div key={a.storageName} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded">
                         <span className="text-sm text-gray-700 flex-1">{a.filename}</span>
                         <span className="text-xs text-gray-400">{formatSize(a.size)}</span>
-                        <button onClick={() => { if (confirm(`Remove ${a.filename}?`)) removeAttachmentMutation.mutate(a.storageName); }}
-                          className="text-xs text-gray-300 hover:text-red-500">&times;</button>
+                        <ConfirmButton onConfirm={() => removeAttachmentMutation.mutate(a.storageName)}
+                          className="text-xs text-gray-300 hover:text-red-500">&times;</ConfirmButton>
                       </div>
                     ))}
                   </div>

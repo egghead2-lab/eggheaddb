@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 
 export default function BinManagerPage() {
   const qc = useQueryClient();
@@ -151,8 +152,8 @@ export default function BinManagerPage() {
                           <div className="flex items-center gap-2">
                             <button onClick={() => { setShowTransfer(b.id); setTransferTo(''); }}
                               className="text-xs text-[#1e3a5f] hover:underline">Transfer</button>
-                            <button onClick={() => { if (confirm('Remove this bin assignment?')) updateMutation.mutate({ id: b.id, data: { active: 0 } }); }}
-                              className="text-xs text-red-500 hover:underline">Remove</button>
+                            <ConfirmButton onConfirm={() => updateMutation.mutate({ id: b.id, data: { active: 0 } })}
+                              className="text-xs text-red-500 hover:underline">Remove</ConfirmButton>
                           </div>
                         </div>
                         {b.comment && <div className="text-xs text-gray-400 mt-1">{b.comment}</div>}

@@ -5,6 +5,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 
 const ROLES = [
   { key: 'scheduling_coordinator_user_id', label: 'Sched. Coord.', nameKey: 'scheduling_coordinator_name', color: 'bg-blue-50 text-blue-700' },
@@ -65,8 +66,8 @@ function ManageAreasPanel({ areas, regions, states, users, onClose }) {
                 <div key={r.id} className="flex items-center gap-2">
                   <span className="text-sm flex-1">{r.region_name}</span>
                   <span className="text-xs text-gray-400">{r.area_count} area{r.area_count !== 1 ? 's' : ''}</span>
-                  <button onClick={() => { if (confirm(`Delete region "${r.region_name}"? Areas will become unassigned.`)) deleteRegion.mutate(r.id); }}
-                    className="text-gray-300 hover:text-red-500 text-xs px-1">Delete</button>
+                  <ConfirmButton onConfirm={() => deleteRegion.mutate(r.id)}
+                    className="text-gray-300 hover:text-red-500 text-xs px-1">Delete</ConfirmButton>
                 </div>
               ))}
             </div>
@@ -96,7 +97,7 @@ function ManageAreasPanel({ areas, regions, states, users, onClose }) {
                 {areas.map(a => (
                   <ManageAreaRow key={a.id} area={a} regions={regions} states={states}
                     onUpdate={(data) => updateArea.mutate({ id: a.id, data })}
-                    onDelete={() => { if (confirm(`Delete "${a.geographic_area_name}"?`)) deleteArea.mutate(a.id); }} />
+                    onDelete={() => deleteArea.mutate(a.id)} />
                 ))}
               </tbody>
             </table>
@@ -230,12 +231,12 @@ function AreaRow({ area, users, inlineUpdate, onDelete }) {
         </td>
       ))}
       <td className="px-2 py-2 text-center">
-        <button onClick={() => { if (confirm(`Delete "${area.geographic_area_name}"?`)) onDelete(area.id); }}
+        <ConfirmButton onConfirm={() => onDelete(area.id)}
           className="text-gray-300 hover:text-red-500 transition-colors" title="Delete area">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
-        </button>
+        </ConfirmButton>
       </td>
     </tr>
   );

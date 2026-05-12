@@ -13,6 +13,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
+import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { Spinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
 import { Badge } from '../components/ui/Badge';
@@ -59,7 +60,7 @@ export default function PartyDetailPage() {
       // Auto-sync calendar if any sync-relevant field changed and party is on calendar
       const changed = CAL_SYNC_FIELDS.filter(f => dirtyFields[f]);
       if (changed.length > 0 && party.calendar_event_id) {
-        if (confirm(`Calendar-relevant fields changed (${changed.join(', ')}).\n\nSync the Google Calendar event now?`)) {
+        if (window.confirm(`Calendar-relevant fields changed (${changed.join(', ')}).\n\nSync the Google Calendar event now?`)) {
           try { await api.post(`/parties/${id}/calendar/sync`); }
           catch (e) { toast.error('Calendar sync failed: ' + (e?.response?.data?.error || e.message)); }
         }
@@ -442,9 +443,9 @@ function CalendarDeleteButton({ partyId }) {
     onSuccess: () => qc.invalidateQueries(['parties', partyId]),
   });
   return (
-    <button onClick={() => { if (confirm('Remove from Google Calendar?')) mut.mutate(); }} disabled={mut.isPending}
+    <ConfirmButton onConfirm={() => mut.mutate()} disabled={mut.isPending}
       className="text-[10px] text-red-500 hover:underline">
       {mut.isPending ? 'Removing…' : 'Remove from calendar'}
-    </button>
+    </ConfirmButton>
   );
 }
