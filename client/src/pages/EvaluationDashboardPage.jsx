@@ -11,6 +11,7 @@ import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { formatDate, formatTime } from '../lib/utils';
 import { RatingBadge } from '../components/ui/DevelopmentalRating';
 
@@ -232,6 +233,7 @@ function ExpandedSessions({ professorId, professorName }) {
 
 // ─── One session row with inline FM/Peer scheduling ───────────────────────
 function SessionRow({ session, professorId, professorName, qc }) {
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [evalSubType, setEvalSubType] = useState('fm'); // fm | peer_to_peer
   const [evaluatorId, setEvaluatorId] = useState('');
@@ -265,7 +267,7 @@ function SessionRow({ session, professorId, professorName, qc }) {
       qc.invalidateQueries(['eval-dashboard']);
       setShowForm(false); setEvaluatorId(''); setObsPay(''); setNotes('');
     },
-    onError: (e) => alert(e?.response?.data?.error || 'Failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Failed'),
   });
 
   const handleSchedule = () => {

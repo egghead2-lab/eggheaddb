@@ -7,12 +7,14 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Spinner } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import {
   listFlyerTemplates, getFlyerTemplate, getProgramFlyerData, renderFlyer, downloadBlob,
   markFlyerMade,
 } from '../../api/flyers';
 
 export default function FlyerGeneratePage() {
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const programIdParam = searchParams.get('program_id');
   const templateIdParam = searchParams.get('template_id');
@@ -33,7 +35,7 @@ export default function FlyerGeneratePage() {
       qc.invalidateQueries({ queryKey: ['flyer-programs'] });
       qc.invalidateQueries({ queryKey: ['flyer-program-data', programId] });
     },
-    onError: (e) => alert(e?.response?.data?.error || 'Mark as Created failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Mark as Created failed'),
   });
 
   // Templates dropdown
@@ -96,13 +98,13 @@ export default function FlyerGeneratePage() {
         revoke = url;
       } catch (e) {
         console.error('Preview render failed:', e?.response?.data || e);
-        alert(e?.response?.data?.error || e?.message || 'Preview failed');
+        toast.error(e?.response?.data?.error || e?.message || 'Preview failed');
       } finally {
         setLoadingPreview(false);
       }
     }, 500);
     return () => { clearTimeout(debounceRef.current); };
-  }, [templateId, programId, data]);
+  }, [templateId, programId, data, toast]);
 
   // Cleanup blob URL on unmount
   useEffect(() => () => { if (previewSrc?.startsWith('blob:')) URL.revokeObjectURL(previewSrc); }, []);
@@ -121,7 +123,7 @@ export default function FlyerGeneratePage() {
       downloadBlob(blob, `${safeName}.pdf`);
       setHasDownloaded(true);
     } catch (e) {
-      alert(e?.message || 'Download failed');
+      toast.error(e?.message || 'Download failed');
     } finally {
       setDownloading(false);
     }

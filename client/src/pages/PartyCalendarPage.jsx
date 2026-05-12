@@ -6,10 +6,12 @@ import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { formatDate, formatTime } from '../lib/utils';
 
 export default function PartyCalendarPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [preview, setPreview] = useState(null);
   const [previewPartyId, setPreviewPartyId] = useState(null);
 
@@ -27,7 +29,7 @@ export default function PartyCalendarPage() {
   const addMutation = useMutation({
     mutationFn: (id) => api.post(`/parties/${id}/calendar`),
     onSuccess: () => qc.invalidateQueries(['party-calendar-pending']),
-    onError: (err, id) => alert(`Failed to add party #${id} to calendar:\n${err?.response?.data?.error || err.message}`),
+    onError: (err, id) => toast.error(`Failed to add party #${id} to calendar: ${err?.response?.data?.error || err.message}`),
   });
 
   const addAllMutation = useMutation({
@@ -42,7 +44,7 @@ export default function PartyCalendarPage() {
     onSuccess: (r) => {
       qc.invalidateQueries(['party-calendar-pending']);
       if (r.failed.length) {
-        alert(`Added ${r.added}, failed ${r.failed.length}:\n\n${r.failed.slice(0, 10).map(f => `• ${f.name}: ${f.error}`).join('\n')}`);
+        toast.error(`Added ${r.added}, failed ${r.failed.length}: ${r.failed.slice(0, 3).map(f => f.name).join(', ')}${r.failed.length > 3 ? '…' : ''}`);
       }
     },
   });

@@ -7,6 +7,7 @@ import { Section } from '../components/ui/Section';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { useProfessorList } from '../hooks/useReferenceData';
 
@@ -665,13 +666,14 @@ function ConfirmPhrasesManager() {
 }
 
 function SmsTemplateManager({ templates, onRefresh }) {
+  const toast = useToast();
   const [selected, setSelected] = useState(null);
   const [editName, setEditName] = useState('');
   const [editBody, setEditBody] = useState('');
 
   const saveMut = useMutation({
     mutationFn: ({ id, name, body }) => api.put(`/notifications/sms-templates/${id}`, { name, body }).then(r => r.data),
-    onSuccess: () => { onRefresh(); alert('Template saved'); },
+    onSuccess: () => { onRefresh(); toast.success('Template saved'); },
   });
 
   const categories = {

@@ -7,6 +7,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { formatDate, formatTime, formatCurrency } from '../lib/utils';
 
 const TABS = [
@@ -355,6 +356,7 @@ function FollowUpTab() {
 // ═══════════════════════════════════════════════════════════════════
 function ChargeTab() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [days, setDays] = useState('30');
   const [edits, setEdits] = useState({}); // { partyId: { date, type } }
   const [showDone, setShowDone] = useState(false);
@@ -371,7 +373,7 @@ function ChargeTab() {
     mutationFn: ({ id, final_charge_date, final_charge_type }) =>
       api.post(`/parties/${id}/log-charge`, { final_charge_date, final_charge_type }),
     onSuccess: () => qc.invalidateQueries(['party-charge-pending']),
-    onError: (err) => alert('Save failed: ' + (err?.response?.data?.error || err.message)),
+    onError: (err) => toast.error('Save failed: ' + (err?.response?.data?.error || err.message)),
   });
 
   const setEdit = (id, key, val) => setEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [key]: val } }));
@@ -382,7 +384,7 @@ function ChargeTab() {
     const e = edits[party.id] || {};
     const date = e.date || today;
     const type = e.type;
-    if (!type) return alert('Pick a charge type first');
+    if (!type) { toast.error('Pick a charge type first'); return; }
     logMutation.mutate({ id: party.id, final_charge_date: date, final_charge_type: type });
     setEdits(prev => { const next = { ...prev }; delete next[party.id]; return next; });
   };

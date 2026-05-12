@@ -11,10 +11,12 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { SortTh } from '../components/ui/SortTh';
 import { formatDate } from '../lib/utils';
 
 export default function UsersPage() {
+  const toast = useToast();
   const [viewType, setViewType] = useState('staff'); // staff | professors
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
@@ -48,8 +50,8 @@ export default function UsersPage() {
 
   const syncMutation = useMutation({
     mutationFn: syncTrainual,
-    onSuccess: (res) => { qc.invalidateQueries(['users']); alert(`Synced ${res.synced} Trainual users`); },
-    onError: (err) => alert('Sync failed: ' + (err?.response?.data?.error || err.message)),
+    onSuccess: (res) => { qc.invalidateQueries(['users']); toast.success(`Synced ${res.synced} Trainual users`); },
+    onError: (err) => toast.error('Sync failed: ' + (err?.response?.data?.error || err.message)),
   });
 
   const handleSort = (col) => {

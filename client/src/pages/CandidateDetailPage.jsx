@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { Badge } from '../components/ui/Badge';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { inviteCandidate } from '../api/trainual';
@@ -23,6 +24,7 @@ export default function CandidateDetailPage() {
   const isNew = !id;
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
   const [showHire, setShowHire] = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
   const [hireNickname, setHireNickname] = useState('');
@@ -164,7 +166,7 @@ export default function CandidateDetailPage() {
   const inviteTrainualMutation = useMutation({
     mutationFn: () => inviteCandidate(id),
     onSuccess: () => qc.invalidateQueries(['candidate', id]),
-    onError: (err) => alert('Trainual invite failed: ' + (err?.response?.data?.error || err.message)),
+    onError: (err) => toast.error('Trainual invite failed: ' + (err?.response?.data?.error || err.message)),
   });
 
   const hireMutation = useMutation({

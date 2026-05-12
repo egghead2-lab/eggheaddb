@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Spinner } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { formatDate } from '../../lib/utils';
 import api from '../../api/client';
 import {
@@ -50,6 +51,7 @@ export default function FlyersPage() {
 // ── Templates Tab ─────────────────────────────────────────────────────
 function TemplatesTab() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadName, setUploadName] = useState('');
   const [uploadSeason, setUploadSeason] = useState('');
@@ -77,7 +79,7 @@ function TemplatesTab() {
       setShowUpload(false); setUploadName(''); setUploadSeason(''); setUploadDescription(''); setUploadFile(null);
       qc.invalidateQueries(['flyer-templates']);
     },
-    onError: (e) => alert(e?.response?.data?.error || 'Upload failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Upload failed'),
   });
 
   const archiveMut = useMutation({
@@ -218,6 +220,7 @@ function TemplatesTab() {
 // ── Programs Tab ──────────────────────────────────────────────────────
 function ProgramsTab() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('needed');
 
@@ -230,7 +233,7 @@ function ProgramsTab() {
   const unmakeMut = useMutation({
     mutationFn: unmakeFlyerProgram,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['flyer-programs'] }),
-    onError: (e) => alert(e?.response?.data?.error || 'Unmake failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Unmake failed'),
   });
 
   const { data: tplData } = useQuery({
@@ -326,6 +329,7 @@ function ProgramsTab() {
 // ── Send Flyers Tab ───────────────────────────────────────────────────
 function SendFlyersTab() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [composing, setComposing] = useState(null);
   const [showSent, setShowSent] = useState(false);
@@ -346,17 +350,17 @@ function SendFlyersTab() {
   const unmakeMut = useMutation({
     mutationFn: unmakeFlyerProgram,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['flyer-programs'] }),
-    onError: (e) => alert(e?.response?.data?.error || 'Unmake failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Unmake failed'),
   });
   const unsendMut = useMutation({
     mutationFn: unsendFlyerProgram,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['flyer-programs'] }),
-    onError: (e) => alert(e?.response?.data?.error || 'Unsend failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Unsend failed'),
   });
   const markSentMut = useMutation({
     mutationFn: markFlyerSent,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['flyer-programs'] }),
-    onError: (e) => alert(e?.response?.data?.error || 'Mark Sent failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Mark Sent failed'),
   });
 
   return (
@@ -461,6 +465,7 @@ function SendFlyersTab() {
 
 function SendFlyerComposer({ program, onClose }) {
   const qc = useQueryClient();
+  const toast = useToast();
 
   const { data: tplData } = useQuery({
     queryKey: ['client-templates', 'send_flyer'],
@@ -529,7 +534,7 @@ function SendFlyerComposer({ program, onClose }) {
       qc.invalidateQueries({ queryKey: ['flyer-programs'] });
       onClose();
     },
-    onError: (e) => alert(e?.response?.data?.error || 'Send failed'),
+    onError: (e) => toast.error(e?.response?.data?.error || 'Send failed'),
   });
 
   return (

@@ -6,6 +6,7 @@ import { AppShell } from './layout/AppShell';
 import { PageHeader } from './layout/PageHeader';
 import { Button } from './ui/Button';
 import { Spinner } from './ui/Spinner';
+import { useToast } from './ui/Toast';
 import { CopyableTable } from './ui/CopyableTable';
 import { RichTextEditor } from './ui/RichTextEditor';
 import { formatDate, formatTime } from '../lib/utils';
@@ -23,6 +24,7 @@ function getDays(p) { return DAYS.map((d,i) => p[d] ? DAY_SHORT[i] : null).filte
  *  - tabs, tabParam, extraFilters
  */
 export function ClientEmailTool({ title, category, endpoint, columns, getRecipient, getMergeData, idField = 'program_id', rowId, extraFilters, tabs, tabParam, defaultRange = 'week', toolSelector }) {
+  const toast = useToast();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -136,7 +138,7 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
   const [bulkSending, setBulkSending] = useState(false);
   const bulkSend = async () => {
     const tplId = bulkTemplateId || templateId;
-    if (!tplId) { alert('Select a template first'); return; }
+    if (!tplId) { toast.error('Select a template first'); return; }
     const tpl = templates.find(t => String(t.id) === String(tplId));
     if (!tpl) return;
     setBulkSending(true);
@@ -162,7 +164,7 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
     setBulkSending(false);
     qc.invalidateQueries([endpoint]);
     setChecked(new Set());
-    alert(`Sent ${sent} email${sent !== 1 ? 's' : ''}`);
+    toast.success(`Sent ${sent} email${sent !== 1 ? 's' : ''}`);
   };
 
   return (

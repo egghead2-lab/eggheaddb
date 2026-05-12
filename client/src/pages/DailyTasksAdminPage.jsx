@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { useGeneralData } from '../hooks/useReferenceData';
 import { formatDate } from '../lib/utils';
@@ -48,6 +49,7 @@ export default function DailyTasksAdminPage() {
 // ── Delegations Panel ─────────────────────────────────────────
 function DelegationsPanel() {
   const qc = useQueryClient();
+  const toast = useToast();
   const { data: refData } = useGeneralData();
   const ref = refData?.data || {};
   const staffUsers = (ref.staffUsers || []).map(u => ({ id: String(u.id), label: u.display_name }));
@@ -94,7 +96,7 @@ function DelegationsPanel() {
       qc.invalidateQueries(['delegations']);
       setShowAdd(false); setFromId(''); setToId(''); setStartDate(today); setEndDate(''); setTaskDefId(''); setNotes('');
     },
-    onError: (e) => alert('Error: ' + (e?.response?.data?.error || e.message)),
+    onError: (e) => toast.error('Error: ' + (e?.response?.data?.error || e.message)),
   });
 
   const deleteMut = useMutation({
@@ -141,7 +143,7 @@ function DelegationsPanel() {
             </div>
             <div className="flex justify-end">
               <Button onClick={() => {
-                if (!fromId || !toId || !startDate) return alert('Person out, covered by, and start date are required');
+                if (!fromId || !toId || !startDate) { toast.error('Person out, covered by, and start date are required'); return; }
                 createMut.mutate({
                   from_user_id: Number(fromId), to_user_id: Number(toId),
                   start_date: startDate, end_date: endDate || null,
@@ -180,6 +182,7 @@ function DelegationsPanel() {
 // ── Definitions Panel ─────────────────────────────────────────
 function DefinitionsPanel() {
   const qc = useQueryClient();
+  const toast = useToast();
   const { data: defsData, isLoading } = useQuery({
     queryKey: ['task-definitions'],
     queryFn: () => api.get('/daily-tasks/definitions').then(r => r.data),
@@ -204,7 +207,7 @@ function DefinitionsPanel() {
     mutationFn: ({ id, ...data }) => id ? api.put(`/daily-tasks/definitions/${id}`, data).then(r => r.data)
       : api.post('/daily-tasks/definitions', data).then(r => r.data),
     onSuccess: () => { qc.invalidateQueries(['task-definitions']); setEditing(null); setShowAdd(false); },
-    onError: (e) => alert('Error: ' + (e?.response?.data?.error || e.message)),
+    onError: (e) => toast.error('Error: ' + (e?.response?.data?.error || e.message)),
   });
 
   const deleteMut = useMutation({

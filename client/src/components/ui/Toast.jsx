@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 // Lightweight global toast system. Replaces browser alert() with non-blocking
 // stack-of-pills in the corner. Usage: const toast = useToast(); toast.error('Save failed');
@@ -16,12 +16,13 @@ export function ToastProvider({ children }) {
     if (ms > 0) setTimeout(() => remove(id), ms);
   }, [remove]);
 
-  const api = {
+  // Memoized so consumers can safely depend on `toast` in useEffect/useCallback.
+  const api = useMemo(() => ({
     show,
     success: (m, ms) => show(m, 'success', ms),
     error: (m, ms) => show(m, 'error', ms ?? 6000),
     info: (m, ms) => show(m, 'info', ms),
-  };
+  }), [show]);
 
   return (
     <ToastContext.Provider value={api}>

@@ -7,6 +7,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Spinner } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { CopyableTable } from '../../components/ui/CopyableTable';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
@@ -23,6 +24,7 @@ const QB_BADGE = {
 
 export default function InvoiceQueuePage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [contractor, setContractor] = useState('');
   const [invType, setInvType] = useState('');
   const [statusFilter, setStatusFilter] = useState('Ready');
@@ -363,7 +365,7 @@ export default function InvoiceQueuePage() {
                     </select>
                     <NewQbCustomer onCreated={(c) => { qc.invalidateQueries(['qb-customers']); setQbCustomerId(c.id); }} />
                     <Button onClick={() => {
-                      if (!qbCustomerId) return alert('Select a QB customer first');
+                      if (!qbCustomerId) { toast.error('Select a QB customer first'); return; }
                       const cust = qbCustomers.find(c => c.id === qbCustomerId);
                       qbInvoiceMutation.mutate({
                         customer_id: qbCustomerId,

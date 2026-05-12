@@ -11,12 +11,14 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { SortTh } from '../components/ui/SortTh';
 
 const STATUS_LABELS = { pending: 'Pending', in_progress: 'In Progress', complete: 'Complete', rejected: 'Rejected', hired: 'Hired' };
 
 export default function CandidatesPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [area, setArea] = useState('');
@@ -35,9 +37,11 @@ export default function CandidatesPage() {
       const parts = [`${res.synced} synced`];
       if (res.cleared) parts.push(`${res.cleared} cleared (deleted in Trainual)`);
       if (res.failed) parts.push(`${res.failed} failed`);
-      alert(parts.join(', '));
+      const msg = parts.join(', ');
+      if (res.failed) toast.error(msg);
+      else toast.success(msg);
     },
-    onError: (err) => alert('Sync failed: ' + (err?.response?.data?.error || err.message)),
+    onError: (err) => toast.error('Sync failed: ' + (err?.response?.data?.error || err.message)),
   });
 
   const handleSort = (col) => {

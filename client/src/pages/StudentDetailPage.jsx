@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { Badge } from '../components/ui/Badge';
 import { SearchSelect } from '../components/ui/SearchSelect';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
@@ -21,6 +22,7 @@ export default function StudentDetailPage() {
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const { data: studentData, isLoading } = useQuery({
     queryKey: ['students', id],
@@ -73,7 +75,7 @@ export default function StudentDetailPage() {
       setParentSearch(''); setParentResults([]);
     } catch (err) {
       console.error('Link parent error:', err);
-      alert('Failed to link parent: ' + (err?.response?.data?.error || err.message));
+      toast.error('Failed to link parent: ' + (err?.response?.data?.error || err.message));
     } finally { setSavingParent(false); }
   };
 
@@ -88,7 +90,7 @@ export default function StudentDetailPage() {
       setNewParentData({ first_name: '', last_name: '', email: '', phone: '' });
     } catch (err) {
       console.error('Create & link parent error:', err);
-      alert('Failed: ' + (err?.response?.data?.error || err.message));
+      toast.error('Failed: ' + (err?.response?.data?.error || err.message));
     } finally { setSavingParent(false); }
   };
 

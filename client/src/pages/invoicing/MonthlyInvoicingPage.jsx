@@ -6,6 +6,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Spinner } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { Section } from '../../components/ui/Section';
 import { CopyableTable } from '../../components/ui/CopyableTable';
 import { formatDate, formatCurrency } from '../../lib/utils';
@@ -19,6 +20,7 @@ function getDefaultMonth() {
 
 export default function MonthlyInvoicingPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const def = getDefaultMonth();
   const [startDate, setStartDate] = useState(def.start);
   const [endDate, setEndDate] = useState(def.end);
@@ -206,7 +208,7 @@ function ContractorGroup({ group, billingMonth, startDate, endDate, lastQb, qc, 
               {(qbCustomers || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <Button onClick={() => {
-              if (!qbCustomerId) return alert('Select a QB customer first');
+              if (!qbCustomerId) { toast.error('Select a QB customer first'); return; }
               const cust = (qbCustomers || []).find(c => c.id === qbCustomerId);
               qbInvoiceMutation.mutate({
                 customer_id: qbCustomerId,

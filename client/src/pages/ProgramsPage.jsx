@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { formatDate, formatTime, getProgramDay } from '../lib/utils';
 import { exportToCsv } from '../lib/exportCsv';
 import { SortTh } from '../components/ui/SortTh';
@@ -128,7 +129,8 @@ export default function ProgramsPage() {
     setSavingEnrollment(false);
     qc.invalidateQueries(['programs']);
     cancelEditEnrollment();
-    if (failed) alert(`Saved ${saved}, failed ${failed}`);
+    if (failed) toast.error(`Saved ${saved}, failed ${failed}`);
+    else if (saved) toast.success(`Saved ${saved} enrollment${saved !== 1 ? 's' : ''}`);
   };
 
   const bulkFields = [

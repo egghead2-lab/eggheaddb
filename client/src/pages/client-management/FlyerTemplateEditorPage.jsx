@@ -10,6 +10,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Spinner } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import {
   getFlyerTemplate, replaceFlyerTemplateFields, flyerTemplatePdfUrl,
   getFlyerFieldsCatalog, renderFlyer,
@@ -51,6 +52,7 @@ export default function FlyerTemplateEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
   const [pageNumber, setPageNumber] = useState(1);
   const [fields, setFields] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -94,7 +96,7 @@ export default function FlyerTemplateEditorPage() {
     },
     onError: (e) => {
       console.error('Save failed:', e);
-      alert(e?.response?.data?.error || 'Save failed — your changes are still in this editor');
+      toast.error(e?.response?.data?.error || 'Save failed — your changes are still in this editor');
     },
   });
 

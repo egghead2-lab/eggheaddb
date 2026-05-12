@@ -8,6 +8,7 @@ import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { formatDate, formatCurrency } from '../lib/utils';
 
@@ -339,6 +340,7 @@ function BugCard({ bug: b, isAdmin, currentUserId, labels, tab, onUpdate, onDele
 
 function MessageThread({ bugId, canPost, isAdmin }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [body, setBody] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -354,7 +356,7 @@ function MessageThread({ bugId, canPost, isAdmin }) {
       qc.invalidateQueries({ queryKey: ['bug-reports'] });
       setBody('');
     },
-    onError: (e) => alert(e.response?.data?.error || 'Failed to post'),
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to post'),
   });
 
   const delMut = useMutation({

@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { formatDate } from '../lib/utils';
 import { RatingBadge } from '../components/ui/DevelopmentalRating';
 import { formatCurrency } from '../lib/utils';
@@ -39,6 +40,7 @@ const COLUMNS = [
 
 export default function ProfessorsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [area, setArea] = useState('');
@@ -65,9 +67,9 @@ export default function ProfessorsPage() {
     onSuccess: (res) => {
       qc.invalidateQueries(['professors']);
       qc.invalidateQueries(['trainual-professor-issues']);
-      alert(`Synced ${res.synced} Trainual users`);
+      toast.success(`Synced ${res.synced} Trainual users`);
     },
-    onError: (err) => alert('Sync failed: ' + (err?.response?.data?.error || err.message)),
+    onError: (err) => toast.error('Sync failed: ' + (err?.response?.data?.error || err.message)),
   });
 
   const archiveMutation = useMutation({
@@ -76,7 +78,7 @@ export default function ProfessorsPage() {
       qc.invalidateQueries(['professors']);
       qc.invalidateQueries(['trainual-professor-issues']);
     },
-    onError: (err) => alert('Archive failed: ' + (err?.response?.data?.error || err.message)),
+    onError: (err) => toast.error('Archive failed: ' + (err?.response?.data?.error || err.message)),
   });
 
   const handleSort = (col) => {

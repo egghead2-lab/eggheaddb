@@ -10,6 +10,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
+import { useToast } from '../components/ui/Toast';
 import { UnsavedChangesModal } from '../components/ui/UnsavedChangesModal';
 import { toFormData } from '../lib/utils';
 
@@ -18,6 +19,7 @@ export default function UserDetailPage() {
   const isNew = !id;
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
   const [showNewRole, setShowNewRole] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
   const [sigUploading, setSigUploading] = useState(false);
@@ -133,7 +135,7 @@ export default function UserDetailPage() {
                       const current = document.querySelector('textarea[name="email_signature"]')?.value || '';
                       setValue('email_signature', current + imgTag, { shouldDirty: true });
                     } catch (err) {
-                      alert(err?.response?.data?.error || 'Upload failed');
+                      toast.error(err?.response?.data?.error || 'Upload failed');
                     } finally {
                       setSigUploading(false);
                       if (sigFileRef.current) sigFileRef.current.value = '';

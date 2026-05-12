@@ -5,6 +5,7 @@ import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
 import { Spinner } from '../components/ui/Spinner';
 import { Button } from '../components/ui/Button';
+import { useToast } from '../components/ui/Toast';
 import { RichTextEditor } from '../components/ui/RichTextEditor';
 import { formatDate, formatCurrency } from '../lib/utils';
 
@@ -435,6 +436,7 @@ const FOLLOWUP_MERGE_FIELDS = [
 
 function FollowUpTab() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [checked, setChecked] = useState(new Set());
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject] = useState('');
@@ -490,9 +492,9 @@ function FollowUpTab() {
   };
 
   const handleSend = async () => {
-    if (!subject || !body) return alert('Please select a template first');
+    if (!subject || !body) { toast.error('Please select a template first'); return; }
     const targets = rows.filter(r => checked.has(r.id));
-    if (!targets.length) return alert('Select at least one program');
+    if (!targets.length) { toast.error('Select at least one program'); return; }
 
     setSending(true);
     let totalSent = 0, totalFailed = 0;
@@ -510,7 +512,9 @@ function FollowUpTab() {
       } catch { totalFailed++; }
     }
     setSending(false);
-    alert(`Sent ${totalSent} email${totalSent !== 1 ? 's' : ''} across ${targets.length} program${targets.length !== 1 ? 's' : ''}${totalFailed ? ` (${totalFailed} failed)` : ''}`);
+    const summary = `Sent ${totalSent} email${totalSent !== 1 ? 's' : ''} across ${targets.length} program${targets.length !== 1 ? 's' : ''}${totalFailed ? ` (${totalFailed} failed)` : ''}`;
+    if (totalFailed) toast.error(summary);
+    else toast.success(summary);
     qc.invalidateQueries(['lab-fee-followup']);
   };
 
