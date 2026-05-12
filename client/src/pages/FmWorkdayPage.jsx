@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
+import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../hooks/useAuth';
 import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
@@ -49,6 +50,7 @@ function calcHours(time_in, time_out, break_minutes) {
 
 export default function FmWorkdayPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const qc = useQueryClient();
   const [tab, setTab] = useState('log');
   const [showLogForm, setShowLogForm] = useState(false);
@@ -168,6 +170,7 @@ export default function FmWorkdayPage() {
       setActiveWeekId(res.id);
       qc.invalidateQueries(['mileage-weeks']);
     },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Failed to start week'),
   });
 
   const addEntryMutation = useMutation({
@@ -193,6 +196,7 @@ export default function FmWorkdayPage() {
       qc.invalidateQueries(['mileage-week-detail', activeWeekId]);
       qc.invalidateQueries(['mileage-weeks']);
     },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Submit failed'),
   });
 
   const reopenWeekMutation = useMutation({
@@ -201,6 +205,7 @@ export default function FmWorkdayPage() {
       qc.invalidateQueries(['mileage-week-detail', activeWeekId]);
       qc.invalidateQueries(['mileage-weeks']);
     },
+    onError: (err) => toast.error(err?.response?.data?.error || 'Reopen failed'),
   });
 
   const startCurrentWeek = () => {

@@ -1665,7 +1665,7 @@
 | Column | Type | Null | Key | Default |
 |--------|------|------|-----|---------|
 | `id` | `int` *(auto_increment)* | NO | PRI | `NULL` |
-| `professor_id` | `int` | NO | MUL | `NULL` |
+| `professor_id` | `int` | YES | MUL | `NULL` |
 | `user_id` | `int` | YES | MUL | `NULL` |
 | `work_date` | `date` | NO | MUL | `NULL` |
 | `time_in` | `time` | NO |  | `NULL` |
@@ -1748,7 +1748,7 @@
 | Column | Type | Null | Key | Default |
 |--------|------|------|-----|---------|
 | `id` | `int` *(auto_increment)* | NO | PRI | `NULL` |
-| `professor_id` | `int` | NO | MUL | `NULL` |
+| `professor_id` | `int` | YES | MUL | `NULL` |
 | `user_id` | `int` | YES | MUL | `NULL` |
 | `week_start` | `date` | NO |  | `NULL` |
 | `week_end` | `date` | NO |  | `NULL` |
