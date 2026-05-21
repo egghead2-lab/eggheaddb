@@ -7,8 +7,10 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
+import { SearchSelect } from '../components/ui/SearchSelect';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../hooks/useAuth';
+import { useLocationList } from '../hooks/useReferenceData';
 import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
 
@@ -100,19 +102,29 @@ export default function FmWorkdayPage() {
     return { days: thisWeek.length, hours: totalHours.toFixed(2) };
   }, [logEntries]);
 
+  // Active locations (for "Visited a site" picker)
+  const { data: locData } = useLocationList();
+  const locationOptions = useMemo(() => (locData?.data || []).map(l => ({ id: String(l.id), label: l.nickname })), [locData]);
+  const locationNameById = useMemo(() => Object.fromEntries(locationOptions.map(l => [l.id, l.label])), [locationOptions]);
+
   // --- Daily Log Form ---
   const [logForm, setLogForm] = useState({
     work_date: new Date().toISOString().split('T')[0],
     time_in: '09:00', time_out: '17:00', break_minutes: '30',
     work_location: '', field_activities: [], wfh_activities: [],
     field_other: '', wfh_other: '',
+    field_visited_location_id: '',
     professors_contacted: '', concerns: '',
   });
   const setLog = (k, v) => setLogForm(f => ({ ...f, [k]: v }));
   const toggleLogCheck = (list, item) => {
     setLogForm(f => {
       const arr = f[list];
-      return { ...f, [list]: arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item] };
+      const next = arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item];
+      // Clear the visited-site location if the user unchecks "Visited a site"
+      const extras = (list === 'field_activities' && item === 'Visited a site' && arr.includes(item))
+        ? { field_visited_location_id: '' } : {};
+      return { ...f, [list]: next, ...extras };
     });
   };
 
@@ -121,13 +133,18 @@ export default function FmWorkdayPage() {
     onSuccess: () => {
       qc.invalidateQueries(['fm-time']);
       setShowLogForm(false);
-      setLogForm(f => ({ ...f, work_location: '', field_activities: [], wfh_activities: [], field_other: '', wfh_other: '', professors_contacted: '', concerns: '' }));
+      setLogForm(f => ({ ...f, work_location: '', field_activities: [], wfh_activities: [], field_other: '', wfh_other: '', field_visited_location_id: '', professors_contacted: '', concerns: '' }));
     },
   });
 
   const submitLog = () => {
     if (!myUserId || !logForm.work_date || !logForm.time_in || !logForm.time_out || !logForm.work_location) return;
-    const fieldActs = [...logForm.field_activities, logForm.field_other].filter(Boolean).join(', ');
+    // Annotate "Visited a site" with the chosen location name (if any)
+    const visitedName = locationNameById[logForm.field_visited_location_id];
+    const fieldList = logForm.field_activities.map(a =>
+      (a === 'Visited a site' && visitedName) ? `Visited a site: ${visitedName}` : a
+    );
+    const fieldActs = [...fieldList, logForm.field_other].filter(Boolean).join(', ');
     const wfhActs = [...logForm.wfh_activities, logForm.wfh_other].filter(Boolean).join(', ');
     logMutation.mutate({
       user_id: myUserId,
@@ -308,6 +325,14 @@ export default function FmWorkdayPage() {
                         </label>
                       ))}
                     </div>
+                    {logForm.field_activities.includes('Visited a site') && (
+                      <div className="mt-2">
+                        <SearchSelect label="Which site?" options={locationOptions}
+                          value={logForm.field_visited_location_id}
+                          onChange={v => setLog('field_visited_location_id', v)}
+                          placeholder="Type to search locations…" />
+                      </div>
+                    )}
                     <Input label="Other (specify)" value={logForm.field_other} onChange={e => setLog('field_other', e.target.value)} className="mt-2" />
                   </div>
                 )}
