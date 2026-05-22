@@ -14,7 +14,9 @@ router.get('/programs', async (req, res, next) => {
   try {
     const { class_type_id, class_id, contractor_id, area_id, show_unset_only } = req.query;
 
-    let where = `prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1`;
+    // Include both confirmed and unconfirmed programs (so curriculum can be planned ahead).
+    // Cancelled programs stay excluded.
+    let where = `prog.active = 1 AND prog.live = 1 AND cs.cancelled = 0`;
     const params = [];
 
     if (class_type_id) { where += ' AND cl.class_type_id = ?'; params.push(class_type_id); }
@@ -30,6 +32,7 @@ router.get('/programs', async (req, res, next) => {
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
               cl.class_name, cl.class_code,
               ct.class_type_name,
+              cs.class_status_name, cs.confirmed AS status_confirmed, cs.unconfirmed AS status_unconfirmed,
               loc.nickname AS location_nickname,
               con.contractor_name,
               ga.geographic_area_name,
@@ -71,15 +74,19 @@ router.get('/programs/:id/sessions', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/curriculum/lessons — lessons for a class_id (for dropdowns)
+// GET /api/curriculum/lessons — lessons (optionally filtered by class_id; class_name included for grouping)
 router.get('/lessons', async (req, res, next) => {
   try {
     const { class_id } = req.query;
-    let where = 'active = 1';
+    let where = 'l.active = 1';
     const params = [];
-    if (class_id) { where += ' AND class_id = ?'; params.push(class_id); }
+    if (class_id) { where += ' AND l.class_id = ?'; params.push(class_id); }
     const [lessons] = await pool.query(
-      `SELECT id, lesson_name, class_id, sort_order FROM lesson WHERE ${where} ORDER BY sort_order, lesson_name`,
+      `SELECT l.id, l.lesson_name, l.class_id, l.sort_order, c.class_name
+       FROM lesson l
+       LEFT JOIN class c ON c.id = l.class_id
+       WHERE ${where}
+       ORDER BY c.class_name, l.sort_order, l.lesson_name`,
       params
     );
     res.json({ success: true, data: lessons });
