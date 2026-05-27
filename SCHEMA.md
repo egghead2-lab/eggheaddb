@@ -873,6 +873,8 @@
 | `last_updated` | `date` | YES |  | `NULL` |
 | `general_notes` | `text` | YES |  | `NULL` |
 | `active` | `tinyint(1)` | NO |  | `1` |
+| `remote_observe_allowed` | `tinyint(1)` | YES |  | `NULL` |
+| `remote_observe_notes` | `text` | YES |  | `NULL` |
 
 ## evaluation_schedule
 
@@ -992,11 +994,12 @@
 |--------|------|------|-----|---------|
 | `id` | `int` *(auto_increment)* | NO | PRI | `NULL` |
 | `professor_id` | `int` | NO | MUL | `NULL` |
+| `program_id` | `int` | YES |  | `NULL` |
 | `evaluation_date` | `date` | NO | MUL | `NULL` |
 | `evaluator_professor_id` | `int` | YES |  | `NULL` |
 | `evaluator_user_id` | `int` | YES |  | `NULL` |
-| `evaluation_type` | `enum('initial','routine','follow_up','formal','peer_to_peer','support_session')` | YES |  | `formal` |
-| `result` | `enum('pass','needs_improvement','fail')` | YES |  | `NULL` |
+| `evaluation_type` | `enum('initial','routine','follow_up','formal','peer_to_peer','support_session','casual','remote','virtual_checkin','fm_evaluation')` | YES |  | `formal` |
+| `result` | `enum('pass','needs_improvement','fail','emerging','developing','performing','excelling','distinguished')` | YES |  | `NULL` |
 | `form_link` | `varchar(1024)` | YES |  | `NULL` |
 | `notes` | `varchar(1024)` | YES |  | `NULL` |
 | `active` | `tinyint(1)` | YES |  | `1` |
@@ -1008,6 +1011,13 @@
 | `delete_notes` | `varchar(512)` | YES |  | `NULL` |
 | `remediation_followup` | `varchar(30)` | YES |  | `NULL` |
 | `remediation_due_date` | `date` | YES |  | `NULL` |
+| `is_remote` | `tinyint(1)` | NO |  | `0` |
+| `session_id` | `int` | YES | MUL | `NULL` |
+| `gcal_event_id` | `varchar(255)` | YES |  | `NULL` |
+| `gcal_calendar_id` | `varchar(255)` | YES |  | `NULL` |
+| `meet_link` | `varchar(512)` | YES |  | `NULL` |
+| `event_start_at` | `datetime` | YES |  | `NULL` |
+| `event_end_at` | `datetime` | YES |  | `NULL` |
 
 ## professor_incident
 
@@ -2317,6 +2327,16 @@
 | `active` | `tinyint(1)` | NO |  | `1` |
 | `requirement_id` | `int` | YES |  | `NULL` |
 | `attachments` | `json` | YES |  | `NULL` |
+
+## remote_observe_template
+
+| Column | Type | Null | Key | Default |
+|--------|------|------|-----|---------|
+| `id` | `int unsigned` *(auto_increment)* | NO | PRI | `NULL` |
+| `meeting_type` | `enum('initial','follow_up')` | NO | UNI | `NULL` |
+| `body` | `text` | NO |  | `NULL` |
+| `updated_at` | `timestamp` *(DEFAULT_GENERATED on update CURRENT_TIMESTAMP)* | YES |  | `CURRENT_TIMESTAMP` |
+| `updated_by_user_id` | `int` | YES |  | `NULL` |
 
 ## notification_log
 
