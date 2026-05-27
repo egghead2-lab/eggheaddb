@@ -50,6 +50,7 @@ import ReportFieldConfigPage from './pages/ReportFieldConfigPage';
 import CandidatePortalPage from './pages/CandidatePortalPage';
 import SubManagementPage from './pages/SubManagementPage';
 import EvaluationDashboardPage from './pages/EvaluationDashboardPage';
+import RemoteObservePage from './pages/RemoteObservePage';
 import WeeklyOverviewPage from './pages/WeeklyOverviewPage';
 import ObservationLookupPage from './pages/ObservationLookupPage';
 import ObservationHistoryPage from './pages/ObservationHistoryPage';
@@ -202,6 +203,7 @@ export default function App() {
       <Route path="/sub-management" element={<ProtectedRoute><SubManagementPage /></ProtectedRoute>} />
       <Route path="/weekly-overview" element={<ProtectedRoute><WeeklyOverviewPage /></ProtectedRoute>} />
       <Route path="/evaluations" element={<ProtectedRoute><EvaluationDashboardPage /></ProtectedRoute>} />
+      <Route path="/tools/schedule-remote-observe" element={<ProtectedRoute><RemoteObservePage /></ProtectedRoute>} />
       <Route path="/observation-lookup" element={<ProtectedRoute><ObservationLookupPage /></ProtectedRoute>} />
       <Route path="/observation-history" element={<ProtectedRoute><ObservationHistoryPage /></ProtectedRoute>} />
       <Route path="/observation-scheduler" element={<ProtectedRoute><ObservationSchedulerPage /></ProtectedRoute>} />

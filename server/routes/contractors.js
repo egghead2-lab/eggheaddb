@@ -151,6 +151,8 @@ router.put('/:id', authenticate, async (req, res, next) => {
       'invoice_notes', 'last_updated', 'general_notes', 'active',
       // commission flags
       'retained', 'non_initial_client',
+      // remote-observation policy
+      'remote_observe_allowed', 'remote_observe_notes',
     ];
 
     // Spec §3.3: can't set retained back to NULL

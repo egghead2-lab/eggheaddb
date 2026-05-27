@@ -138,6 +138,30 @@ export default function ContractorDetailPage() {
             </div>
           </Section>
 
+          {/* Remote Observation Policy */}
+          <Section title="Remote Observation Policy" defaultOpen={true}>
+            <div className="grid grid-cols-3 gap-4 items-end">
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Remote Observes Allowed</label>
+                <select {...register('remote_observe_allowed')}
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]">
+                  <option value="">Unknown</option>
+                  <option value="1">Yes</option>
+                  <option value="0">No</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-700 block mb-1">Notes (shown in scheduler)</label>
+                <textarea {...register('remote_observe_notes')} rows={2}
+                  placeholder='e.g. "Notify Sam in advance" or "Not allowed per Aug 2025 admin meeting"'
+                  className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2">
+              Surfaces on the Schedule Remote Observe tool. "Unknown" requires the FM to confirm before scheduling; "No" blocks scheduling and shows the notes.
+            </p>
+          </Section>
+
           {/* District Expectations */}
           <Section title="General District Expectations" defaultOpen={true}>
             <div className="space-y-4">
