@@ -149,6 +149,10 @@ export default function RemoteObservePage() {
   };
 
   const canSubmit = selectedSessionId && !blocked && (needsAck ? acknowledgeUnknown : true) && !scheduleMutation.isPending;
+  const disabledReason = !selectedSessionId ? 'Pick a class date above'
+    : blocked ? 'This contractor is marked NO for remote evaluations'
+    : (needsAck && !acknowledgeUnknown) ? 'Check the "I confirm" box in step 3'
+    : null;
 
   return (
     <AppShell>
@@ -298,6 +302,9 @@ export default function RemoteObservePage() {
         {selectedSessionId && !scheduledResult && (
           <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-end gap-3">
             {scheduleMutation.isPending && <Spinner className="w-4 h-4" />}
+            {!canSubmit && disabledReason && (
+              <span className="text-xs text-gray-500">{disabledReason}</span>
+            )}
             <Button onClick={() => scheduleMutation.mutate()} disabled={!canSubmit}>
               {scheduleMutation.isPending ? 'Scheduling…' : 'Send Calendar Invite'}
             </Button>
