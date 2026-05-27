@@ -11,20 +11,81 @@ const {
 router.use(authenticate);
 
 // ═══════════════════════════════════════════════════════════════
+// PROFESSOR LOOKUP
+// ═══════════════════════════════════════════════════════════════
+//
+// GET /api/remote-observe/professors?q=<search>
+// Active / Substitute / Training professors matching the query.
+// Returns last_evaluation_date so the scheduler can highlight who's
+// most overdue. The picker for step 1 of the scheduling flow.
+router.get('/professors', async (req, res, next) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const like = `%${q}%`;
+    const params = [];
+    let nameFilter = '';
+    if (q.length >= 2) {
+      nameFilter = ' AND (prof.professor_nickname LIKE ? OR prof.first_name LIKE ? OR prof.last_name LIKE ? OR prof.email LIKE ?)';
+      params.push(like, like, like, like);
+    }
+    // Statuses we care about: Active (1), Substitute (3), Training (5).
+    const [rows] = await pool.query(
+      `SELECT
+         prof.id                AS professor_id,
+         prof.professor_nickname,
+         prof.first_name,
+         prof.last_name,
+         prof.email             AS professor_email,
+         prof.last_evaluation_date,
+         prof.last_evaluation_result,
+         ps.professor_status_name
+       FROM professor prof
+       JOIN professor_status ps ON ps.id = prof.professor_status_id
+       WHERE prof.active = 1
+         AND prof.professor_status_id IN (1, 3, 5)
+         ${nameFilter}
+       ORDER BY prof.last_evaluation_date IS NULL DESC,
+                prof.last_evaluation_date ASC,
+                prof.last_name, prof.first_name
+       LIMIT 25`,
+      params,
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // CLASS LOOKUP
 // ═══════════════════════════════════════════════════════════════
 //
-// GET /api/remote-observe/classes?q=<search>
-// Searchable list of confirmed programs, with everything the scheduler
-// needs to populate its UI: location/contractor for the gating badge,
-// professor email for the Calendar invite, class_start_time + length
-// for the event window, and the next 3 future non-OFF sessions.
+// GET /api/remote-observe/classes
+// Either:
+//   ?professor_id=N           → all current programs where they're the lead
+//   ?q=<search>               → typeahead across all confirmed programs
+// Each returned row has the contractor allowed-flag + the next 3
+// future non-OFF sessions, so the UI doesn't need a second round-trip.
 router.get('/classes', async (req, res, next) => {
   try {
+    const professorId = req.query.professor_id ? parseInt(req.query.professor_id) : null;
     const q = (req.query.q || '').trim();
-    if (q.length < 2) return res.json({ success: true, data: [] });
+    if (!professorId && q.length < 2) return res.json({ success: true, data: [] });
 
-    const like = `%${q}%`;
+    const params = [];
+    let filter = '';
+    if (professorId) {
+      filter = ' AND prog.lead_professor_id = ?';
+      params.push(professorId);
+    } else {
+      const like = `%${q}%`;
+      filter = ` AND (
+        prog.program_nickname LIKE ?
+        OR cl.class_name LIKE ?
+        OR loc.nickname LIKE ?
+        OR con.contractor_name LIKE ?
+      )`;
+      params.push(like, like, like, like);
+    }
+
     const [programs] = await pool.query(
       `SELECT
          prog.id            AS program_id,
@@ -51,15 +112,10 @@ router.get('/classes', async (req, res, next) => {
        WHERE prog.active = 1
          AND prog.live = 1
          AND cs.confirmed = 1
-         AND (
-           prog.program_nickname LIKE ?
-           OR cl.class_name LIKE ?
-           OR loc.nickname LIKE ?
-           OR con.contractor_name LIKE ?
-         )
+         ${filter}
        ORDER BY prog.program_nickname
-       LIMIT 25`,
-      [like, like, like, like],
+       LIMIT 50`,
+      params,
     );
 
     if (programs.length === 0) return res.json({ success: true, data: [] });
@@ -82,12 +138,13 @@ router.get('/classes', async (req, res, next) => {
       if (list.length < 3) list.push({ session_id: s.session_id, session_date: s.session_date });
     }
 
-    const enriched = programs.map(p => ({
-      ...p,
-      next_3_sessions: byProg[p.program_id] || [],
-    }));
+    // When scoping by professor, only return programs that actually have
+    // upcoming sessions (no point scheduling on an empty program).
+    const filtered = programs
+      .map(p => ({ ...p, next_3_sessions: byProg[p.program_id] || [] }))
+      .filter(p => !professorId || p.next_3_sessions.length > 0);
 
-    res.json({ success: true, data: enriched });
+    res.json({ success: true, data: filtered });
   } catch (err) { next(err); }
 });
 

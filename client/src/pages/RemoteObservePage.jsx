@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { AppShell } from '../components/layout/AppShell';
@@ -15,7 +15,6 @@ function parseLocalDate(s) {
   return new Date(y, m - 1, d);
 }
 
-// "HH:MM:SS" -> "h:mm AM/PM"
 function fmtTime(t) {
   if (!t) return '';
   const [h, m] = String(t).split(':').map(Number);
@@ -24,7 +23,6 @@ function fmtTime(t) {
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
-// Convert minutes-offset from a time string (no DST math, just clock arithmetic).
 function addMinutesToClock(timeStr, deltaMinutes) {
   const [h, m] = String(timeStr).split(':').map(Number);
   const total = h * 60 + m + deltaMinutes;
@@ -34,51 +32,64 @@ function addMinutesToClock(timeStr, deltaMinutes) {
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
 }
 
-// Render the allowed-flag badge given 0/1/null.
+function daysSince(dateStr) {
+  if (!dateStr) return null;
+  const d = parseLocalDate(dateStr);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.floor((today - d) / (1000 * 60 * 60 * 24));
+}
+
 function allowedBadge(value, notes) {
   if (value === 1) return { label: 'YES', cls: 'bg-green-100 text-green-700 border-green-200', notes };
   if (value === 0) return { label: 'NO', cls: 'bg-red-100 text-red-700 border-red-200', notes };
   return { label: 'UNKNOWN', cls: 'bg-yellow-100 text-yellow-800 border-yellow-200', notes };
 }
 
+const STATUS_COLORS = {
+  Active: 'bg-green-100 text-green-700',
+  Substitute: 'bg-blue-100 text-blue-700',
+  Training: 'bg-violet-100 text-violet-700',
+};
+
 export default function RemoteObservePage() {
   const qc = useQueryClient();
   const toast = useToast();
 
-  const [meetingType, setMeetingType] = useState('initial'); // 'initial' | 'follow_up'
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [profQuery, setProfQuery] = useState('');
+  const [debouncedProfQuery, setDebouncedProfQuery] = useState('');
+  const [selectedProfessor, setSelectedProfessor] = useState(null);
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [meetingType, setMeetingType] = useState('initial');
   const [acknowledgeUnknown, setAcknowledgeUnknown] = useState(false);
   const [scheduledResult, setScheduledResult] = useState(null);
 
-  // Debounce the search query
+  // Debounce the professor search
   const debounceRef = useRef(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setDebouncedQuery(query), 250);
+    debounceRef.current = setTimeout(() => setDebouncedProfQuery(profQuery), 250);
     return () => clearTimeout(debounceRef.current);
-  }, [query]);
+  }, [profQuery]);
 
-  // Class search
-  const { data: classData, isFetching: classFetching } = useQuery({
-    queryKey: ['remote-observe-classes', debouncedQuery],
-    queryFn: () => api.get('/remote-observe/classes', { params: { q: debouncedQuery } }).then(r => r.data),
-    enabled: debouncedQuery.length >= 2,
+  // Step 1: Professor search
+  const { data: profData, isFetching: profFetching } = useQuery({
+    queryKey: ['remote-observe-professors', debouncedProfQuery],
+    queryFn: () => api.get('/remote-observe/professors', { params: { q: debouncedProfQuery } }).then(r => r.data),
+    // Always enabled — when empty, returns the most-overdue list.
+    enabled: true,
   });
-  const programs = classData?.data || [];
+  const professors = profData?.data || [];
 
-  // Picking a program resets downstream state
-  const pickProgram = (p) => {
-    setSelectedProgram(p);
-    setSelectedSessionId(null);
-    setAcknowledgeUnknown(false);
-    setScheduledResult(null);
-    setQuery('');
-  };
+  // Step 2: Programs for the selected professor
+  const { data: progData, isLoading: progLoading } = useQuery({
+    queryKey: ['remote-observe-progs-for', selectedProfessor?.professor_id],
+    queryFn: () => api.get('/remote-observe/classes', { params: { professor_id: selectedProfessor.professor_id } }).then(r => r.data),
+    enabled: !!selectedProfessor,
+  });
+  const programs = progData?.data || [];
 
-  // Live preview of the about-to-be-sent event
+  // Step 4: Live preview
   const { data: previewData } = useQuery({
     queryKey: ['remote-observe-preview', selectedSessionId, meetingType],
     queryFn: () => api.post('/remote-observe/preview', { session_id: selectedSessionId, meeting_type: meetingType }).then(r => r.data),
@@ -86,15 +97,29 @@ export default function RemoteObservePage() {
   });
   const preview = previewData?.data;
 
-  // Reset acknowledge when meeting type changes (the gate text might change)
+  // Reset downstream state when an upstream pick changes
+  const pickProfessor = (p) => {
+    setSelectedProfessor(p);
+    setSelectedProgram(null);
+    setSelectedSessionId(null);
+    setAcknowledgeUnknown(false);
+    setScheduledResult(null);
+    setProfQuery('');
+  };
+  const pickProgram = (p) => {
+    setSelectedProgram(p);
+    setSelectedSessionId(null);
+    setAcknowledgeUnknown(false);
+    setScheduledResult(null);
+  };
+
   useEffect(() => { setAcknowledgeUnknown(false); setScheduledResult(null); }, [meetingType, selectedSessionId]);
 
   const badge = selectedProgram
     ? allowedBadge(selectedProgram.remote_observe_allowed, selectedProgram.remote_observe_notes)
     : null;
   const blocked = selectedProgram?.remote_observe_allowed === 0;
-  const needsAck = selectedProgram?.remote_observe_allowed === null || selectedProgram?.remote_observe_allowed === undefined;
-  // Note: when remote_observe_allowed is 1 (Yes), needsAck is false above.
+  const needsAck = selectedProgram && (selectedProgram.remote_observe_allowed === null || selectedProgram.remote_observe_allowed === undefined);
 
   const scheduleMutation = useMutation({
     mutationFn: () => api.post('/remote-observe/schedule', {
@@ -104,86 +129,68 @@ export default function RemoteObservePage() {
     }).then(r => r.data),
     onSuccess: (res) => {
       setScheduledResult(res.data);
-      qc.invalidateQueries(['fm-time']);
-      toast.success('Remote observation scheduled');
+      qc.invalidateQueries(['remote-observe-progs-for', selectedProfessor?.professor_id]);
+      toast.success('Remote evaluation scheduled');
     },
     onError: (err) => {
       const d = err?.response?.data;
-      if (d?.requires_google_connect) {
-        toast.error('Connect your Google Calendar first (top-right account menu)');
-      } else {
-        toast.error(d?.error || 'Failed to schedule');
-      }
+      if (d?.requires_google_connect) toast.error('Connect your Google Calendar first (top-right account menu)');
+      else toast.error(d?.error || 'Failed to schedule');
     },
   });
 
-  // Reset the whole flow after a successful schedule
   const startOver = () => {
+    setSelectedProfessor(null);
     setSelectedProgram(null);
     setSelectedSessionId(null);
     setAcknowledgeUnknown(false);
     setScheduledResult(null);
-    setQuery('');
+    setProfQuery('');
   };
 
   const canSubmit = selectedSessionId && !blocked && (needsAck ? acknowledgeUnknown : true) && !scheduleMutation.isPending;
 
   return (
     <AppShell>
-      <PageHeader title="Schedule Remote Observation" />
+      <PageHeader title="Schedule Remote Evaluation" />
 
       <div className="p-6 pb-32 max-w-5xl space-y-4">
-        {/* ─── 1. Meeting Type ─── */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-sm font-semibold text-gray-700 mb-2">1. Meeting Type</div>
-          <div className="flex gap-4">
-            {[
-              { value: 'initial', label: 'Remote Observation' },
-              { value: 'follow_up', label: 'Follow-Up Remote Observation' },
-            ].map(o => (
-              <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="radio" name="meeting_type" checked={meetingType === o.value}
-                  onChange={() => setMeetingType(o.value)} className="accent-[#1e3a5f]" />
-                {o.label}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* ─── 2. Class search ─── */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-sm font-semibold text-gray-700 mb-2">2. Class</div>
-          {selectedProgram ? (
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-sm text-gray-900">{selectedProgram.program_nickname}</div>
-                <div className="text-xs text-gray-500">
-                  {selectedProgram.location_name || '—'}
-                  {selectedProgram.contractor_name ? ` · ${selectedProgram.contractor_name}` : ''}
-                  {selectedProgram.professor_name ? ` · ${selectedProgram.professor_name}` : ''}
-                </div>
-              </div>
-              <button type="button" onClick={() => setSelectedProgram(null)}
-                className="text-xs text-gray-400 hover:text-gray-600">change</button>
-            </div>
-          ) : (
-            <ClassSearch
-              query={query} setQuery={setQuery} programs={programs}
-              loading={classFetching && debouncedQuery.length >= 2}
-              onPick={pickProgram}
-              minLen={debouncedQuery.length < 2}
-            />
+        {/* ─── Step 1: Pick Professor ─── */}
+        <Step n={1} title="Professor"
+          summary={selectedProfessor ? (
+            <ProfessorSummary p={selectedProfessor} onChange={() => setSelectedProfessor(null)} />
+          ) : null}>
+          {!selectedProfessor && (
+            <ProfessorPicker query={profQuery} setQuery={setProfQuery}
+              professors={professors} loading={profFetching}
+              onPick={pickProfessor} />
           )}
-        </div>
+        </Step>
 
-        {/* ─── 3. Status (allowed badge) ─── */}
+        {/* ─── Step 2: Pick Class ─── */}
+        {selectedProfessor && (
+          <Step n={2} title="Class"
+            summary={selectedProgram ? (
+              <ProgramSummary p={selectedProgram} onChange={() => setSelectedProgram(null)} />
+            ) : null}>
+            {!selectedProgram && (
+              progLoading ? <div className="flex items-center gap-2 text-xs text-gray-500"><Spinner className="w-3 h-3" /> Loading their classes…</div>
+              : programs.length === 0 ? (
+                <p className="text-sm text-gray-400">
+                  No current confirmed programs with upcoming sessions where this professor is the lead.
+                </p>
+              ) : (
+                <ProgramList programs={programs} onPick={pickProgram} />
+              )
+            )}
+          </Step>
+        )}
+
+        {/* ─── Step 3: Status (allowed badge) ─── */}
         {selectedProgram && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-sm font-semibold text-gray-700 mb-2">3. Remote Observes Allowed?</div>
+          <Step n={3} title="Remote Evaluations Allowed?">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className={`text-xs font-bold px-2 py-1 rounded border ${badge.cls}`}>
-                {badge.label}
-              </span>
+              <span className={`text-xs font-bold px-2 py-1 rounded border ${badge.cls}`}>{badge.label}</span>
               <span className="text-xs text-gray-500">
                 for <strong className="text-gray-700">{selectedProgram.contractor_name || '—'}</strong>
               </span>
@@ -195,23 +202,22 @@ export default function RemoteObservePage() {
             )}
             {blocked && (
               <div className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
-                This contractor is marked <strong>NO</strong> for remote observations. Scheduling is blocked.
+                This contractor is marked <strong>NO</strong> for remote evaluations. Scheduling is blocked.
               </div>
             )}
             {needsAck && (
               <label className="mt-3 flex items-start gap-2 text-xs text-gray-700">
                 <input type="checkbox" checked={acknowledgeUnknown}
                   onChange={e => setAcknowledgeUnknown(e.target.checked)} className="mt-0.5 accent-[#1e3a5f]" />
-                <span>I confirm this contractor allows remote observations. (Status is currently "Unknown" — update the contractor's Remote Observation Policy after confirming.)</span>
+                <span>I confirm this contractor allows remote evaluations. (Status is currently "Unknown" — update the contractor's Remote Observation Policy after confirming.)</span>
               </label>
             )}
-          </div>
+          </Step>
         )}
 
-        {/* ─── 4. Date radio ─── */}
+        {/* ─── Step 4: Pick Date ─── */}
         {selectedProgram && !blocked && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-sm font-semibold text-gray-700 mb-2">4. Class Date</div>
+          <Step n={4} title="Class Date">
             {selectedProgram.next_3_sessions.length === 0 ? (
               <p className="text-sm text-gray-400">No future sessions on file for this class.</p>
             ) : (
@@ -249,31 +255,46 @@ export default function RemoteObservePage() {
                 })}
               </div>
             )}
-          </div>
+          </Step>
         )}
 
-        {/* ─── 5. Event preview ─── */}
-        {selectedSessionId && preview && !scheduledResult && (
-          <div className="bg-gray-50 rounded-lg border-2 border-[#1e3a5f]/20 p-4">
-            <div className="text-sm font-semibold text-gray-700 mb-2">5. Event Preview</div>
-            <div className="space-y-2 text-xs">
-              <div>
-                <span className="font-semibold text-gray-700">Title:</span>{' '}
-                <span className="text-gray-900">{preview.title}</span>
-              </div>
-              <div>
-                <span className="font-semibold text-gray-700">Attendees:</span>{' '}
-                <span className="text-gray-900">{preview.attendees.join(', ') || '— (none)'}</span>
-              </div>
-              <details className="bg-white rounded border border-gray-200 p-2">
-                <summary className="cursor-pointer text-gray-600 select-none">View description body</summary>
-                <pre className="mt-2 whitespace-pre-wrap text-[11px] text-gray-700 font-mono leading-relaxed">{preview.description}</pre>
-              </details>
+        {/* ─── Step 5: Meeting Type ─── */}
+        {selectedSessionId && (
+          <Step n={5} title="Evaluation Type">
+            <div className="flex gap-4">
+              {[
+                { value: 'initial', label: 'Remote Evaluation' },
+                { value: 'follow_up', label: 'Follow-Up Remote Evaluation' },
+              ].map(o => (
+                <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" name="meeting_type" checked={meetingType === o.value}
+                    onChange={() => setMeetingType(o.value)} className="accent-[#1e3a5f]" />
+                  {o.label}
+                </label>
+              ))}
             </div>
+          </Step>
+        )}
+
+        {/* ─── Step 6: Preview + Submit ─── */}
+        {selectedSessionId && preview && !scheduledResult && (
+          <div className="bg-gray-50 rounded-lg border-2 border-[#1e3a5f]/20 p-4 space-y-2 text-xs">
+            <div className="text-sm font-semibold text-gray-700">Event Preview</div>
+            <div>
+              <span className="font-semibold text-gray-700">Title:</span>{' '}
+              <span className="text-gray-900">{preview.title}</span>
+            </div>
+            <div>
+              <span className="font-semibold text-gray-700">Attendees:</span>{' '}
+              <span className="text-gray-900">{preview.attendees.join(', ') || '— (none)'}</span>
+            </div>
+            <details className="bg-white rounded border border-gray-200 p-2">
+              <summary className="cursor-pointer text-gray-600 select-none">View description body</summary>
+              <pre className="mt-2 whitespace-pre-wrap text-[11px] text-gray-700 font-mono leading-relaxed">{preview.description}</pre>
+            </details>
           </div>
         )}
 
-        {/* ─── 6. Submit / success ─── */}
         {selectedSessionId && !scheduledResult && (
           <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-end gap-3">
             {scheduleMutation.isPending && <Spinner className="w-4 h-4" />}
@@ -306,7 +327,9 @@ export default function RemoteObservePage() {
             </div>
             <div className="mt-3 flex items-center gap-3">
               <Button size="sm" onClick={startOver}>Schedule another</Button>
-              <span className="text-[11px] text-gray-500">Fill out the evaluation form on the Evaluation Dashboard after the call.</span>
+              <span className="text-[11px] text-gray-500">
+                Logged on this professor's evaluation history. Fill out the evaluation form on the Evaluation Dashboard after the call.
+              </span>
             </div>
           </div>
         )}
@@ -315,38 +338,76 @@ export default function RemoteObservePage() {
   );
 }
 
-function ClassSearch({ query, setQuery, programs, loading, onPick, minLen }) {
+function Step({ n, title, summary, children }) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold text-gray-700">{n}. {title}</div>
+        {summary}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ProfessorSummary({ p, onChange }) {
+  const days = daysSince(p.last_evaluation_date);
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="font-medium text-gray-900">
+        {p.professor_nickname || p.first_name} {p.last_name}
+      </span>
+      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${STATUS_COLORS[p.professor_status_name] || 'bg-gray-100 text-gray-700'}`}>
+        {p.professor_status_name}
+      </span>
+      {p.last_evaluation_date ? (
+        <span className="text-gray-500">last eval {formatDate(p.last_evaluation_date)}{days != null ? ` (${days}d ago)` : ''}</span>
+      ) : (
+        <span className="text-red-600 font-medium">never evaluated</span>
+      )}
+      <button type="button" onClick={onChange} className="text-gray-400 hover:text-gray-600">change</button>
+    </div>
+  );
+}
+
+function ProfessorPicker({ query, setQuery, professors, loading, onPick }) {
   return (
     <div>
       <input
         type="text"
+        autoFocus
         value={query}
         onChange={e => setQuery(e.target.value)}
-        placeholder="Type to search confirmed programs by class, location, or contractor…"
+        placeholder="Type a professor's name…"
         className="block w-full rounded border border-gray-300 text-sm px-3 py-1.5 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
       />
-      {minLen ? (
-        <p className="mt-2 text-xs text-gray-400">Type at least 2 characters…</p>
-      ) : loading ? (
+      {loading ? (
         <div className="mt-2 flex items-center gap-2 text-xs text-gray-500"><Spinner className="w-3 h-3" /> Searching…</div>
-      ) : programs.length === 0 ? (
+      ) : professors.length === 0 ? (
         <p className="mt-2 text-xs text-gray-400">No matches.</p>
       ) : (
-        <ul className="mt-2 border border-gray-200 rounded divide-y divide-gray-100 max-h-72 overflow-y-auto">
-          {programs.map(p => {
-            const b = allowedBadge(p.remote_observe_allowed);
+        <ul className="mt-2 border border-gray-200 rounded divide-y divide-gray-100 max-h-80 overflow-y-auto">
+          {professors.map(p => {
+            const days = daysSince(p.last_evaluation_date);
+            const overdue = days != null && days > 180;
+            const never = !p.last_evaluation_date;
             return (
-              <li key={p.program_id}>
+              <li key={p.professor_id}>
                 <button type="button" onClick={() => onPick(p)}
                   className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">{p.program_nickname}</div>
+                    <div className="text-sm font-medium text-gray-900 truncate">
+                      {p.professor_nickname || p.first_name} {p.last_name}
+                    </div>
                     <div className="text-[11px] text-gray-500 truncate">
-                      {p.location_name || '—'}{p.contractor_name ? ` · ${p.contractor_name}` : ''}{p.professor_name ? ` · ${p.professor_name}` : ''}
+                      {p.professor_email || '— no email —'}
                     </div>
                   </div>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${b.cls}`}>
-                    {b.label}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${STATUS_COLORS[p.professor_status_name] || 'bg-gray-100 text-gray-700'}`}>
+                    {p.professor_status_name}
+                  </span>
+                  <span className={`text-[10px] shrink-0 ${never ? 'text-red-600 font-semibold' : overdue ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
+                    {never ? 'Never evaluated' : days != null ? `${days}d ago` : ''}
                   </span>
                 </button>
               </li>
@@ -354,6 +415,49 @@ function ClassSearch({ query, setQuery, programs, loading, onPick, minLen }) {
           })}
         </ul>
       )}
+      <p className="mt-2 text-[11px] text-gray-400">
+        Showing Active, Substitute, and Training professors — sorted with the most-overdue evaluations at top.
+      </p>
     </div>
+  );
+}
+
+function ProgramSummary({ p, onChange }) {
+  const b = allowedBadge(p.remote_observe_allowed);
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="font-medium text-gray-900 truncate" style={{ maxWidth: '300px' }}>{p.program_nickname}</span>
+      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${b.cls}`}>{b.label}</span>
+      <button type="button" onClick={onChange} className="text-gray-400 hover:text-gray-600">change</button>
+    </div>
+  );
+}
+
+function ProgramList({ programs, onPick }) {
+  return (
+    <ul className="border border-gray-200 rounded divide-y divide-gray-100 max-h-96 overflow-y-auto">
+      {programs.map(p => {
+        const b = allowedBadge(p.remote_observe_allowed);
+        return (
+          <li key={p.program_id}>
+            <button type="button" onClick={() => onPick(p)}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{p.program_nickname}</div>
+                <div className="text-[11px] text-gray-500 truncate">
+                  {p.location_name || '—'}{p.contractor_name ? ` · ${p.contractor_name}` : ''}
+                </div>
+              </div>
+              <span className="text-[10px] text-gray-500 shrink-0">
+                {p.next_3_sessions.length} upcoming
+              </span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${b.cls}`}>
+                {b.label}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
