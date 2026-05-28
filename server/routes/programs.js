@@ -957,6 +957,92 @@ router.post('/:id/roster/add', authenticate, async (req, res, next) => {
   }
 });
 
+// POST /api/programs/:id/roster/bulk-import — create + roster many students at once
+// Body: { students: [{ first_name, last_name, grade, age, gender, notes }] }
+// Each row creates a NEW student record and a program_roster entry. Rows whose
+// (first,last) name already maps to an active roster entry are skipped.
+router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const students = Array.isArray(req.body?.students) ? req.body.students : [];
+    if (students.length === 0) return res.status(400).json({ success: false, error: 'No students provided' });
+
+    const [[program]] = await pool.query('SELECT maximum_students FROM program WHERE id = ? AND active = 1', [id]);
+    if (!program) return res.status(404).json({ success: false, error: 'Program not found' });
+
+    // Grade lookup: grade_name -> id
+    const [grades] = await pool.query('SELECT id, grade_name FROM grade WHERE active = 1');
+    const gradeIdByName = {};
+    for (const g of grades) gradeIdByName[String(g.grade_name).toLowerCase()] = g.id;
+
+    // Existing active roster names (to skip dupes)
+    const [existing] = await pool.query(
+      `SELECT s.first_name, s.last_name
+       FROM program_roster pr JOIN student s ON s.id = pr.student_id
+       WHERE pr.program_id = ? AND pr.active = 1 AND pr.date_dropped IS NULL`, [id]
+    );
+    const existingNames = new Set(existing.map(r => `${(r.first_name || '').toLowerCase().trim()}|${(r.last_name || '').toLowerCase().trim()}`));
+
+    // Current active count for the max-enrollment cap
+    let [[{ count }]] = await pool.query(
+      'SELECT COUNT(*) AS count FROM program_roster WHERE program_id = ? AND active = 1 AND date_dropped IS NULL', [id]
+    );
+
+    const isProfessor = req.user.role === 'Professor';
+    let added = 0;
+    let skipped = 0;
+    const errors = [];
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (let i = 0; i < students.length; i++) {
+        const s = students[i] || {};
+        const first = String(s.first_name || '').trim();
+        const last = String(s.last_name || '').trim();
+        if (!first) { skipped++; continue; }
+
+        const nameKey = `${first.toLowerCase()}|${last.toLowerCase()}`;
+        if (existingNames.has(nameKey)) { skipped++; continue; }
+
+        if (program.maximum_students && count >= program.maximum_students) {
+          errors.push({ row: i, reason: `Roster full (${program.maximum_students}) — stopped here` });
+          break;
+        }
+
+        const gradeId = s.grade ? (gradeIdByName[String(s.grade).toLowerCase()] || null) : null;
+        const age = (s.age != null && /^\d+$/.test(String(s.age))) ? parseInt(s.age) : null;
+        const gender = s.gender ? String(s.gender).trim().charAt(0).toUpperCase() : null;
+        const notes = s.notes ? String(s.notes).trim().slice(0, 255) : null;
+
+        const [studentRes] = await conn.query(
+          'INSERT INTO student (first_name, last_name, active, ts_inserted, ts_updated) VALUES (?, ?, 1, NOW(), NOW())',
+          [first, last]
+        );
+        await conn.query(
+          `INSERT INTO program_roster (program_id, student_id, grade_id, age, gender, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
+           VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, 1, NOW(), NOW())`,
+          [id, studentRes.insertId, gradeId, age, gender, notes, isProfessor ? 1 : 0, req.user.userId]
+        );
+        existingNames.add(nameKey);
+        added++; count++;
+      }
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+
+    const [[{ roster_count }]] = await pool.query(
+      'SELECT COUNT(*) AS roster_count FROM program_roster WHERE program_id = ? AND active = 1 AND date_dropped IS NULL', [id]
+    );
+
+    res.json({ success: true, data: { added, skipped, errors }, roster_count });
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/programs/:id/roster/:rosterId — remove student from roster
 router.delete('/:id/roster/:rosterId', authenticate, async (req, res, next) => {
   try {

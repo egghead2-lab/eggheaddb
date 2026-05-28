@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Spinner } from '../components/ui/Spinner';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
+import { RosterImportModal } from '../components/RosterImportModal';
 import { useAuth } from '../hooks/useAuth';
 import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
@@ -29,6 +30,7 @@ export default function ClassRoomPage() {
   const [attendanceEdits, setAttendanceEdits] = useState({});
   const [studentSearch, setStudentSearch] = useState('');
   const [addStudentNote, setAddStudentNote] = useState('');
+  const [showImport, setShowImport] = useState(false);
 
   const ADMIN_ROLES = ['Admin', 'CEO', 'Scheduling Coordinator', 'Field Manager', 'Client Manager'];
   const isAdmin = ADMIN_ROLES.includes(user?.role);
@@ -299,9 +301,22 @@ export default function ClassRoomPage() {
           <div className="space-y-4">
             {/* Add student — simple form */}
             <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Add Student</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">Add Student</h3>
+                <button type="button" onClick={() => setShowImport(true)}
+                  className="text-xs text-[#1e3a5f] hover:underline font-medium">⇪ Import from CSV / Excel</button>
+              </div>
               <QuickAddStudentForm programId={programId} onSuccess={() => qc.invalidateQueries(['classroom', programId])} />
             </div>
+
+            {showImport && (
+              <RosterImportModal
+                programId={programId}
+                existingRoster={roster}
+                onClose={() => setShowImport(false)}
+                onSuccess={() => { setShowImport(false); qc.invalidateQueries(['classroom', programId]); }}
+              />
+            )}
 
             {/* Roster table */}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
