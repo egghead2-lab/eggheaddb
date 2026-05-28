@@ -456,7 +456,7 @@ export default function CandidateDetailPage() {
 
           {/* Gmail Email */}
           <div id="email-section">
-            {!isNew && <EmailSection candidateId={id} candidateEmail={candidate.email} />}
+            {!isNew && <EmailSection candidateId={id} candidateEmail={candidate.email} candidate={candidate} requirements={requirements} />}
           </div>
         </div>
 
@@ -1212,7 +1212,7 @@ function CandidateNotesSection({ candidateId }) {
 
 import { RichTextEditor } from '../components/ui/RichTextEditor';
 
-function EmailSection({ candidateId, candidateEmail }) {
+function EmailSection({ candidateId, candidateEmail, candidate = {}, requirements = [] }) {
   const qc = useQueryClient();
   const [showCompose, setShowCompose] = useState(false);
   const [expandedThread, setExpandedThread] = useState(null);
@@ -1221,6 +1221,37 @@ function EmailSection({ candidateId, candidateEmail }) {
   const [replyThreadId, setReplyThreadId] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const fileInputRef = useRef(null);
+  const subjectRef = useRef(null);
+  const editorRef = useRef(null);
+
+  // Autofill fields — insert the candidate's actual values at the cursor
+  // (whichever of subject/body is focused). WYSIWYG, no tokens to resolve.
+  const firstName = (candidate.full_name || '').trim().split(/\s+/)[0] || '';
+  const nextDue = (requirements || []).filter(r => !r.completed && r.due_date).map(r => r.due_date).sort()[0];
+  const MERGE_FIELDS = [
+    { label: 'First Name', desc: "Candidate's first name", value: firstName },
+    { label: 'Full Name', desc: 'Candidate full name', value: candidate.full_name || '' },
+    { label: 'Their Email', desc: "Candidate's email address", value: candidateEmail || '' },
+    { label: 'Start Date', desc: 'First class date', value: candidate.first_class_date ? formatDate(candidate.first_class_date) : '' },
+    { label: 'Next Due Date', desc: 'Earliest outstanding requirement due date', value: nextDue ? formatDate(nextDue) : '' },
+    { label: 'Trainer', desc: 'Assigned trainer name', value: candidate.trainer_name || '' },
+    { label: 'Onboarding Contact', desc: 'Onboarder name', value: candidate.onboarder_name || '' },
+    { label: 'Onboarder Email', desc: "Onboarder's email", value: candidate.onboarder_email || '' },
+    { label: 'Recruiter', desc: 'Recruiter name', value: candidate.recruiter_name || '' },
+  ];
+
+  const insertField = (value) => {
+    if (!value) return;
+    const subjEl = subjectRef.current;
+    if (subjEl && document.activeElement === subjEl) {
+      const start = subjEl.selectionStart ?? subject.length;
+      const end = subjEl.selectionEnd ?? subject.length;
+      setSubject(subject.slice(0, start) + value + subject.slice(end));
+      setTimeout(() => { subjEl.focus(); const p = start + value.length; subjEl.setSelectionRange(p, p); }, 0);
+    } else if (editorRef.current) {
+      editorRef.current.chain().focus().insertContent(value).run();
+    }
+  };
 
   const { data: emailTemplatesData } = useQuery({
     queryKey: ['email-templates'],
@@ -1327,9 +1358,27 @@ function EmailSection({ candidateId, candidateEmail }) {
                   </select>
                 )}
               </div>
-              <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
+              <input ref={subjectRef} value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
                 className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]" />
-              <RichTextEditor value={body} onChange={setBody} placeholder="Write your email…" minHeight="150px" />
+
+              {/* Autofill / merge fields */}
+              <div className="bg-white rounded border border-gray-200 p-2">
+                <div className="text-[10px] font-semibold text-gray-500 mb-1">
+                  Insert field <span className="font-normal text-gray-400">— click to drop the value at your cursor (subject or body)</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {MERGE_FIELDS.map(f => (
+                    <button key={f.label} type="button" disabled={!f.value}
+                      onClick={() => insertField(f.value)}
+                      title={f.value ? `${f.desc} → ${f.value}` : `${f.desc} (not set)`}
+                      className="px-2 py-1 rounded text-xs border border-gray-200 text-[#1e3a5f] hover:bg-[#1e3a5f] hover:text-white transition-colors disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#1e3a5f] disabled:cursor-not-allowed">
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <RichTextEditor value={body} onChange={setBody} placeholder="Write your email…" minHeight="150px" editorRef={editorRef} />
 
               {/* Attachments */}
               {attachments.length > 0 && (
