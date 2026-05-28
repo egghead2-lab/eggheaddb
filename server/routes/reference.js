@@ -462,9 +462,16 @@ router.get('/professors/list', authenticate, async (req, res, next) => {
       SELECT p.id, p.professor_nickname, p.first_name, p.last_name, p.phone_number,
              CONCAT(p.professor_nickname, ' ', p.last_name) AS display_name,
              ps.professor_status_name,
+             p.geographic_area_id, ga.geographic_area_name,
+             p.scheduling_coordinator_owner_id,
+             CONCAT(sc.first_name, ' ', sc.last_name) AS scheduler_name,
+             p.science_trained_id, p.engineering_trained_id, p.show_party_trained_id,
+             p.studysmart_trained_id, p.camp_trained_id, p.robotics_trained_id,
              CASE WHEN r.role_name = 'Field Manager' THEN 1 ELSE 0 END AS is_field_manager
       FROM professor p
       LEFT JOIN professor_status ps ON ps.id = p.professor_status_id
+      LEFT JOIN geographic_area ga ON ga.id = p.geographic_area_id
+      LEFT JOIN user sc ON sc.id = p.scheduling_coordinator_owner_id
       LEFT JOIN user u ON u.id = p.user_id
       LEFT JOIN role r ON r.id = u.role_id
     `;

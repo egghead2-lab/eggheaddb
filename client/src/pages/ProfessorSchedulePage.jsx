@@ -6,8 +6,10 @@ import { Section } from '../components/ui/Section';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
 import { SearchSelect } from '../components/ui/SearchSelect';
+import { Select } from '../components/ui/Select';
 import { useAuth } from '../hooks/useAuth';
-import { useProfessorList } from '../hooks/useReferenceData';
+import { useProfessorList, useGeneralData } from '../hooks/useReferenceData';
+import { TRAINING_FIELDS } from '../lib/constants';
 import { formatDate, formatTime, formatCurrency, formatPhone } from '../lib/utils';
 import api from '../api/client';
 
@@ -288,6 +290,20 @@ export default function ProfessorSchedulePage() {
   const { data: profListData } = useProfessorList();
   const professors = profListData?.data || [];
 
+  // Filters to narrow the professor picker (schedulers only)
+  const { data: refData } = useGeneralData();
+  const ref = refData?.data || {};
+  const [fArea, setFArea] = useState('');
+  const [fTraining, setFTraining] = useState('');
+  const [fScheduler, setFScheduler] = useState('');
+
+  const filteredProfessors = professors.filter(p => {
+    if (fArea && String(p.geographic_area_id) !== String(fArea)) return false;
+    if (fScheduler && String(p.scheduling_coordinator_owner_id) !== String(fScheduler)) return false;
+    if (fTraining && !p[fTraining]) return false;
+    return true;
+  });
+
   const { data: schedData, isLoading } = useQuery({
     queryKey: ['schedule', profId],
     queryFn: () => api.get(`/schedule/${profId}`).then(r => r.data),
@@ -380,7 +396,7 @@ export default function ProfessorSchedulePage() {
                 placeholder="Search professor…"
                 value={selectedId}
                 onChange={v => setSelectedId(v)}
-                options={professors.map(p => ({ id: p.id, label: p.display_name || p.professor_nickname }))}
+                options={filteredProfessors.map(p => ({ id: p.id, label: p.display_name || p.professor_nickname }))}
                 displayKey="label"
                 valueKey="id"
               />
@@ -390,7 +406,62 @@ export default function ProfessorSchedulePage() {
       </div>
 
       {!profId ? (
-        <div className="p-6 text-center text-gray-400 py-20">Select a professor to view their schedule</div>
+        !viewOnly ? (
+          <div className="p-6 max-w-[1000px]">
+            {/* Filters */}
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-0.5">Territory</label>
+                <Select value={fArea} onChange={e => setFArea(e.target.value)} className="w-44">
+                  <option value="">All areas</option>
+                  {(ref.areas || []).map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-0.5">Curriculum</label>
+                <Select value={fTraining} onChange={e => setFTraining(e.target.value)} className="w-44">
+                  <option value="">Any training</option>
+                  {TRAINING_FIELDS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-0.5">Scheduler</label>
+                <Select value={fScheduler} onChange={e => setFScheduler(e.target.value)} className="w-44">
+                  <option value="">All schedulers</option>
+                  {(ref.staffUsers || []).map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+                </Select>
+              </div>
+              {(fArea || fTraining || fScheduler) && (
+                <button onClick={() => { setFArea(''); setFTraining(''); setFScheduler(''); }}
+                  className="text-xs text-gray-400 hover:text-gray-700 underline pb-2">Clear filters</button>
+              )}
+              <span className="text-xs text-gray-400 pb-2 ml-auto">{filteredProfessors.length} professor{filteredProfessors.length === 1 ? '' : 's'}</span>
+            </div>
+
+            {/* Matching professor list */}
+            {filteredProfessors.length === 0 ? (
+              <div className="text-center text-gray-400 py-16 text-sm">No professors match these filters</div>
+            ) : (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden divide-y divide-gray-100 max-h-[60vh] overflow-y-auto">
+                {filteredProfessors.map(p => (
+                  <button key={p.id} type="button" onClick={() => setSelectedId(p.id)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3">
+                    <span className="font-medium text-[#1e3a5f] flex-1 truncate">{p.display_name || p.professor_nickname}</span>
+                    <span className="text-xs text-gray-400">{p.geographic_area_name || '—'}</span>
+                    <div className="flex gap-0.5 shrink-0 w-28 justify-end">
+                      {TRAINING_FIELDS.filter(t => p[t.key]).map(t => (
+                        <span key={t.key} title={t.label} className="text-[9px] px-1 py-0.5 rounded bg-[#1e3a5f]/10 text-[#1e3a5f] font-medium">{t.short}</span>
+                      ))}
+                    </div>
+                    <span className="text-xs text-gray-400 w-28 truncate text-right">{p.scheduler_name || '—'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-gray-400 py-20">Select a professor to view their schedule</div>
+        )
       ) : isLoading ? (
         <div className="flex justify-center py-20"><Spinner className="w-8 h-8" /></div>
       ) : (
