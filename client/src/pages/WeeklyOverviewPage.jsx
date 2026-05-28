@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
@@ -29,6 +29,23 @@ export default function WeeklyOverviewPage() {
   const [weekStart, setWeekStart] = useState(getThisMonday);
   const [selectedAreas, setSelectedAreas] = useState([]);
   const [showAssistant, setShowAssistant] = useState(true);
+
+  // The areas this user owns (by role assignment) — used to auto-select on load.
+  const { data: myAreasData } = useQuery({
+    queryKey: ['my-areas'],
+    queryFn: () => api.get('/my-areas').then(r => r.data),
+    staleTime: 10 * 60 * 1000,
+  });
+  const myAreaIds = useMemo(() => (myAreasData?.data || []).map(a => a.id), [myAreasData]);
+
+  // Default the selection to the user's own areas, once, when they load.
+  const defaultedRef = useRef(false);
+  useEffect(() => {
+    if (!defaultedRef.current && myAreasData) {
+      defaultedRef.current = true;
+      if (myAreaIds.length) setSelectedAreas(myAreaIds);
+    }
+  }, [myAreasData, myAreaIds]);
 
   const params = {
     start_date: weekStart,
@@ -99,6 +116,9 @@ export default function WeeklyOverviewPage() {
       {/* Area chips */}
       <div className="px-6 pt-4 flex flex-wrap gap-1.5">
         <span className="text-xs text-gray-500 py-1 mr-1">Areas:</span>
+        {myAreaIds.length > 0 && (
+          <button onClick={() => setSelectedAreas(myAreaIds)} className="text-[10px] text-[#1e3a5f] hover:underline py-1 mr-1 font-medium">My Areas</button>
+        )}
         {selectedAreas.length > 0 && (
           <button onClick={() => setSelectedAreas([])} className="text-[10px] text-gray-400 hover:text-gray-600 underline py-1 mr-1">Clear</button>
         )}

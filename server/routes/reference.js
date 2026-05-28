@@ -664,6 +664,28 @@ router.put('/area-pay-rates/:id', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/my-areas — geographic areas the logged-in user owns via any role
+// assignment (SC / FM / CM / sales / recruiter / onboarder / specialists /
+// trainer) or an area-scoped responsibility. Used to auto-select areas in the
+// Weekly Overview etc.
+router.get('/my-areas', authenticate, async (req, res, next) => {
+  try {
+    const uid = req.user.userId;
+    const [rows] = await pool.query(
+      `SELECT id, geographic_area_name FROM geographic_area
+       WHERE active = 1 AND (
+         scheduling_coordinator_user_id = ? OR field_manager_user_id = ? OR client_manager_user_id = ?
+         OR sales_user_id = ? OR recruiter_user_id = ? OR onboarder_user_id = ?
+         OR client_specialist_user_id = ? OR scheduling_specialist_user_id = ? OR trainer_user_id = ?
+         OR id IN (SELECT geographic_area_id FROM user_responsibility WHERE user_id = ? AND active = 1 AND geographic_area_id IS NOT NULL)
+       )
+       ORDER BY geographic_area_name`,
+      [uid, uid, uid, uid, uid, uid, uid, uid, uid, uid]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/weekly-overview — sessions for a given week
 router.get('/weekly-overview', authenticate, async (req, res, next) => {
   try {
