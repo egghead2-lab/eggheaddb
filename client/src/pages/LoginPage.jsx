@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
+import { Logo } from '../components/ui/Logo';
 
 export default function LoginPage() {
   const { user, isAuthenticated, login, loginPending } = useAuth();
@@ -45,8 +46,10 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-[#1e3a5f]">Professor Egghead</h1>
-          <p className="text-gray-500 text-sm mt-1">Science Academy Operations</p>
+          <Logo className="h-16 mx-auto mb-3 object-contain"
+            fallbackClassName="block text-3xl font-bold text-[#1e3a5f] mb-2" />
+          <h1 className="text-2xl font-bold text-[#1e3a5f]">The Lab</h1>
+          <p className="text-gray-500 text-sm mt-1">Operations Hub</p>
         </div>
 
         {error === 'unauthorized' && (

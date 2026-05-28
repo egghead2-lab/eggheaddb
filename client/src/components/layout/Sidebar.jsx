@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
+import { Logo } from '../ui/Logo';
 import api from '../../api/client';
 
 const FALLBACK_GROUPS = [
@@ -255,13 +256,20 @@ export function Sidebar() {
     <div className={`${sidebarWidth} h-screen bg-[#152a47] flex flex-col fixed left-0 top-0 z-10 transition-all duration-200`}>
       {/* Header */}
       <div className={`${compact ? 'px-2 py-3' : 'px-5 py-5'} border-b border-white/10 flex items-center justify-between`}>
-        {!compact && (
-          <div>
-            <div className="text-white font-bold text-base leading-tight">Professor Egghead</div>
-            <div className="text-white/50 text-xs mt-0.5">Operations Hub</div>
+        {compact ? (
+          <Logo className="w-8 h-8 object-contain mx-auto"
+            fallbackClassName="text-white font-bold text-sm mx-auto" />
+        ) : (
+          <div className="flex items-center gap-2">
+            <Logo className="w-8 h-8 object-contain shrink-0"
+              fallbackClassName="text-white font-bold text-sm" />
+            <div>
+              <div className="text-white font-bold text-base leading-tight">The Lab</div>
+              <div className="text-white/50 text-xs mt-0.5">Operations Hub</div>
+            </div>
           </div>
         )}
-        <button onClick={toggleCompact} className="text-white/40 hover:text-white text-xs" title={compact ? 'Expand sidebar' : 'Compact sidebar'}>
+        <button onClick={toggleCompact} className="text-white/40 hover:text-white text-xs shrink-0" title={compact ? 'Expand sidebar' : 'Compact sidebar'}>
           {compact ? '▸' : '◂'}
         </button>
       </div>
