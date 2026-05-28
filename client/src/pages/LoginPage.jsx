@@ -46,8 +46,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-sm">
         <div className="text-center mb-8">
-          <Logo className="h-16 mx-auto mb-3 object-contain"
-            fallbackClassName="block text-3xl font-bold text-[#1e3a5f] mb-2" />
+          <Logo className="h-16 mx-auto mb-3 object-contain" />
           <h1 className="text-2xl font-bold text-[#1e3a5f]">The Lab</h1>
           <p className="text-gray-500 text-sm mt-1">Operations Hub</p>
         </div>

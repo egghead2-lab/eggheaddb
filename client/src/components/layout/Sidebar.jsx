@@ -257,12 +257,10 @@ export function Sidebar() {
       {/* Header */}
       <div className={`${compact ? 'px-2 py-3' : 'px-5 py-5'} border-b border-white/10 flex items-center justify-between`}>
         {compact ? (
-          <Logo className="w-8 h-8 object-contain mx-auto"
-            fallbackClassName="text-white font-bold text-sm mx-auto" />
+          <Logo className="w-8 h-8 object-contain mx-auto" />
         ) : (
           <div className="flex items-center gap-2">
-            <Logo className="w-8 h-8 object-contain shrink-0"
-              fallbackClassName="text-white font-bold text-sm" />
+            <Logo className="w-8 h-8 object-contain shrink-0" />
             <div>
               <div className="text-white font-bold text-base leading-tight">The Lab</div>
               <div className="text-white/50 text-xs mt-0.5">Operations Hub</div>
