@@ -233,7 +233,7 @@ export default function StudentDetailPage() {
                     <th className="text-left px-3 py-2 font-medium text-gray-600">Program</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-600">Location</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">Age</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Grade</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-600">Notes</th>
                   </tr>
                 </thead>
@@ -247,7 +247,7 @@ export default function StudentDetailPage() {
                       </td>
                       <td className="px-3 py-2 text-gray-500">{p.location_nickname || '—'}</td>
                       <td className="px-3 py-2"><Badge status={p.class_status_name} /></td>
-                      <td className="px-3 py-2 text-gray-600">{p.age || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.grade_name || '—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.notes || '—'}</td>
                     </tr>
                   ))}

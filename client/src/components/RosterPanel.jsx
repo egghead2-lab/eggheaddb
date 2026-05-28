@@ -4,16 +4,20 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { searchStudents, addToRoster, removeFromRoster, updateRosterEntry, updateStudent } from '../api/students';
 import api from '../api/client';
 import { Input } from './ui/Input';
+import { Select } from './ui/Select';
 import { ConfirmButton } from './ui/ConfirmButton';
+import { useGeneralData } from '../hooks/useReferenceData';
 
 export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, onEnrolledSync }) {
+  const { data: refData } = useGeneralData();
+  const grades = refData?.data?.grades || [];
   const [selectedId, setSelectedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [editNotes, setEditNotes] = useState('');
-  const [editAge, setEditAge] = useState('');
+  const [editGradeId, setEditGradeId] = useState('');
   const [editFirst, setEditFirst] = useState('');
   const [editLast, setEditLast] = useState('');
   const [editDateDropped, setEditDateDropped] = useState('');
@@ -103,7 +107,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
   const handleSelect = (r) => {
     setSelectedId(r.id);
     setEditNotes(r.notes || '');
-    setEditAge(r.age ?? '');
+    setEditGradeId(r.grade_id ?? '');
     setEditFirst(r.first_name || '');
     setEditLast(r.last_name || '');
     setEditDateDropped(r.date_dropped ? r.date_dropped.split('T')[0] : '');
@@ -115,7 +119,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
     updateRosterMutation.mutate({
       rosterId: selected.id,
       data: {
-        age: editAge || null,
+        grade_id: editGradeId || null,
         notes: editNotes || null,
         date_dropped: editDateDropped || null,
         weeks_attended: editWeeksAttended || null,
@@ -174,7 +178,10 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
               </button>
 
               <hr className="border-gray-200" />
-              <Input label="Age" type="number" value={editAge} onChange={e => setEditAge(e.target.value)} />
+              <Select label="Grade" value={editGradeId} onChange={e => setEditGradeId(e.target.value)}>
+                <option value="">—</option>
+                {grades.map(g => <option key={g.id} value={g.id}>{g.grade_name}</option>)}
+              </Select>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-700">Notes</label>
                 <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2}
@@ -296,7 +303,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Student Name</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600 w-12">Age</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600 w-16">Grade</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Parent</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Parent Email</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Notes</th>
@@ -316,7 +323,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                             : i % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'
                         }`}>
                         <td className="px-3 py-2 font-medium text-gray-900">{r.first_name} {r.last_name}</td>
-                        <td className="px-3 py-2 text-gray-600">{r.age || '—'}</td>
+                        <td className="px-3 py-2 text-gray-600">{r.grade_name || '—'}</td>
                         <td className="px-3 py-2 text-gray-600">
                           {r.parent_first_name ? `${r.parent_first_name} ${r.parent_last_name}` : '—'}
                         </td>
@@ -336,7 +343,7 @@ export function RosterPanel({ programId, roster, maxStudents, numberEnrolled, on
                               selectedId === r.id ? 'bg-[#1e3a5f]/10' : 'bg-red-50/30 hover:bg-red-50'
                             }`}>
                             <td className="px-3 py-2 font-medium text-gray-500">{r.first_name} {r.last_name}</td>
-                            <td className="px-3 py-2 text-gray-400">{r.age || '—'}</td>
+                            <td className="px-3 py-2 text-gray-400">{r.grade_name || '—'}</td>
                             <td className="px-3 py-2 text-gray-400">
                               {r.parent_first_name ? `${r.parent_first_name} ${r.parent_last_name}` : '—'}
                             </td>

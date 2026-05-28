@@ -888,7 +888,7 @@ router.put('/:id/roster', authenticate, async (req, res, next) => {
 router.post('/:id/roster/quick-add', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { first_name, last_name, age, notes } = req.body;
+    const { first_name, last_name, grade_id, notes } = req.body;
     if (!first_name?.trim()) return res.status(400).json({ success: false, error: 'First name required' });
 
     // Create the student record
@@ -901,9 +901,9 @@ router.post('/:id/roster/quick-add', authenticate, async (req, res, next) => {
     // Add to roster with pending approval for professors
     const isProfessor = req.user.role === 'Professor';
     await pool.query(
-      `INSERT INTO program_roster (program_id, student_id, age, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
+      `INSERT INTO program_roster (program_id, student_id, grade_id, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
        VALUES (?, ?, ?, ?, CURDATE(), ?, ?, 1, NOW(), NOW())`,
-      [id, studentId, age || null, notes || null, isProfessor ? 1 : 0, req.user.userId]
+      [id, studentId, grade_id || null, notes || null, isProfessor ? 1 : 0, req.user.userId]
     );
 
     res.json({ success: true, student_id: studentId });
@@ -958,7 +958,7 @@ router.post('/:id/roster/add', authenticate, async (req, res, next) => {
 });
 
 // POST /api/programs/:id/roster/bulk-import — create + roster many students at once
-// Body: { students: [{ first_name, last_name, age, parent_name, parent_email, notes }] }
+// Body: { students: [{ first_name, last_name, grade, parent_name, parent_email, notes }] }
 // Each row creates a NEW student record + a program_roster entry. When a parent
 // is supplied we reuse an existing parent matched by email, else create one,
 // and link it to the student. Rows whose (first,last) name already maps to an
@@ -975,6 +975,11 @@ router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
     // Default link role for imported parents.
     const [[guardianRole]] = await pool.query("SELECT id FROM parent_role WHERE parent_role_name = 'Parent/Guardian' LIMIT 1");
     const parentRoleId = guardianRole?.id || null;
+
+    // Grade lookup: grade_name (lowercased) -> id
+    const [grades] = await pool.query('SELECT id, grade_name FROM grade WHERE active = 1');
+    const gradeIdByName = {};
+    for (const g of grades) gradeIdByName[String(g.grade_name).toLowerCase()] = g.id;
 
     // Existing active roster names (to skip dupes)
     const [existing] = await pool.query(
@@ -1022,7 +1027,7 @@ router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
           break;
         }
 
-        const age = (s.age != null && /^\d+$/.test(String(s.age))) ? parseInt(s.age) : null;
+        const gradeId = s.grade ? (gradeIdByName[String(s.grade).toLowerCase()] || null) : null;
         const notes = s.notes ? String(s.notes).trim().slice(0, 255) : null;
 
         const [studentRes] = await conn.query(
@@ -1055,9 +1060,9 @@ router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
         }
 
         await conn.query(
-          `INSERT INTO program_roster (program_id, student_id, age, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
+          `INSERT INTO program_roster (program_id, student_id, grade_id, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
            VALUES (?, ?, ?, ?, CURDATE(), ?, ?, 1, NOW(), NOW())`,
-          [id, studentId, age, notes, isProfessor ? 1 : 0, req.user.userId]
+          [id, studentId, gradeId, notes, isProfessor ? 1 : 0, req.user.userId]
         );
         existingNames.add(nameKey);
         added++; count++;

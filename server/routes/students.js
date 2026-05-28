@@ -101,10 +101,12 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
     // Get program history
     const [programs] = await pool.query(
-      `SELECT pr.*, prog.program_nickname, pr.age, pr.notes,
+      `SELECT pr.*, prog.program_nickname, pr.notes,
+              g.grade_name,
               cs.class_status_name, loc.nickname AS location_nickname
        FROM program_roster pr
        JOIN program prog ON prog.id = pr.program_id AND prog.active = 1
+       LEFT JOIN grade g ON g.id = pr.grade_id AND g.active = 1
        LEFT JOIN class_status cs ON cs.id = prog.class_status_id
        LEFT JOIN location loc ON loc.id = prog.location_id
        WHERE pr.student_id = ? AND pr.active = 1

@@ -14,7 +14,7 @@ export const TARGET_FIELDS = [
   { key: 'full_name', label: 'Student Name', hint: 'one column with the whole name' },
   { key: 'first_name', label: 'First Name', hint: 'if split' },
   { key: 'last_name', label: 'Last Name', hint: 'if split' },
-  { key: 'age', label: 'Age' },
+  { key: 'grade', label: 'Grade' },
   { key: 'parent_name', label: 'Parent' },
   { key: 'parent_email', label: 'Parent Email' },
   { key: 'notes', label: 'Notes' },
@@ -25,7 +25,7 @@ const SYNONYMS = {
   full_name: ['name', 'student', 'student name', 'studentname', 'child', 'child name', 'full name', 'fullname', 'participant', 'attendee'],
   first_name: ['first', 'first name', 'firstname', 'fname', 'given', 'given name', 'student first', 'first(student)'],
   last_name: ['last', 'last name', 'lastname', 'lname', 'surname', 'family', 'family name', 'student last'],
-  age: ['age', 'student age', 'yrs', 'years'],
+  grade: ['grade', 'grade level', 'gradelevel', 'gr', 'grd', 'level', 'current grade'],
   parent_name: ['parent', 'parent name', 'parentname', 'guardian', 'mom', 'dad', 'mother', 'father', 'contact', 'contact name'],
   parent_email: ['parent email', 'parentemail', 'email', 'parent e-mail', 'guardian email', 'contact email', 'e-mail', 'emailaddress', 'email address'],
   notes: ['notes', 'note', 'comments', 'comment', 'allergies', 'allergy', 'special', 'info'],
@@ -129,11 +129,29 @@ export function splitName(value, mode) {
   return { first: parts.join(' '), last };
 }
 
+// ── Grade normalization ──────────────────────────────────────────
+
+// Map a freeform grade string to the canonical grade_name values used by the
+// `grade` lookup ("K", "1".."12", "PK/TK"). Returns the canonical string or
+// the original trimmed value if it can't be confidently mapped (the server
+// resolves grade_name → grade_id, leaving it unset if no match).
+export function normalizeGrade(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (/^(k|kinder|kindergarten)$/.test(raw)) return 'K';
+  if (/^(pk|tk|pre-?k|transitional)/.test(raw)) return 'PK/TK';
+  const m = raw.match(/(\d{1,2})/);
+  if (m) { const n = parseInt(m[1]); if (n >= 1 && n <= 12) return String(n); }
+  const words = { first: '1', second: '2', third: '3', fourth: '4', fifth: '5', sixth: '6', seventh: '7', eighth: '8' };
+  for (const [w, n] of Object.entries(words)) if (raw.includes(w)) return n;
+  return String(value).trim();
+}
+
 // ── Row → payload ────────────────────────────────────────────────
 
 // Build the normalized student rows from parsed rows + the column mapping +
 // the chosen name mode. Returns an array of
-// { first_name, last_name, age, parent_name, parent_email, notes, _raw }.
+// { first_name, last_name, grade, parent_name, parent_email, notes, _raw }.
 export function buildStudents(rows, mapping, nameMode) {
   return rows.map(row => {
     let first = '';
@@ -152,14 +170,14 @@ export function buildStudents(rows, mapping, nameMode) {
       first = split.first; last = split.last;
     }
 
-    const ageRaw = mapping.age ? String(row[mapping.age] || '').trim() : '';
+    const gradeRaw = mapping.grade ? String(row[mapping.grade] || '').trim() : '';
     const parentName = mapping.parent_name ? String(row[mapping.parent_name] || '').trim() : '';
     const parentEmail = mapping.parent_email ? String(row[mapping.parent_email] || '').trim() : '';
 
     return {
       first_name: first,
       last_name: last,
-      age: ageRaw && /^\d+$/.test(ageRaw) ? parseInt(ageRaw) : null,
+      grade: gradeRaw ? normalizeGrade(gradeRaw) : null,
       parent_name: parentName || null,
       parent_email: parentEmail || null,
       notes: mapping.notes ? String(row[mapping.notes] || '').trim() || null : null,

@@ -9,6 +9,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { ConfirmButton } from '../components/ui/ConfirmButton';
 import { RosterImportModal } from '../components/RosterImportModal';
 import { useAuth } from '../hooks/useAuth';
+import { useGeneralData } from '../hooks/useReferenceData';
 import { formatDate, formatTime } from '../lib/utils';
 import api from '../api/client';
 
@@ -387,16 +388,18 @@ export default function ClassRoomPage() {
 }
 
 function QuickAddStudentForm({ programId, onSuccess }) {
+  const { data: refData } = useGeneralData();
+  const grades = refData?.data?.grades || [];
   const [first, setFirst] = useState('');
   const [last, setLast] = useState('');
-  const [age, setAge] = useState('');
+  const [gradeId, setGradeId] = useState('');
   const [notes, setNotes] = useState('');
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/programs/${programId}/roster/quick-add`, {
-      first_name: first.trim(), last_name: last.trim(), age: age || null, notes: notes || null,
+      first_name: first.trim(), last_name: last.trim(), grade_id: gradeId || null, notes: notes || null,
     }),
-    onSuccess: () => { setFirst(''); setLast(''); setAge(''); setNotes(''); onSuccess?.(); },
+    onSuccess: () => { setFirst(''); setLast(''); setGradeId(''); setNotes(''); onSuccess?.(); },
   });
 
   return (
@@ -414,10 +417,13 @@ function QuickAddStudentForm({ programId, onSuccess }) {
             placeholder="Last name"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]" />
         </div>
-        <div className="w-16">
-          <label className="text-xs text-gray-500 block mb-0.5">Age</label>
-          <input type="number" value={age} onChange={e => setAge(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]" />
+        <div className="w-28">
+          <label className="text-xs text-gray-500 block mb-0.5">Grade</label>
+          <select value={gradeId} onChange={e => setGradeId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]">
+            <option value="">—</option>
+            {grades.map(g => <option key={g.id} value={g.id}>{g.grade_name}</option>)}
+          </select>
         </div>
         <div className="flex-1 min-w-[120px]">
           <label className="text-xs text-gray-500 block mb-0.5">Notes</label>
