@@ -261,7 +261,7 @@ function PortalRequirementRow({ r, isOverdue, isUpcoming, isPendingApproval, can
 
   const addFiles = (e) => {
     const files = Array.from(e.target.files || []);
-    setStagedFiles(prev => [...prev, ...files].slice(0, 3));
+    setStagedFiles(prev => [...prev, ...files].slice(0, 6));
     e.target.value = '';
   };
 
@@ -304,11 +304,11 @@ function PortalRequirementRow({ r, isOverdue, isUpcoming, isPendingApproval, can
                       ))}
                     </div>
                   )}
-                  {stagedFiles.length < 3 && (
+                  {stagedFiles.length < 6 && (
                     <button type="button" onClick={() => fileRef.current?.click()}
                       className="text-sm text-[#1e3a5f] hover:underline flex items-center gap-1.5">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                      {stagedFiles.length > 0 ? `Add more (${3 - stagedFiles.length} remaining)` : 'Upload documents (max 3)'}
+                      {stagedFiles.length > 0 ? `Add more (${6 - stagedFiles.length} remaining)` : 'Upload documents (max 6)'}
                     </button>
                   )}
                 </div>

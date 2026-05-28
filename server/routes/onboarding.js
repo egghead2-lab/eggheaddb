@@ -601,19 +601,24 @@ const docUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
-// POST /api/onboarding/candidates/:id/documents
-router.post('/candidates/:id/documents', docUpload.single('file'), async (req, res, next) => {
+// POST /api/onboarding/candidates/:id/documents — staff uploads document(s) (up to 6)
+// Accepts the multi-file field `files`, plus legacy single `file` for back-compat.
+router.post('/candidates/:id/documents', docUpload.fields([{ name: 'files', maxCount: 6 }, { name: 'file', maxCount: 1 }]), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { candidate_requirement_id } = req.body;
-    if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
+    const files = [...(req.files?.files || []), ...(req.files?.file || [])];
+    if (files.length === 0) return res.status(400).json({ success: false, error: 'No files' });
 
-    const [result] = await pool.query(
-      `INSERT INTO candidate_document (candidate_id, candidate_requirement_id, file_name, file_size, mime_type, storage_path, uploaded_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, candidate_requirement_id || null, req.file.originalname, req.file.size, req.file.mimetype,
-       req.file.filename, req.user.userId]
-    );
+    const ids = [];
+    for (const f of files) {
+      const [result] = await pool.query(
+        `INSERT INTO candidate_document (candidate_id, candidate_requirement_id, file_name, file_size, mime_type, storage_path, uploaded_by_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, candidate_requirement_id || null, f.originalname, f.size, f.mimetype, f.filename, req.user.userId]
+      );
+      ids.push(result.insertId);
+    }
 
     // If this requirement needs approval, set status to pending_approval
     if (candidate_requirement_id) {
@@ -624,7 +629,7 @@ router.post('/candidates/:id/documents', docUpload.single('file'), async (req, r
       }
     }
 
-    res.json({ success: true, id: result.insertId, file_name: req.file.originalname });
+    res.json({ success: true, ids, count: files.length });
   } catch (err) { next(err); }
 });
 
@@ -1410,8 +1415,8 @@ router.put('/my-portal/availability', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/onboarding/my-portal/documents — candidate uploads documents (up to 3)
-router.post('/my-portal/documents', docUpload.array('files', 3), async (req, res, next) => {
+// POST /api/onboarding/my-portal/documents — candidate uploads documents (up to 6)
+router.post('/my-portal/documents', docUpload.array('files', 6), async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const [[candidate]] = await pool.query('SELECT id FROM candidate WHERE user_id = ? AND active = 1', [userId]);

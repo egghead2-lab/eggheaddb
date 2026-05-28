@@ -1054,6 +1054,9 @@ function ChecklistSection({ requirements, templates, appliedTemplates, candidate
                     </div>
                   ) : null;
                 })()}
+                {r.requires_document === 1 && (
+                  <StaffDocUpload candidateId={candidateId} requirementId={r.id} />
+                )}
               </div>
 
               {/* Type + Waive */}
@@ -1110,6 +1113,41 @@ function ChecklistSection({ requirements, templates, appliedTemplates, candidate
         })}
       </div>
     </div>
+  );
+}
+
+// ── Staff document upload for a requirement (multi-file, up to 6) ──────
+function StaffDocUpload({ candidateId, requirementId }) {
+  const qc = useQueryClient();
+  const fileRef = useRef(null);
+
+  const uploadMutation = useMutation({
+    mutationFn: (files) => {
+      const fd = new FormData();
+      files.forEach(f => fd.append('files', f));
+      fd.append('candidate_requirement_id', requirementId);
+      return api.post(`/onboarding/candidates/${candidateId}/documents`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
+    onSuccess: () => qc.invalidateQueries(['candidate', String(candidateId)]),
+  });
+
+  const onPick = (e) => {
+    const files = Array.from(e.target.files || []).slice(0, 6);
+    e.target.value = '';
+    if (files.length) uploadMutation.mutate(files);
+  };
+
+  return (
+    <span className="inline-flex items-center gap-1.5 mt-1.5">
+      <input ref={fileRef} type="file" multiple className="hidden" onChange={onPick} />
+      <button type="button" onClick={() => fileRef.current?.click()} disabled={uploadMutation.isPending}
+        className="text-[11px] text-[#1e3a5f] hover:underline disabled:opacity-50">
+        {uploadMutation.isPending ? 'Uploading…' : '+ Upload document(s)'}
+      </button>
+      {uploadMutation.isError && <span className="text-[10px] text-red-600">upload failed</span>}
+    </span>
   );
 }
 
