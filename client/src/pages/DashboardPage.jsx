@@ -176,10 +176,32 @@ function KpiCard({ label, value, link, color }) {
 }
 
 function ProfessorDashboard({ name, role }) {
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['my-today'],
     queryFn: () => api.get('/schedule/my-today').then(r => r.data),
     refetchInterval: 60000,
+  });
+
+  const myProf = data?.data?.professor;
+  const isPartyTrained = !!myProf?.show_party_trained_id;
+
+  const { data: availablePartiesData } = useQuery({
+    queryKey: ['available-parties-to-claim', myProf?.id],
+    queryFn: () => api.get('/party-assign/available-to-claim', { params: { professor_id: myProf.id } }).then(r => r.data),
+    enabled: !!myProf?.id && isPartyTrained,
+    staleTime: 2 * 60 * 1000,
+  });
+  const availableParties = availablePartiesData?.data || [];
+
+  const claimMutation = useMutation({
+    mutationFn: ({ partyId, role }) => api.post(`/party-assign/${partyId}/claim`, { professor_id: myProf.id, role }),
+    onSuccess: () => qc.invalidateQueries(['available-parties-to-claim', myProf?.id]),
+  });
+
+  const withdrawMutation = useMutation({
+    mutationFn: (claimId) => api.delete(`/party-assign/claims/${claimId}`),
+    onSuccess: () => qc.invalidateQueries(['available-parties-to-claim', myProf?.id]),
   });
 
   const sessions = data?.data?.sessions || [];
@@ -264,6 +286,45 @@ function ProfessorDashboard({ name, role }) {
                         <div className="text-right">
                           <div className="text-sm text-gray-700">{formatDate(p.first_session_date)}</div>
                           <div className="text-sm font-medium text-[#1e3a5f]">{p.start_time ? formatTime(p.start_time) : '—'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Available parties to claim — party-trained professors only */}
+            {isPartyTrained && availableParties.length > 0 && (
+              <div>
+                <h2 className="text-sm font-bold text-pink-700 mb-2">Available Parties — Claim One</h2>
+                <div className="space-y-2">
+                  {availableParties.map(p => (
+                    <div key={p.id} className="bg-white rounded-lg border border-pink-200 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900">{p.program_nickname}</div>
+                          <div className="text-sm text-gray-500">
+                            {formatDate(p.first_session_date)} · {p.party_city || p.party_location_text || '—'}
+                            {p.days_until <= 7 && <span className="ml-2 text-xs font-medium text-red-600">In {p.days_until}d</span>}
+                            {!p.same_area && <span className="ml-2 text-xs text-amber-600">Outside your area</span>}
+                          </div>
+                          {p.party_theme && <div className="text-xs text-gray-400 mt-0.5">{p.party_theme}</div>}
+                          {p.pending_claims > 0 && (
+                            <div className="text-xs text-amber-600 mt-0.5">{p.pending_claims} other claim{p.pending_claims !== 1 ? 's' : ''} pending</div>
+                          )}
+                        </div>
+                        <div className="shrink-0">
+                          {p.already_claimed ? (
+                            <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded font-medium">Claim pending approval</span>
+                          ) : (
+                            <button type="button"
+                              onClick={() => claimMutation.mutate({ partyId: p.id, role: 'Lead' })}
+                              disabled={claimMutation.isPending}
+                              className="text-xs bg-pink-600 hover:bg-pink-700 text-white px-3 py-1.5 rounded font-medium disabled:opacity-50">
+                              Claim
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

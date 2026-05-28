@@ -2556,6 +2556,25 @@ nudge history. stage 1 = first nudge (~24h overdue), stage 2 = second (~48h).
 
 - `professor_id` → `professor.id` *(review_professor)*
 
+## party_claim
+
+Professor self-claims of available parties (mirrors sub_claim). Flows to the
+Party Scheduler for approval; approving sets the program's lead/assistant.
+
+| Column | Type | Null | Key | Default |
+|--------|------|------|-----|---------|
+| `id` | `int` *(auto_increment)* | NO | PRI | `NULL` |
+| `program_id` | `int` | NO | MUL | `NULL` |
+| `professor_id` | `int` | NO | MUL | `NULL` |
+| `role` | `enum('Lead','Assistant')` | NO |  | `Lead` |
+| `status` | `enum('pending','approved','rejected')` | NO | MUL | `pending` |
+| `expected_pay` | `decimal(8,2)` | YES |  | `NULL` |
+| `claimed_at` | `datetime` *(DEFAULT_GENERATED)* | YES |  | `CURRENT_TIMESTAMP` |
+| `reviewed_by` | `int` | YES |  | `NULL` |
+| `reviewed_at` | `datetime` | YES |  | `NULL` |
+| `reject_reason` | `varchar(255)` | YES |  | `NULL` |
+| `active` | `tinyint(1)` | NO |  | `1` |
+
 ## sub_claim
 
 | Column | Type | Null | Key | Default |

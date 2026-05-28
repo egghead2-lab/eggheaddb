@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
+import { useAuth } from '../hooks/useAuth';
+import { useGeneralData } from '../hooks/useReferenceData';
 import { AppShell } from '../components/layout/AppShell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -33,6 +35,8 @@ function getFormatBadge(name) {
 
 export default function PartyAssignPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = ['Admin', 'CEO'].includes(user?.role);
   const [selectedId, setSelectedId] = useState(null);
   const [tab, setTab] = useState('assign'); // 'assign' | 'responses'
   const [filter, setFilter] = useState('unassigned'); // 'unassigned' | 'all'
@@ -72,6 +76,26 @@ export default function PartyAssignPage() {
     queryFn: () => api.get('/party-assign/responses/dashboard').then(r => r.data),
     enabled: tab === 'responses',
   });
+
+  const { data: claimsData } = useQuery({
+    queryKey: ['party-claims-pending'],
+    queryFn: () => api.get('/party-assign/claims').then(r => r.data),
+    enabled: tab === 'claims',
+    refetchInterval: tab === 'claims' ? 60000 : false,
+  });
+
+  const approveClaim = useMutation({
+    mutationFn: (claimId) => api.post(`/party-assign/claims/${claimId}/approve`),
+    onSuccess: () => { qc.invalidateQueries(['party-claims-pending']); qc.invalidateQueries(['party-assign-unassigned']); },
+  });
+
+  const rejectClaim = useMutation({
+    mutationFn: ({ claimId, reason }) => api.post(`/party-assign/claims/${claimId}/reject`, { reason }),
+    onSuccess: () => qc.invalidateQueries(['party-claims-pending']),
+  });
+
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const defaultAction = selectedParty?.days_until > 14 ? 'ask' : 'assign';
 
@@ -140,11 +164,74 @@ export default function PartyAssignPage() {
       <PageHeader title="Party Assignment" action={
         <div className="flex items-center gap-2">
           <button onClick={() => setTab('assign')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${tab === 'assign' ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600'}`}>Assign</button>
+          <button onClick={() => setTab('claims')} className={`px-3 py-1.5 rounded-lg text-xs font-medium relative ${tab === 'claims' ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+            Claims
+            {(claimsData?.data?.length || 0) > 0 && tab !== 'claims' && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-pink-500 text-white text-[9px] flex items-center justify-center font-bold">{claimsData.data.length}</span>
+            )}
+          </button>
           <button onClick={() => setTab('responses')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${tab === 'responses' ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600'}`}>Responses</button>
         </div>
       } />
 
-      {tab === 'responses' ? (
+      {/* Party Scheduler setting — admin only, shown above all tabs */}
+      {isAdmin && <PartySchedulerSetting qc={qc} />}
+
+      {tab === 'claims' ? (
+        <div className="p-6">
+          <p className="text-sm text-gray-500 mb-4">Party-trained professors who have self-claimed an available party. Approve to assign them; reject to decline with a reason.</p>
+          {(claimsData?.data?.length || 0) === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-400 text-sm">No pending party claims</div>
+          ) : (
+            <div className="space-y-3">
+              {(claimsData?.data || []).map(c => (
+                <div key={c.id} className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link to={`/parties/${c.program_id}`} className="font-medium text-[#1e3a5f] hover:underline">{c.program_nickname}</Link>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 font-medium">{c.role}</span>
+                        {c.days_until <= 7 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">In {c.days_until}d</span>}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-0.5">
+                        {formatDate(c.first_session_date)} {c.start_time ? `at ${formatTime(c.start_time)}` : ''} · {c.party_city || c.party_location_text || '—'}
+                      </div>
+                      <div className="text-sm font-medium text-gray-700 mt-0.5">{c.professor_name}</div>
+                      {c.professor_phone && <div className="text-xs text-gray-400">{c.professor_phone}</div>}
+                      {c.expected_pay && <div className="text-xs text-gray-500">Expected pay: ${parseFloat(c.expected_pay).toFixed(0)}</div>}
+                    </div>
+                    <div className="shrink-0">
+                      {rejectingId === c.id ? (
+                        <div className="flex gap-2 items-center">
+                          <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                            placeholder="Reason (optional)" className="rounded border border-gray-300 px-2 py-1 text-xs w-40" />
+                          <button type="button" className="text-xs bg-red-600 text-white px-2 py-1 rounded"
+                            onClick={() => { rejectClaim.mutate({ claimId: c.id, reason: rejectReason }); setRejectingId(null); setRejectReason(''); }}>
+                            Confirm Reject
+                          </button>
+                          <button type="button" className="text-xs text-gray-400" onClick={() => setRejectingId(null)}>Cancel</button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button type="button" disabled={approveClaim.isPending}
+                            onClick={() => approveClaim.mutate(c.id)}
+                            className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded font-medium disabled:opacity-50">
+                            Approve
+                          </button>
+                          <button type="button" onClick={() => { setRejectingId(c.id); setRejectReason(''); }}
+                            className="text-xs text-red-600 border border-red-200 px-3 py-1.5 rounded font-medium hover:bg-red-50">
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : tab === 'responses' ? (
         <ResponsesDashboard data={respData?.data} forceConfirm={forceConfirmMutation} />
       ) : (
         <div className="p-6">
@@ -463,6 +550,82 @@ function ResponsesDashboard({ data, forceConfirm }) {
                 {a.decline_reason && <span className="text-xs text-red-500 italic">"{a.decline_reason}"</span>}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Manage who's responsible for party scheduling (the party_scheduler responsibility,
+// optionally scoped per area). Party tasks/claims surface to these people.
+function PartySchedulerSetting({ qc }) {
+  const [open, setOpen] = useState(false);
+  const { data: refData } = useGeneralData();
+  const ref = refData?.data || {};
+  const staffUsers = ref.staffUsers || [];
+  const areas = ref.areas || [];
+
+  const [addUserId, setAddUserId] = useState('');
+  const [addAreaId, setAddAreaId] = useState('');
+
+  const { data: schedulersData } = useQuery({
+    queryKey: ['party-schedulers'],
+    queryFn: () => api.get('/responsibilities/party-schedulers').then(r => r.data),
+  });
+  const schedulers = schedulersData?.data || [];
+
+  const addMutation = useMutation({
+    mutationFn: () => api.post('/responsibilities', { user_id: addUserId, responsibility: 'party_scheduler', geographic_area_id: addAreaId || null }),
+    onSuccess: () => { qc.invalidateQueries(['party-schedulers']); setAddUserId(''); setAddAreaId(''); },
+  });
+  const removeMutation = useMutation({
+    mutationFn: (id) => api.delete(`/responsibilities/${id}`),
+    onSuccess: () => qc.invalidateQueries(['party-schedulers']),
+  });
+
+  return (
+    <div className="px-6 pt-4">
+      <div className="bg-white rounded-lg border border-gray-200">
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+          <span className="text-sm font-semibold text-gray-700">
+            Party Scheduler{schedulers.length > 0 ? `s (${schedulers.length})` : ''}
+            <span className="ml-2 text-xs font-normal text-gray-400">— who owns party assignment, claims & confirmations</span>
+          </span>
+          <span className="text-gray-400 text-xs">{open ? '▾' : '▸'}</span>
+        </button>
+        {open && (
+          <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-2">
+            {schedulers.length === 0 ? (
+              <p className="text-xs text-gray-400">No party schedulers set yet.</p>
+            ) : schedulers.map(s => (
+              <div key={s.id} className="flex items-center gap-2 text-sm">
+                <span className="font-medium text-gray-800">{s.user_name}</span>
+                <span className="text-xs text-gray-400">{s.geographic_area_name || 'All areas'}</span>
+                <button type="button" onClick={() => removeMutation.mutate(s.id)}
+                  className="text-xs text-gray-300 hover:text-red-500 ml-auto">Remove</button>
+              </div>
+            ))}
+            <div className="flex items-end gap-2 pt-2 border-t border-gray-100">
+              <div>
+                <label className="text-[10px] text-gray-500 block mb-0.5">Person</label>
+                <select value={addUserId} onChange={e => setAddUserId(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-1 text-sm w-44">
+                  <option value="">Select…</option>
+                  {staffUsers.map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 block mb-0.5">Area (optional)</label>
+                <select value={addAreaId} onChange={e => setAddAreaId(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-1 text-sm w-44">
+                  <option value="">All areas</option>
+                  {areas.map(a => <option key={a.id} value={a.id}>{a.geographic_area_name}</option>)}
+                </select>
+              </div>
+              <Button size="sm" onClick={() => addMutation.mutate()} disabled={!addUserId || addMutation.isPending}>Add</Button>
+            </div>
           </div>
         )}
       </div>

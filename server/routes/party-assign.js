@@ -375,4 +375,182 @@ router.get('/responses/dashboard', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ════════════════════════════════════════════════════════════════
+// PROFESSOR-SIDE PARTY CLAIMING
+// ════════════════════════════════════════════════════════════════
+
+// GET /api/party-assign/available-to-claim — upcoming unassigned parties
+// a party-trained professor can claim. Filtered to their area if set.
+router.get('/available-to-claim', authenticate, async (req, res, next) => {
+  try {
+    const professorId = req.query.professor_id;
+    if (!professorId) return res.status(400).json({ success: false, error: 'professor_id required' });
+
+    // Get professor's area so we can flag cross-area parties
+    const [[prof]] = await pool.query(
+      'SELECT geographic_area_id, show_party_trained_id FROM professor WHERE id = ? AND active = 1',
+      [professorId]
+    );
+    if (!prof) return res.status(404).json({ success: false, error: 'Professor not found' });
+    if (!prof.show_party_trained_id) return res.json({ success: true, data: [] });
+
+    // Check for an existing pending claim by this professor
+    const [myPendingClaims] = await pool.query(
+      'SELECT program_id FROM party_claim WHERE professor_id = ? AND status = \'pending\' AND active = 1',
+      [professorId]
+    );
+    const alreadyClaimed = new Set(myPendingClaims.map(r => r.program_id));
+
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.start_time,
+              prog.class_length_minutes, prog.party_location_text, prog.party_city,
+              prog.party_state, prog.lead_professor_id, prog.assistant_professor_id,
+              prog.lead_professor_pay, prog.assistant_professor_pay,
+              prog.birthday_kid_name, prog.birthday_kid_age,
+              prog.general_notes,
+              cl.class_name AS party_theme,
+              pf.party_format_name,
+              loc.nickname AS location_nickname,
+              loc.geographic_area_id_online AS location_area_id,
+              DATEDIFF(prog.first_session_date, CURDATE()) AS days_until,
+              (SELECT COUNT(*) FROM party_claim pc2 WHERE pc2.program_id = prog.id AND pc2.status = 'pending' AND pc2.active = 1) AS pending_claims
+       FROM program prog
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN program_type pt ON pt.id = cl.program_type_id
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       WHERE prog.active = 1
+         AND pt.program_type_name = 'Party'
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
+         AND prog.lead_professor_id IS NULL
+         AND prog.first_session_date >= CURDATE()
+       ORDER BY prog.first_session_date ASC
+       LIMIT 30`,
+    );
+
+    const data = rows.map(r => ({
+      ...r,
+      already_claimed: alreadyClaimed.has(r.id),
+      same_area: !prof.geographic_area_id || r.location_area_id === prof.geographic_area_id,
+    }));
+
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// POST /api/party-assign/:partyId/claim — professor claims a party
+router.post('/:partyId/claim', authenticate, async (req, res, next) => {
+  try {
+    const { partyId } = req.params;
+    const { professor_id, role = 'Lead' } = req.body;
+    if (!professor_id) return res.status(400).json({ success: false, error: 'professor_id required' });
+
+    // Validate party is still unassigned (for Lead claims)
+    const [[party]] = await pool.query(
+      'SELECT lead_professor_id, first_session_date FROM program WHERE id = ? AND active = 1',
+      [partyId]
+    );
+    if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
+    if (role === 'Lead' && party.lead_professor_id) {
+      return res.status(409).json({ success: false, error: 'This party already has a lead professor assigned' });
+    }
+
+    // Check for duplicate pending claim
+    const [[existing]] = await pool.query(
+      'SELECT id FROM party_claim WHERE program_id = ? AND professor_id = ? AND role = ? AND status = \'pending\' AND active = 1',
+      [partyId, professor_id, role]
+    );
+    if (existing) return res.status(409).json({ success: false, error: 'You already have a pending claim for this party' });
+
+    const [[prof]] = await pool.query(
+      'SELECT base_pay, party_pay FROM professor WHERE id = ?',
+      [professor_id]
+    );
+    const expectedPay = prof?.party_pay || prof?.base_pay || null;
+
+    const [result] = await pool.query(
+      'INSERT INTO party_claim (program_id, professor_id, role, expected_pay) VALUES (?, ?, ?, ?)',
+      [partyId, professor_id, role, expectedPay]
+    );
+
+    res.json({ success: true, id: result.insertId });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/party-assign/claims/:claimId — professor withdraws a pending claim
+router.delete('/claims/:claimId', authenticate, async (req, res, next) => {
+  try {
+    await pool.query(
+      'UPDATE party_claim SET active = 0 WHERE id = ? AND status = \'pending\'',
+      [req.params.claimId]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/party-assign/claims — all pending claims (for Party Scheduler)
+router.get('/claims', authenticate, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT pc.id, pc.program_id, pc.professor_id, pc.role, pc.status,
+              pc.expected_pay, pc.claimed_at, pc.reject_reason,
+              prog.program_nickname, prog.first_session_date, prog.start_time,
+              prog.party_city, prog.party_location_text,
+              DATEDIFF(prog.first_session_date, CURDATE()) AS days_until,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS professor_name,
+              p.phone_number AS professor_phone,
+              pf.party_format_name,
+              cl.class_name AS party_theme
+       FROM party_claim pc
+       JOIN program prog ON prog.id = pc.program_id
+       JOIN professor p ON p.id = pc.professor_id
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       WHERE pc.active = 1 AND pc.status = 'pending'
+       ORDER BY prog.first_session_date ASC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/party-assign/claims/:claimId/approve — scheduler approves claim → assigns professor
+router.post('/claims/:claimId/approve', authenticate, async (req, res, next) => {
+  try {
+    const [[claim]] = await pool.query(
+      'SELECT * FROM party_claim WHERE id = ? AND active = 1 AND status = \'pending\'',
+      [req.params.claimId]
+    );
+    if (!claim) return res.status(404).json({ success: false, error: 'Claim not found or already reviewed' });
+
+    // Assign professor to party
+    const field = claim.role === 'Lead' ? 'lead_professor_id' : 'assistant_professor_id';
+    await pool.query(`UPDATE program SET ${field} = ?, ts_updated = NOW() WHERE id = ?`, [claim.professor_id, claim.program_id]);
+
+    // Approve this claim, reject all other pending claims for same party+role
+    await pool.query(
+      'UPDATE party_claim SET status = \'approved\', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?',
+      [req.user.userId, req.params.claimId]
+    );
+    await pool.query(
+      'UPDATE party_claim SET status = \'rejected\', reject_reason = \'Another professor was approved\', reviewed_by = ?, reviewed_at = NOW() WHERE program_id = ? AND role = ? AND status = \'pending\' AND id != ? AND active = 1',
+      [req.user.userId, claim.program_id, claim.role, req.params.claimId]
+    );
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/party-assign/claims/:claimId/reject
+router.post('/claims/:claimId/reject', authenticate, async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    await pool.query(
+      'UPDATE party_claim SET status = \'rejected\', reject_reason = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND active = 1',
+      [reason || null, req.user.userId, req.params.claimId]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

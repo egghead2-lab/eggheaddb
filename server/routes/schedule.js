@@ -11,7 +11,7 @@ const { authenticate } = require('../middleware/auth');
 router.get('/my-today', authenticate, async (req, res, next) => {
   try {
     // Get professor ID from user
-    const [[prof]] = await pool.query('SELECT id, first_name, last_name, professor_nickname FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
+    const [[prof]] = await pool.query('SELECT id, first_name, last_name, professor_nickname, show_party_trained_id, geographic_area_id FROM professor WHERE user_id = ? AND active = 1', [req.user.userId]);
     if (!prof) return res.status(404).json({ success: false, error: 'No professor profile found' });
 
     const [sessions] = await pool.query(
