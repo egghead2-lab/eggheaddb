@@ -35,14 +35,29 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
 
-  const defaultFrom = defaultRange === 'today' ? today : weekStart.toISOString().split('T')[0];
-  const defaultTo = defaultRange === 'today' ? today : weekEnd.toISOString().split('T')[0];
+  const trailingStart = new Date(now); trailingStart.setDate(now.getDate() - 6); // past 7 days incl. today
+  const defaultFrom = defaultRange === 'today' ? today
+    : defaultRange === 'trailing' ? trailingStart.toISOString().split('T')[0]
+    : weekStart.toISOString().split('T')[0];
+  const defaultTo = defaultRange === 'today' ? today
+    : defaultRange === 'trailing' ? today
+    : weekEnd.toISOString().split('T')[0];
   const dateFrom = searchParams.get('from') || defaultFrom;
   const dateTo = searchParams.get('to') || defaultTo;
 
   const setDateFrom = (v) => { const p = new URLSearchParams(searchParams); p.set('from', v); setSearchParams(p); };
   const setDateTo = (v) => { const p = new URLSearchParams(searchParams); p.set('to', v); setSearchParams(p); };
+  const cmId = searchParams.get('cm') || '';
+  const setCmId = (v) => { const p = new URLSearchParams(searchParams); if (v) p.set('cm', v); else p.delete('cm'); setSearchParams(p); };
   const [activeTab, setActiveTab] = useState(tabs?.[0]?.key || '');
+
+  // CM user list for filter dropdown
+  const { data: cmUsersData } = useQuery({
+    queryKey: ['cm-users-filter'],
+    queryFn: () => api.get('/users?role=Client+Manager&limit=100').then(r => r.data),
+    staleTime: 10 * 60 * 1000,
+  });
+  const cmUsers = cmUsersData?.data || [];
 
   // Selected row for preview
   const [selectedId, setSelectedId] = useState(null);
@@ -59,9 +74,10 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
   // Fetch data
   const queryParams = { date_from: dateFrom, date_to: dateTo };
   if (tabParam && activeTab) queryParams[tabParam] = activeTab;
+  if (cmId) queryParams.cm_id = cmId;
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, dateFrom, dateTo, activeTab],
+    queryKey: [endpoint, dateFrom, dateTo, activeTab, cmId],
     queryFn: () => api.get(endpoint, { params: queryParams }).then(r => r.data),
   });
   const rows = data?.data || [];
@@ -188,6 +204,18 @@ export function ClientEmailTool({ title, category, endpoint, columns, getRecipie
           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
             className="rounded border border-gray-300 px-2 py-1 text-xs" />
         </div>
+        {cmUsers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Client Manager</label>
+            <select value={cmId} onChange={e => setCmId(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1 text-xs bg-white">
+              <option value="">All</option>
+              {cmUsers.map(u => (
+                <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {tabs && (
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 ml-2">
             {tabs.map(t => (

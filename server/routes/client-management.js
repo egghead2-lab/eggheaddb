@@ -176,11 +176,14 @@ async function getParentEmails(programId) {
   return rows.map(r => r.email);
 }
 
-// GET /api/client-management/starting-emails?date_from=&date_to=
+// GET /api/client-management/starting-emails?date_from=&date_to=&cm_id=
 router.get('/starting-emails', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, cm_id } = req.query;
     const sent = await getSentMap('starting_email', date_from, date_to);
+    const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
+    const params = [date_from || '2000-01-01', date_to || '2099-12-31'];
+    if (cm_id) params.push(cm_id);
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.payment_through_us,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
@@ -188,28 +191,34 @@ router.get('/starting-emails', authenticate, async (req, res, next) => {
               loc.poc_email, loc.site_coordinator_email, loc.tb_required, loc.livescan_required, loc.virtus_required,
               CONCAT(lp.first_name, ' ', lp.last_name) AS professor_name,
               cs.class_status_name,
-              cl.formal_class_name AS class_name
+              cl.formal_class_name AS class_name,
+              COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
+       WHERE prog.active = 1 AND prog.party_format_id IS NULL
          AND prog.lead_professor_id IS NOT NULL
          AND prog.first_session_date BETWEEN ? AND ?
+         ${cmFilter}
        ORDER BY prog.first_session_date ASC`,
-      [date_from || '2000-01-01', date_to || '2099-12-31']
+      params
     );
     const data = rows.map(r => ({ ...r, sent: sent.progSet.has(r.id) }));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
-// GET /api/client-management/first-day-parent?date_from=&date_to=
+// GET /api/client-management/first-day-parent?date_from=&date_to=&cm_id=
 router.get('/first-day-parent', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, cm_id } = req.query;
     const sent = await getSentMap('first_day_parent', date_from, date_to);
+    const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
+    const params = [date_from || '2000-01-01', date_to || '2099-12-31'];
+    if (cm_id) params.push(cm_id);
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.first_session_date, prog.payment_through_us,
               prog.monday, prog.tuesday, prog.wednesday, prog.thursday, prog.friday, prog.saturday, prog.sunday,
@@ -217,6 +226,7 @@ router.get('/first-day-parent', authenticate, async (req, res, next) => {
               cs.class_status_name,
               cl.formal_class_name AS class_name,
               pt.program_type_name,
+              COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id,
               (SELECT COUNT(DISTINCT par.email) FROM program_roster pr2
                JOIN student s2 ON s2.id = pr2.student_id LEFT JOIN student_parent sp2 ON sp2.student_id = s2.id
                LEFT JOIN parent par ON par.id = sp2.parent_id
@@ -225,54 +235,66 @@ router.get('/first-day-parent', authenticate, async (req, res, next) => {
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN program_type pt ON pt.id = cl.program_type_id
-       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
+       WHERE prog.active = 1 AND prog.party_format_id IS NULL
          AND prog.first_session_date BETWEEN ? AND ?
+         ${cmFilter}
        ORDER BY prog.first_session_date ASC`,
-      [date_from || '2000-01-01', date_to || '2099-12-31']
+      params
     );
     const data = rows.map(r => ({ ...r, sent: sent.progSet.has(r.id), has_parent_emails: r.parent_email_count > 0 }));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
-// GET /api/client-management/second-week?date_from=&date_to=
+// GET /api/client-management/second-week?date_from=&date_to=&cm_id=
 router.get('/second-week', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, cm_id } = req.query;
     const sent = await getSentMap('second_week_email', date_from, date_to);
+    const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
+    const params = [date_from || '2000-01-01', date_to || '2099-12-31'];
+    if (cm_id) params.push(cm_id);
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.payment_through_us, prog.number_enrolled,
               loc.id AS location_id, loc.school_name, loc.poc_email, loc.site_coordinator_email,
               cs.class_status_name,
               cl.formal_class_name AS class_name,
+              COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id,
               (SELECT s2.session_date FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1
                ORDER BY s2.session_date ASC LIMIT 1 OFFSET 1) AS second_session_date
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
+       WHERE prog.active = 1 AND prog.party_format_id IS NULL
+         ${cmFilter}
        HAVING second_session_date BETWEEN ? AND ?
        ORDER BY second_session_date ASC`,
-      [date_from || '2000-01-01', date_to || '2099-12-31']
+      [...(cm_id ? [cm_id] : []), ...params]
     );
     const data = rows.map(r => ({ ...r, sent: sent.progSet.has(r.id) }));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
-// GET /api/client-management/sub-emails?date_from=&date_to=
+// GET /api/client-management/sub-emails?date_from=&date_to=&cm_id=
 router.get('/sub-emails', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, cm_id } = req.query;
     const sent = await getSentMap('sub_email', date_from, date_to);
+    const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
+    const params = [date_from || '2000-01-01', date_to || '2099-12-31'];
+    if (cm_id) params.push(cm_id);
     const [rows] = await pool.query(
       `SELECT s.id AS session_id, s.session_date, s.program_id,
               prog.program_nickname, prog.payment_through_us,
               loc.id AS location_id, loc.school_name, loc.poc_email, loc.site_coordinator_email,
               loc.tb_required, loc.livescan_required, loc.virtus_required,
+              COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id,
               CONCAT(sub.professor_nickname, ' ', sub.last_name) AS sub_name,
               CONCAT(lead.professor_nickname, ' ', lead.last_name) AS regular_name,
               cl.formal_class_name AS class_name
@@ -280,6 +302,7 @@ router.get('/sub-emails', authenticate, async (req, res, next) => {
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN professor sub ON sub.id = s.professor_id
        LEFT JOIN professor lead ON lead.id = prog.lead_professor_id
@@ -287,34 +310,40 @@ router.get('/sub-emails', authenticate, async (req, res, next) => {
          AND s.professor_id IS NOT NULL
          AND s.professor_id != prog.lead_professor_id
          AND s.session_date BETWEEN ? AND ?
+         ${cmFilter}
        ORDER BY s.session_date ASC`,
-      [date_from || '2000-01-01', date_to || '2099-12-31']
+      params
     );
     const data = rows.map(r => ({ ...r, sent: sent.progSet.has(r.program_id) }));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
-// GET /api/client-management/new-professor?date_from=&date_to=
+// GET /api/client-management/new-professor?date_from=&date_to=&cm_id=
 router.get('/new-professor', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, cm_id } = req.query;
     const sent = await getSentMap('new_professor_email', date_from, date_to);
-    // Find programs where the current lead has never taught a past session
+    const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
+    const params = [date_from || '2000-01-01', date_to || '2099-12-31'];
+    if (cm_id) params.push(cm_id);
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.payment_through_us, prog.lead_professor_id,
               loc.id AS location_id, loc.school_name, loc.poc_email, loc.site_coordinator_email,
               loc.tb_required, loc.livescan_required, loc.virtus_required,
               CONCAT(lp.professor_nickname, ' ', lp.last_name) AS new_professor_name,
-              cl.formal_class_name AS class_name
+              cl.formal_class_name AS class_name,
+              COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
+       WHERE prog.active = 1 AND prog.party_format_id IS NULL
          AND prog.lead_professor_id IS NOT NULL
          AND prog.first_session_date BETWEEN ? AND ?
+         ${cmFilter}
          AND NOT EXISTS (
            SELECT 1 FROM session s2
            WHERE s2.program_id = prog.id AND s2.active = 1
@@ -322,25 +351,29 @@ router.get('/new-professor', authenticate, async (req, res, next) => {
              AND s2.session_date < CURDATE()
          )
        ORDER BY prog.first_session_date ASC`,
-      [date_from || '2000-01-01', date_to || '2099-12-31']
+      params
     );
     const data = rows.map(r => ({ ...r, sent: sent.progSet.has(r.id) }));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
-// GET /api/client-management/last-day?date_from=&date_to=&tab=school|parent
+// GET /api/client-management/last-day?date_from=&date_to=&tab=school|parent&cm_id=
 router.get('/last-day', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to, tab } = req.query;
+    const { date_from, date_to, tab, cm_id } = req.query;
     const category = tab === 'parent' ? 'last_day_parent' : 'last_day_school';
     const sent = await getSentMap(category, date_from, date_to);
+    // Note: live=1 intentionally removed — programs finishing this week may already be marked live=0
+    const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
+    const whereParams = cm_id ? [cm_id] : [];
     const [rows] = await pool.query(
-      `SELECT prog.id, prog.program_nickname, prog.payment_through_us, prog.registration_link_for_flyer,
+      `SELECT prog.id, prog.program_nickname, prog.payment_through_us,
               loc.id AS location_id, loc.school_name, loc.poc_email, loc.site_coordinator_email,
-              loc.registration_link_for_flyer AS loc_reg_link,
+              loc.registration_link_for_flyer,
               cs.class_status_name,
               cl.formal_class_name AS class_name,
+              COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id,
               (SELECT MAX(s2.session_date) FROM session s2 WHERE s2.program_id = prog.id AND s2.active = 1) AS last_session_date,
               (SELECT MIN(p2.first_session_date) FROM program p2
                WHERE p2.location_id = prog.location_id AND p2.active = 1
@@ -349,11 +382,13 @@ router.get('/last-day', authenticate, async (req, res, next) => {
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
-       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
+       WHERE prog.active = 1 AND prog.party_format_id IS NULL
+         ${cmFilter}
        HAVING last_session_date BETWEEN ? AND ?
        ORDER BY last_session_date ASC`,
-      [date_from || '2000-01-01', date_to || '2099-12-31']
+      [...whereParams, date_from || '2000-01-01', date_to || '2099-12-31']
     );
     // For parent tab, get parent email counts
     if (tab === 'parent') {
@@ -473,28 +508,34 @@ router.get('/nps-emails', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/client-management/roster-emails?date_from=&date_to=
+// GET /api/client-management/roster-emails?date_from=&date_to=&cm_id=
 router.get('/roster-emails', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, cm_id } = req.query;
     const sent = await getSentMap('roster_email', date_from, date_to);
+    const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
+    const params = [date_from || '2000-01-01', date_to || '2099-12-31'];
+    if (cm_id) params.push(cm_id);
     const [rows] = await pool.query(
       `SELECT prog.id, prog.program_nickname, prog.number_enrolled, prog.payment_through_us,
               loc.id AS location_id, loc.school_name, loc.poc_email, loc.site_coordinator_email,
               cl.formal_class_name AS class_name,
               cpt.class_pricing_type_name AS cost_type,
+              COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id,
               (SELECT COUNT(*) FROM program_roster pr2 WHERE pr2.program_id = prog.id AND pr2.active = 1 AND pr2.date_dropped IS NULL) AS roster_count
        FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
+       LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
        LEFT JOIN class_pricing_type cpt ON cpt.id = prog.class_pricing_type_id
-       WHERE prog.active = 1 AND prog.live = 1 AND prog.party_format_id IS NULL
+       WHERE prog.active = 1 AND prog.party_format_id IS NULL
          AND prog.payment_through_us = 0
          AND prog.first_session_date BETWEEN ? AND ?
+         ${cmFilter}
        HAVING roster_count != prog.number_enrolled OR (roster_count > 0 AND prog.number_enrolled IS NULL)
        ORDER BY prog.program_nickname`,
-      [date_from || '2000-01-01', date_to || '2099-12-31']
+      params
     );
     const data = rows.map(r => ({
       ...r,

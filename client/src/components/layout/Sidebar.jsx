@@ -22,18 +22,31 @@ const AUTO_COLLAPSE_THRESHOLD = 2;
 // The Sidebar fetches this once and merges it into items.
 function useNavBadges(user) {
   const isProf = user?.role === 'Professor' || user?.role === 'Field Manager';
-  const { data } = useQuery({
+  const isWarehouse = ['Admin', 'CEO', 'Operations'].includes(user?.role);
+
+  const { data: feedbackData } = useQuery({
     queryKey: ['nav-feedback-pending'],
     queryFn: () => api.get('/schedule/feedback-pending').then(r => r.data),
     enabled: isProf,
     staleTime: 60 * 1000,
   });
+
+  const { data: shipBadgeData } = useQuery({
+    queryKey: ['nav-party-ship-badge'],
+    queryFn: () => api.get('/parties/ship-badge').then(r => r.data),
+    enabled: !isProf, // all admin-ish roles
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 10 * 60 * 1000,
+  });
+
   return useMemo(() => {
     const out = {};
-    const n = (data?.data || []).length;
+    const n = (feedbackData?.data || []).length;
     if (n > 0) out['/my-today'] = n;
+    const shipCount = shipBadgeData?.count || 0;
+    if (shipCount > 0) out['/party-shipments'] = shipCount;
     return out;
-  }, [data]);
+  }, [feedbackData, shipBadgeData]);
 }
 
 function SidebarGroup({ group, isOpen, onToggle, compact, pins = [], onTogglePin, badges = {} }) {

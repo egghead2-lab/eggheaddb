@@ -306,10 +306,12 @@ router.post('/cycles/:id/generate-orders', async (req, res, next) => {
        FROM program prog
        JOIN class cl ON cl.id = prog.class_id
        JOIN class_type ct ON ct.id = cl.class_type_id
+       JOIN program_type pt ON pt.id = cl.program_type_id
        JOIN class_status cs ON cs.id = prog.class_status_id
        JOIN professor p ON p.id = prog.lead_professor_id
        WHERE prog.active = 1 AND prog.live = 1 AND cs.confirmed = 1
          AND prog.lead_professor_id IS NOT NULL
+         AND pt.program_type_name != 'Party'
          ${areaWhere}
          AND EXISTS (
            SELECT 1 FROM session s

@@ -7,7 +7,7 @@ export default function LastDayPage() {
       title="Last Day Emails"
       category="last_day"
       endpoint="/client-management/last-day"
-      defaultRange="today"
+      defaultRange="trailing"
       tabs={[
         { key: 'school', label: 'School' },
         { key: 'parent', label: 'Parent' },
@@ -26,7 +26,7 @@ export default function LastDayPage() {
         next_session_start_date: r.next_session_start_date ? formatDate(r.next_session_start_date) : 'TBD',
         through_egghead: r.payment_through_us ? 'Yes' : 'No',
         is_contract_class: r.payment_through_us ? 'Yes' : 'No',
-        registration_link: r.registration_link_for_flyer || r.loc_reg_link || '',
+        registration_link: r.registration_link_for_flyer || '',
       })}
     />
   );

@@ -334,6 +334,89 @@ router.get('/calendar/pending', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── Party Shipments ─────────────────────────────────────────────────────────
+// Must be BEFORE /:id or Express will catch 'shipping-window' as an id param.
+// Window: sent on Tuesday, covers that Tuesday + 12 more days (13 total).
+// Accepts ?start=YYYY-MM-DD&end=YYYY-MM-DD to browse arbitrary windows.
+
+function partyShipWindowDates(start, end) {
+  if (start && end) return { startStr: start, endStr: end };
+  const today = new Date();
+  const dow = today.getDay();
+  const daysBack = dow >= 2 ? dow - 2 : dow + 5;
+  const s = new Date(today); s.setDate(today.getDate() - daysBack);
+  const e = new Date(s); e.setDate(s.getDate() + 12);
+  return { startStr: s.toISOString().split('T')[0], endStr: e.toISOString().split('T')[0] };
+}
+
+// GET /parties/shipping-window
+router.get('/shipping-window', authenticate, async (req, res, next) => {
+  try {
+    const { startStr, endStr } = partyShipWindowDates(req.query.start, req.query.end);
+    const [rows] = await pool.query(
+      `SELECT prog.id, prog.program_nickname, prog.first_session_date AS party_date,
+              prog.start_time AS party_start, prog.class_length_minutes,
+              prog.party_ship_status,
+              prog.maximum_students AS kids_expected,
+              prog.total_kids_attended AS kids_attended,
+              prog.birthday_kid_name, prog.birthday_kid_age,
+              prog.shirt_size, prog.general_notes, prog.details_confirmed,
+              prog.party_location_text, prog.party_city,
+              prog.party_address, prog.party_state, prog.party_zip,
+              pf.party_format_name,
+              cl.class_name AS party_theme,
+              CONCAT(p.professor_nickname, ' ', p.last_name) AS lead_professor_nickname,
+              p.phone_number AS professor_phone
+       FROM program prog
+       LEFT JOIN party_format pf ON pf.id = prog.party_format_id
+       LEFT JOIN class cl ON cl.id = prog.class_id
+       LEFT JOIN professor p ON p.id = prog.lead_professor_id
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       WHERE prog.active = 1
+         AND prog.party_format_id IS NOT NULL
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
+         AND prog.first_session_date BETWEEN ? AND ?
+       ORDER BY prog.first_session_date ASC, prog.start_time ASC`,
+      [startStr, endStr]
+    );
+    const badgeCount = rows.filter(r => r.party_ship_status !== 'shipped').length;
+    res.json({ success: true, data: rows, badgeCount, windowStart: startStr, windowEnd: endStr });
+  } catch (err) { next(err); }
+});
+
+// GET /parties/ship-badge
+router.get('/ship-badge', authenticate, async (req, res, next) => {
+  try {
+    const { startStr, endStr } = partyShipWindowDates();
+    const [[{ n }]] = await pool.query(
+      `SELECT COUNT(*) AS n FROM program prog
+       LEFT JOIN class_status cs ON cs.id = prog.class_status_id
+       WHERE prog.active = 1
+         AND prog.party_format_id IS NOT NULL
+         AND (cs.class_status_name IS NULL OR cs.class_status_name NOT LIKE 'Cancelled%')
+         AND prog.first_session_date BETWEEN ? AND ?
+         AND prog.party_ship_status != 'shipped'`,
+      [startStr, endStr]
+    );
+    res.json({ success: true, count: n });
+  } catch (err) { next(err); }
+});
+
+// PATCH /parties/:id/ship-status — must also be before /:id
+router.patch('/:id/ship-status', authenticate, async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    if (!['pending', 'prepped', 'shipped'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'status must be pending, prepped, or shipped' });
+    }
+    await pool.query(
+      `UPDATE program SET party_ship_status = ?, ts_updated = NOW() WHERE id = ?`,
+      [status, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/parties/:id
 router.get('/:id', authenticate, async (req, res, next) => {
   try {

@@ -751,11 +751,20 @@ export default function BulkInputPage() {
                 <button onClick={() => setSkipDates(prev => [...prev, ''])} className="text-xs px-2 py-1 border border-blue-200 text-blue-600 rounded hover:bg-blue-50">+ Add</button>
               </div>
             </div>
-            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-wrap gap-3 items-end">
-              <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide self-center">Bulk Start Date</span>
-              <div className="flex items-center gap-1">
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-wrap gap-4 items-end">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Bulk Start Date</span>
                 <input type="date" value={bulkStartDate} onChange={e => setBulkStartDate(e.target.value)} className={`${iis} bg-white`} />
                 <BulkBtn onClick={() => { if (bulkStartDate) setRows4(prev => prev.map(r => ({ ...r, startDate: bulkStartDate }))); }} label="Apply to all ↓" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">{freqMode === 'weekly' ? 'Bulk Weeks' : 'Bulk Sessions'}</span>
+                <input type="number" min={1} max={40} placeholder="#" className={`w-16 ${iis} bg-white`}
+                  onChange={e => {
+                    const v = parseInt(e.target.value);
+                    if (v > 0) setRows4(prev => prev.map(r => ({ ...r, sessions: v })));
+                  }} />
+                <span className="text-[10px] text-blue-600">(enter to apply)</span>
               </div>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
