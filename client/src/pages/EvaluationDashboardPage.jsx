@@ -210,13 +210,18 @@ function EvalTable({ professors, statusCol, tint }) {
 function FragmentRow({ children }) { return <>{children}</>; }
 
 // ─── Expanded view: next sessions with inline FM/Peer scheduling ────────────
+const MAX_SESSIONS = 20;
 function ExpandedSessions({ professorId, professorName }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: ['professor-upcoming-sessions', professorId],
-    queryFn: () => api.get(`/evaluations/professor/${professorId}/upcoming-sessions?limit=3`).then(r => r.data),
+  const [limit, setLimit] = useState(3);
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['professor-upcoming-sessions', professorId, limit],
+    queryFn: () => api.get(`/evaluations/professor/${professorId}/upcoming-sessions?limit=${limit}`).then(r => r.data),
+    placeholderData: (prev) => prev, // keep the list visible while loading more
   });
   const sessions = data?.data || [];
+  // If we got back fewer than we asked for, there are no more to load.
+  const canLoadMore = sessions.length >= limit && limit < MAX_SESSIONS;
 
   if (isLoading) return <Spinner className="w-4 h-4" />;
   if (sessions.length === 0) return <p className="text-xs text-gray-400">No upcoming sessions scheduled</p>;
@@ -227,6 +232,12 @@ function ExpandedSessions({ professorId, professorName }) {
       {sessions.map(s => (
         <SessionRow key={s.session_id} session={s} professorId={professorId} professorName={professorName} qc={qc} />
       ))}
+      {canLoadMore && (
+        <button type="button" onClick={() => setLimit(l => Math.min(MAX_SESSIONS, l + 5))} disabled={isFetching}
+          className="text-xs text-[#1e3a5f] hover:underline font-medium">
+          {isFetching ? 'Loading…' : 'Show more sessions'}
+        </button>
+      )}
     </div>
   );
 }
