@@ -1219,6 +1219,19 @@
 
 - `candidate_id` → `candidate.id` *(candidate_note_ibfk_1)*
 
+## candidate_reminder_log
+
+Records each manually-sent onboarding reminder ("nudge") so the queue can show
+nudge history. stage 1 = first nudge (~24h overdue), stage 2 = second (~48h).
+
+| Column | Type | Null | Key | Default |
+|--------|------|------|-----|---------|
+| `id` | `int` *(auto_increment)* | NO | PRI | `NULL` |
+| `candidate_id` | `int` | NO | MUL | `NULL` |
+| `stage` | `tinyint` | NO |  | `NULL` |
+| `sent_by_user_id` | `int` | YES |  | `NULL` |
+| `sent_at` | `timestamp` *(DEFAULT_GENERATED)* | YES |  | `CURRENT_TIMESTAMP` |
+
 ## candidate_requirement
 
 | Column | Type | Null | Key | Default |

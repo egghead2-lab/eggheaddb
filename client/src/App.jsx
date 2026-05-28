@@ -43,6 +43,7 @@ import CandidatesPage from './pages/CandidatesPage';
 import CandidateDetailPage from './pages/CandidateDetailPage';
 import CandidateProfilePage from './pages/CandidateProfilePage';
 import OnboardingRequirementsPage from './pages/OnboardingRequirementsPage';
+import OnboardingRemindersPage from './pages/OnboardingRemindersPage';
 import OnboardingTemplatesPage from './pages/OnboardingTemplatesPage';
 import EmailTemplatesPage from './pages/EmailTemplatesPage';
 import PendingApprovalsPage from './pages/PendingApprovalsPage';
@@ -184,6 +185,7 @@ export default function App() {
       <Route path="/candidates/:id" element={<ProtectedRoute><CandidateDetailPage /></ProtectedRoute>} />
       <Route path="/candidates/:id/profile" element={<ProtectedRoute><CandidateProfilePage /></ProtectedRoute>} />
       <Route path="/onboarding-requirements" element={<ProtectedRoute><OnboardingRequirementsPage /></ProtectedRoute>} />
+      <Route path="/onboarding-reminders" element={<ProtectedRoute><OnboardingRemindersPage /></ProtectedRoute>} />
       <Route path="/onboarding-templates" element={<ProtectedRoute><OnboardingTemplatesPage /></ProtectedRoute>} />
       <Route path="/email-templates" element={<ProtectedRoute><EmailTemplatesPage /></ProtectedRoute>} />
       <Route path="/pending-approvals" element={<ProtectedRoute><PendingApprovalsPage /></ProtectedRoute>} />

@@ -1740,4 +1740,126 @@ router.get('/pending-schedules', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// ONBOARDING REMINDERS (manual "nudge" — staff pushes, not automated)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/onboarding/reminders/due — candidates with outstanding requirements
+// that are at least ~24h overdue, with nudge history so staff can decide to push.
+router.get('/reminders/due', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT c.id AS candidate_id, c.full_name, c.email,
+              CONCAT(onb.first_name, ' ', onb.last_name) AS onboarder_name,
+              (onb.google_refresh_token IS NOT NULL) AS onboarder_connected,
+              COUNT(cr.id) AS overdue_count,
+              MIN(cr.due_date) AS oldest_due,
+              DATEDIFF(CURDATE(), MIN(cr.due_date)) AS days_overdue,
+              (SELECT COUNT(*) FROM candidate_reminder_log l WHERE l.candidate_id = c.id) AS nudges_sent,
+              (SELECT MAX(stage) FROM candidate_reminder_log l WHERE l.candidate_id = c.id) AS last_stage,
+              (SELECT MAX(sent_at) FROM candidate_reminder_log l WHERE l.candidate_id = c.id) AS last_sent_at
+       FROM candidate c
+       JOIN candidate_requirement cr ON cr.candidate_id = c.id
+         AND cr.completed = 0 AND (cr.waived = 0 OR cr.waived IS NULL)
+         AND cr.due_date IS NOT NULL AND cr.due_date <= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+       LEFT JOIN user onb ON onb.id = c.onboarder_user_id
+       WHERE c.active = 1 AND c.status = 'in_progress'
+       GROUP BY c.id
+       ORDER BY days_overdue DESC, c.full_name`
+    );
+    const data = rows.map(r => ({
+      ...r,
+      onboarder_connected: !!r.onboarder_connected,
+      suggested_stage: r.days_overdue >= 2 ? 2 : 1,
+    }));
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// POST /api/onboarding/reminders/:candidateId/send — send a reminder email now.
+// Sender: candidate's onboarder → the clicking staff user → system fallback.
+router.post('/reminders/:candidateId/send', async (req, res, next) => {
+  try {
+    const { candidateId } = req.params;
+
+    const [[candidate]] = await pool.query(
+      'SELECT id, full_name, email, onboarder_user_id, status FROM candidate WHERE id = ? AND active = 1',
+      [candidateId]
+    );
+    if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found' });
+    if (!candidate.email) return res.status(400).json({ success: false, error: 'Candidate has no email on file' });
+
+    // Outstanding (incomplete, non-waived) requirements for the digest list
+    const [outstanding] = await pool.query(
+      `SELECT r.title, cr.due_date
+       FROM candidate_requirement cr
+       JOIN onboarding_requirement r ON r.id = cr.requirement_id
+       WHERE cr.candidate_id = ? AND cr.completed = 0 AND (cr.waived = 0 OR cr.waived IS NULL)
+       ORDER BY (cr.due_date IS NULL), cr.due_date, r.sort_order`,
+      [candidateId]
+    );
+    if (outstanding.length === 0) return res.status(400).json({ success: false, error: 'No outstanding requirements — nothing to nudge' });
+
+    // Pick the sender's Google token: onboarder → clicking user → system fallback
+    const fallbackId = parseInt(process.env.REMINDER_SENDER_USER_ID) || 2;
+    const candidateIds = [candidate.onboarder_user_id, req.user.userId, fallbackId].filter(Boolean);
+    const [senders] = await pool.query(
+      'SELECT id, google_refresh_token, email_signature FROM user WHERE id IN (?)',
+      [candidateIds]
+    );
+    const byId = Object.fromEntries(senders.map(s => [s.id, s]));
+    const sender = candidateIds.map(id => byId[id]).find(s => s?.google_refresh_token);
+    if (!sender) {
+      return res.status(400).json({ success: false, error: 'No connected Google account available to send from (onboarder/you/system all unconnected)' });
+    }
+
+    // Template
+    const [[tpl]] = await pool.query(
+      "SELECT subject, body_html FROM email_template WHERE category = 'onboarding_reminder' AND active = 1 ORDER BY sort_order LIMIT 1"
+    );
+    if (!tpl) return res.status(400).json({ success: false, error: 'No "onboarding_reminder" email template found' });
+
+    // Build merge values
+    const today = new Date();
+    const listItems = outstanding.map(o => {
+      const due = o.due_date ? new Date(o.due_date) : null;
+      const overdue = due && due < today;
+      const dueStr = due ? ` — due ${due.toLocaleDateString('en-US')}${overdue ? ' (overdue)' : ''}` : '';
+      return `<li>${o.title}${dueStr}</li>`;
+    }).join('');
+    const outstandingList = `<ul>${listItems}</ul>`;
+    const portalLink = `${process.env.CLIENT_URL || ''}/candidate-portal`;
+
+    const fill = (s) => (s || '')
+      .replaceAll('{{candidate_name}}', candidate.full_name || 'there')
+      .replaceAll('{{outstanding_list}}', outstandingList)
+      .replaceAll('{{portal_link}}', portalLink);
+
+    await sendEmail({
+      refreshToken: sender.google_refresh_token,
+      to: candidate.email,
+      subject: fill(tpl.subject),
+      htmlBody: fill(tpl.body_html),
+      signature: sender.email_signature,
+    });
+
+    // Determine stage from how overdue the oldest outstanding item is
+    const [[{ days_overdue }]] = await pool.query(
+      `SELECT DATEDIFF(CURDATE(), MIN(cr.due_date)) AS days_overdue
+       FROM candidate_requirement cr
+       WHERE cr.candidate_id = ? AND cr.completed = 0 AND (cr.waived = 0 OR cr.waived IS NULL)
+         AND cr.due_date IS NOT NULL`,
+      [candidateId]
+    );
+    const stage = (days_overdue || 0) >= 2 ? 2 : 1;
+
+    await pool.query(
+      'INSERT INTO candidate_reminder_log (candidate_id, stage, sent_by_user_id) VALUES (?, ?, ?)',
+      [candidateId, stage, req.user.userId]
+    );
+
+    res.json({ success: true, stage, outstanding_count: outstanding.length });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
