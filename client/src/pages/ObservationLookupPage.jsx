@@ -314,7 +314,7 @@ function ObservationForm({ item, onSuccess, onBack }) {
       <div>
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Mode</div>
         <div className="flex gap-2">
-          {[['in_person', 'In Person'], ['virtual', 'Virtual'], ...(isSupportSession ? [['phone', 'Phone']] : [])].map(([val, label]) => (
+          {[['in_person', 'In Person'], ['virtual', 'Remote'], ...(isSupportSession ? [['phone', 'Phone']] : [])].map(([val, label]) => (
             <button key={val} type="button" onClick={() => set('mode', val)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                 form.mode === val
