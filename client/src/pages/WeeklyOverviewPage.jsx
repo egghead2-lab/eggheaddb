@@ -234,7 +234,11 @@ export default function WeeklyOverviewPage() {
                                   {s.lesson_name ? (
                                     s.trainual_link ? (
                                       <a href={s.trainual_link} target="_blank" rel="noopener noreferrer"
-                                        className="text-[#1e3a5f] hover:underline">{s.lesson_name}</a>
+                                        title="Open lesson in Trainual"
+                                        className="inline-flex items-center gap-1 text-[#1e3a5f] underline decoration-dotted hover:decoration-solid font-medium">
+                                        {s.lesson_name}
+                                        <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                      </a>
                                     ) : <span className="text-gray-600">{s.lesson_name}</span>
                                   ) : <span className="text-gray-300">—</span>}
                                 </td>
