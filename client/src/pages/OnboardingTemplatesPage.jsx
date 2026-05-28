@@ -55,6 +55,29 @@ export default function OnboardingTemplatesPage() {
     onSuccess: () => { qc.invalidateQueries(['onboarding-templates']); setSelectedId(null); },
   });
 
+  const renameMutation = useMutation({
+    mutationFn: ({ id, name }) => api.put(`/onboarding/templates/${id}`, { name }),
+    onSuccess: () => { qc.invalidateQueries(['onboarding-templates']); qc.invalidateQueries(['onboarding-template', selectedId]); setEditingName(false); },
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: ({ id, item_ids }) => api.put(`/onboarding/templates/${id}/reorder`, { item_ids }),
+    onSuccess: () => { qc.invalidateQueries(['onboarding-template', selectedId]); },
+  });
+
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+
+  // Move an item up (dir=-1) or down (dir=+1) and persist the new order.
+  const moveItem = (index, dir) => {
+    const items = detail?.items || [];
+    const target = index + dir;
+    if (target < 0 || target >= items.length) return;
+    const ids = items.map(i => i.id);
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    reorderMutation.mutate({ id: selectedId, item_ids: ids });
+  };
+
   return (
     <AppShell>
       <PageHeader title="Onboarding Templates" action={
@@ -97,7 +120,20 @@ export default function OnboardingTemplatesPage() {
           ) : (
             <div className="bg-white rounded-lg border border-gray-200">
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                <h3 className="font-bold text-gray-900">{detail.name}</h3>
+                {editingName ? (
+                  <input autoFocus value={nameDraft} onChange={e => setNameDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && nameDraft.trim()) renameMutation.mutate({ id: selectedId, name: nameDraft.trim() });
+                      if (e.key === 'Escape') setEditingName(false);
+                    }}
+                    onBlur={() => { if (nameDraft.trim() && nameDraft.trim() !== detail.name) renameMutation.mutate({ id: selectedId, name: nameDraft.trim() }); else setEditingName(false); }}
+                    className="font-bold text-gray-900 rounded border border-[#1e3a5f] px-2 py-0.5 text-base focus:outline-none" />
+                ) : (
+                  <button type="button" onClick={() => { setNameDraft(detail.name); setEditingName(true); }}
+                    className="font-bold text-gray-900 hover:underline decoration-dotted" title="Click to rename">
+                    {detail.name}
+                  </button>
+                )}
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-400">{detail.items?.length || 0} requirements</span>
                   <ConfirmButton onConfirm={() => deleteTemplateMutation.mutate(selectedId)}
@@ -110,8 +146,15 @@ export default function OnboardingTemplatesPage() {
                   <p className="text-sm text-gray-400 text-center py-6">No requirements in this template. Add some below.</p>
                 ) : (
                   <div className="space-y-1 mb-4">
-                    {detail.items.map(item => (
+                    {detail.items.map((item, idx) => (
                       <div key={item.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded">
+                        <div className="flex flex-col -my-1 text-gray-300">
+                          <button type="button" onClick={() => moveItem(idx, -1)} disabled={idx === 0 || reorderMutation.isPending}
+                            className="leading-none hover:text-[#1e3a5f] disabled:opacity-30 disabled:hover:text-gray-300" title="Move up">▲</button>
+                          <button type="button" onClick={() => moveItem(idx, 1)} disabled={idx === detail.items.length - 1 || reorderMutation.isPending}
+                            className="leading-none hover:text-[#1e3a5f] disabled:opacity-30 disabled:hover:text-gray-300" title="Move down">▼</button>
+                        </div>
+                        <span className="text-xs text-gray-300 w-4 text-right">{idx + 1}</span>
                         <div className="flex-1">
                           <div className="text-sm text-gray-800">{item.title}</div>
                           {item.category && <span className="text-xs text-gray-400">{item.category}</span>}

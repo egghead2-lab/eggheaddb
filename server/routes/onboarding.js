@@ -795,11 +795,35 @@ router.put('/templates/:id', async (req, res, next) => {
 // POST /api/onboarding/templates/:id/items — add requirement to template
 router.post('/templates/:id/items', async (req, res, next) => {
   try {
-    const { requirement_id, due_offset_days, sort_order } = req.body;
+    const { requirement_id, due_offset_days } = req.body;
+    // New items append to the end of the current order.
+    let sortOrder = req.body.sort_order;
+    if (sortOrder === undefined || sortOrder === null) {
+      const [[{ next_order }]] = await pool.query(
+        'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM onboarding_template_item WHERE template_id = ?',
+        [req.params.id]
+      );
+      sortOrder = next_order;
+    }
     await pool.query(
       'INSERT INTO onboarding_template_item (template_id, requirement_id, due_offset_days, sort_order) VALUES (?, ?, ?, ?)',
-      [req.params.id, requirement_id, due_offset_days || null, sort_order || 0]
+      [req.params.id, requirement_id, due_offset_days || null, sortOrder]
     );
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/onboarding/templates/:id/reorder — set item order from an ordered id list
+router.put('/templates/:id/reorder', async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.item_ids) ? req.body.item_ids : [];
+    if (ids.length === 0) return res.status(400).json({ success: false, error: 'item_ids required' });
+    for (let i = 0; i < ids.length; i++) {
+      await pool.query(
+        'UPDATE onboarding_template_item SET sort_order = ? WHERE id = ? AND template_id = ?',
+        [i, ids[i], req.params.id]
+      );
+    }
     res.json({ success: true });
   } catch (err) { next(err); }
 });
