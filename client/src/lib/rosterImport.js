@@ -8,13 +8,15 @@ import Papa from 'papaparse';
 // keeping it out of the main bundle.
 
 // Target fields the importer can fill. `key` matches the bulk-import payload.
+// Matches the roster display: Student Name, Age, Parent, Parent Email, Notes.
+// First/Last are kept as optional alternates for files that arrive split.
 export const TARGET_FIELDS = [
-  { key: 'full_name', label: 'Full Name', hint: 'one column with the whole name' },
-  { key: 'first_name', label: 'First Name' },
-  { key: 'last_name', label: 'Last Name' },
-  { key: 'grade', label: 'Grade' },
+  { key: 'full_name', label: 'Student Name', hint: 'one column with the whole name' },
+  { key: 'first_name', label: 'First Name', hint: 'if split' },
+  { key: 'last_name', label: 'Last Name', hint: 'if split' },
   { key: 'age', label: 'Age' },
-  { key: 'gender', label: 'Gender' },
+  { key: 'parent_name', label: 'Parent' },
+  { key: 'parent_email', label: 'Parent Email' },
   { key: 'notes', label: 'Notes' },
 ];
 
@@ -23,9 +25,9 @@ const SYNONYMS = {
   full_name: ['name', 'student', 'student name', 'studentname', 'child', 'child name', 'full name', 'fullname', 'participant', 'attendee'],
   first_name: ['first', 'first name', 'firstname', 'fname', 'given', 'given name', 'student first', 'first(student)'],
   last_name: ['last', 'last name', 'lastname', 'lname', 'surname', 'family', 'family name', 'student last'],
-  grade: ['grade', 'grade level', 'gradelevel', 'gr', 'grd', 'level'],
   age: ['age', 'student age', 'yrs', 'years'],
-  gender: ['gender', 'sex', 'm/f'],
+  parent_name: ['parent', 'parent name', 'parentname', 'guardian', 'mom', 'dad', 'mother', 'father', 'contact', 'contact name'],
+  parent_email: ['parent email', 'parentemail', 'email', 'parent e-mail', 'guardian email', 'contact email', 'e-mail', 'emailaddress', 'email address'],
   notes: ['notes', 'note', 'comments', 'comment', 'allergies', 'allergy', 'special', 'info'],
 };
 
@@ -127,37 +129,11 @@ export function splitName(value, mode) {
   return { first: parts.join(' '), last };
 }
 
-// ── Grade normalization ──────────────────────────────────────────
-
-// Map a freeform grade string to the canonical grade_name values used by the
-// `grade` lookup ("K", "1".."12", "PK/TK"). Returns the canonical string or
-// null if it can't be confidently mapped (caller can leave grade unset).
-export function normalizeGrade(value) {
-  const raw = String(value || '').trim().toLowerCase();
-  if (!raw) return null;
-
-  if (/^(k|kinder|kindergarten)$/.test(raw)) return 'K';
-  if (/^(pk|tk|pre-?k|transitional)/.test(raw)) return 'PK/TK';
-
-  // pull the first number out of e.g. "3", "3rd", "grade 3", "gr3", "g-3"
-  const m = raw.match(/(\d{1,2})/);
-  if (m) {
-    const n = parseInt(m[1]);
-    if (n >= 1 && n <= 12) return String(n);
-  }
-
-  // word forms
-  const words = { first: '1', second: '2', third: '3', fourth: '4', fifth: '5', sixth: '6', seventh: '7', eighth: '8' };
-  for (const [w, n] of Object.entries(words)) if (raw.includes(w)) return n;
-
-  return null;
-}
-
 // ── Row → payload ────────────────────────────────────────────────
 
 // Build the normalized student rows from parsed rows + the column mapping +
 // the chosen name mode. Returns an array of
-// { first_name, last_name, grade, age, gender, notes, _raw }.
+// { first_name, last_name, age, parent_name, parent_email, notes, _raw }.
 export function buildStudents(rows, mapping, nameMode) {
   return rows.map(row => {
     let first = '';
@@ -176,15 +152,16 @@ export function buildStudents(rows, mapping, nameMode) {
       first = split.first; last = split.last;
     }
 
-    const gradeRaw = mapping.grade ? String(row[mapping.grade] || '').trim() : '';
     const ageRaw = mapping.age ? String(row[mapping.age] || '').trim() : '';
+    const parentName = mapping.parent_name ? String(row[mapping.parent_name] || '').trim() : '';
+    const parentEmail = mapping.parent_email ? String(row[mapping.parent_email] || '').trim() : '';
 
     return {
       first_name: first,
       last_name: last,
-      grade: gradeRaw ? (normalizeGrade(gradeRaw) || gradeRaw) : null,
       age: ageRaw && /^\d+$/.test(ageRaw) ? parseInt(ageRaw) : null,
-      gender: mapping.gender ? String(row[mapping.gender] || '').trim().charAt(0).toUpperCase() || null : null,
+      parent_name: parentName || null,
+      parent_email: parentEmail || null,
       notes: mapping.notes ? String(row[mapping.notes] || '').trim() || null : null,
       _raw: row,
     };

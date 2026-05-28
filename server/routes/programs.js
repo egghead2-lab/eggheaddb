@@ -958,9 +958,11 @@ router.post('/:id/roster/add', authenticate, async (req, res, next) => {
 });
 
 // POST /api/programs/:id/roster/bulk-import — create + roster many students at once
-// Body: { students: [{ first_name, last_name, grade, age, gender, notes }] }
-// Each row creates a NEW student record and a program_roster entry. Rows whose
-// (first,last) name already maps to an active roster entry are skipped.
+// Body: { students: [{ first_name, last_name, age, parent_name, parent_email, notes }] }
+// Each row creates a NEW student record + a program_roster entry. When a parent
+// is supplied we reuse an existing parent matched by email, else create one,
+// and link it to the student. Rows whose (first,last) name already maps to an
+// active roster entry are skipped.
 router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -970,10 +972,9 @@ router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
     const [[program]] = await pool.query('SELECT maximum_students FROM program WHERE id = ? AND active = 1', [id]);
     if (!program) return res.status(404).json({ success: false, error: 'Program not found' });
 
-    // Grade lookup: grade_name -> id
-    const [grades] = await pool.query('SELECT id, grade_name FROM grade WHERE active = 1');
-    const gradeIdByName = {};
-    for (const g of grades) gradeIdByName[String(g.grade_name).toLowerCase()] = g.id;
+    // Default link role for imported parents.
+    const [[guardianRole]] = await pool.query("SELECT id FROM parent_role WHERE parent_role_name = 'Parent/Guardian' LIMIT 1");
+    const parentRoleId = guardianRole?.id || null;
 
     // Existing active roster names (to skip dupes)
     const [existing] = await pool.query(
@@ -987,6 +988,17 @@ router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
     let [[{ count }]] = await pool.query(
       'SELECT COUNT(*) AS count FROM program_roster WHERE program_id = ? AND active = 1 AND date_dropped IS NULL', [id]
     );
+
+    // Split a "First Last" or "Last, First" parent name into parts (best effort).
+    const splitParentName = (name) => {
+      const v = String(name || '').trim().replace(/\s+/g, ' ');
+      if (!v) return { first: null, last: null };
+      if (v.includes(',')) { const [last, ...rest] = v.split(','); return { first: rest.join(',').trim() || null, last: last.trim() || null }; }
+      const parts = v.split(' ');
+      if (parts.length === 1) return { first: parts[0], last: null };
+      const last = parts.pop();
+      return { first: parts.join(' '), last };
+    };
 
     const isProfessor = req.user.role === 'Professor';
     let added = 0;
@@ -1010,19 +1022,42 @@ router.post('/:id/roster/bulk-import', authenticate, async (req, res, next) => {
           break;
         }
 
-        const gradeId = s.grade ? (gradeIdByName[String(s.grade).toLowerCase()] || null) : null;
         const age = (s.age != null && /^\d+$/.test(String(s.age))) ? parseInt(s.age) : null;
-        const gender = s.gender ? String(s.gender).trim().charAt(0).toUpperCase() : null;
         const notes = s.notes ? String(s.notes).trim().slice(0, 255) : null;
 
         const [studentRes] = await conn.query(
           'INSERT INTO student (first_name, last_name, active, ts_inserted, ts_updated) VALUES (?, ?, 1, NOW(), NOW())',
           [first, last]
         );
+        const studentId = studentRes.insertId;
+
+        // Parent: match by email if present, else create. Skip silently if neither name nor email.
+        const parentEmail = s.parent_email ? String(s.parent_email).trim() : '';
+        const parentName = s.parent_name ? String(s.parent_name).trim() : '';
+        if ((parentEmail || parentName) && parentRoleId) {
+          let parentId = null;
+          if (parentEmail) {
+            const [[match]] = await conn.query('SELECT id FROM parent WHERE email = ? AND active = 1 LIMIT 1', [parentEmail]);
+            if (match) parentId = match.id;
+          }
+          if (!parentId) {
+            const { first: pFirst, last: pLast } = splitParentName(parentName);
+            const [parentRes] = await conn.query(
+              'INSERT INTO parent (first_name, last_name, email, active, ts_inserted, ts_updated) VALUES (?, ?, ?, 1, NOW(), NOW())',
+              [pFirst, pLast, parentEmail || null]
+            );
+            parentId = parentRes.insertId;
+          }
+          await conn.query(
+            'INSERT INTO student_parent (student_id, parent_id, parent_role_id, active, ts_inserted, ts_updated) VALUES (?, ?, ?, 1, NOW(), NOW())',
+            [studentId, parentId, parentRoleId]
+          );
+        }
+
         await conn.query(
-          `INSERT INTO program_roster (program_id, student_id, grade_id, age, gender, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
-           VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, 1, NOW(), NOW())`,
-          [id, studentRes.insertId, gradeId, age, gender, notes, isProfessor ? 1 : 0, req.user.userId]
+          `INSERT INTO program_roster (program_id, student_id, age, notes, date_applied, pending_approval, added_by_user_id, active, ts_inserted, ts_updated)
+           VALUES (?, ?, ?, ?, CURDATE(), ?, ?, 1, NOW(), NOW())`,
+          [id, studentId, age, notes, isProfessor ? 1 : 0, req.user.userId]
         );
         existingNames.add(nameKey);
         added++; count++;

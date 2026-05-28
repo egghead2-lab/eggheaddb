@@ -128,9 +128,9 @@ export function RosterImportModal({ programId, existingRoster = [], onClose, onS
         return {
           first_name: s.first_name,
           last_name: s.last_name,
-          grade: s.grade,
           age: s.age,
-          gender: s.gender,
+          parent_name: s.parent_name,
+          parent_email: s.parent_email,
           notes: s.notes,
         };
       });
@@ -220,11 +220,10 @@ export function RosterImportModal({ programId, existingRoster = [], onClose, onS
                           <input type="checkbox" checked={included.size === students.length && students.length > 0}
                             onChange={toggleAll} className="w-3.5 h-3.5" />
                         </th>
-                        <th className="text-left px-2 py-1.5 font-medium text-gray-600">First Name</th>
-                        <th className="text-left px-2 py-1.5 font-medium text-gray-600">Last Name</th>
-                        <th className="text-left px-2 py-1.5 font-medium text-gray-600">Grade</th>
+                        <th className="text-left px-2 py-1.5 font-medium text-gray-600">Student Name</th>
                         <th className="text-left px-2 py-1.5 font-medium text-gray-600">Age</th>
-                        <th className="text-left px-2 py-1.5 font-medium text-gray-600">Gender</th>
+                        <th className="text-left px-2 py-1.5 font-medium text-gray-600">Parent</th>
+                        <th className="text-left px-2 py-1.5 font-medium text-gray-600">Parent Email</th>
                         <th className="text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
                         <th className="text-left px-2 py-1.5 font-medium text-gray-600">Flags</th>
                       </tr>
@@ -241,11 +240,10 @@ export function RosterImportModal({ programId, existingRoster = [], onClose, onS
                               <input type="checkbox" checked={included.has(i)}
                                 onChange={() => toggleRow(i)} className="w-3.5 h-3.5" />
                             </td>
-                            <td className="px-2 py-1.5">{s.first_name || <em className="text-red-500">—</em>}</td>
-                            <td className="px-2 py-1.5">{s.last_name}</td>
-                            <td className="px-2 py-1.5 text-gray-600">{s.grade ?? ''}</td>
+                            <td className="px-2 py-1.5">{`${s.first_name} ${s.last_name}`.trim() || <em className="text-red-500">—</em>}</td>
                             <td className="px-2 py-1.5 text-gray-600">{s.age ?? ''}</td>
-                            <td className="px-2 py-1.5 text-gray-600">{s.gender ?? ''}</td>
+                            <td className="px-2 py-1.5 text-gray-600">{s.parent_name ?? ''}</td>
+                            <td className="px-2 py-1.5 text-gray-500 truncate" style={{ maxWidth: '160px' }}>{s.parent_email ?? ''}</td>
                             <td className="px-2 py-1.5 text-gray-500 truncate" style={{ maxWidth: '160px' }}>{s.notes ?? ''}</td>
                             <td className="px-2 py-1.5">
                               {(s._flags || []).map(f => (
