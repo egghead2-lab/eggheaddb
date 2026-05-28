@@ -1262,15 +1262,24 @@ router.get('/my-portal', async (req, res, next) => {
       candidate.status = 'in_progress';
     }
 
-    // Requirements
+    // Requirements — include any attached email template's body + attachments
+    // so the candidate sees the detailed instructions/links/files for the step.
     const [requirements] = await pool.query(
       `SELECT cr.id, cr.completed, cr.status, cr.due_date, cr.notes, cr.needs_approval, cr.approval_status,
-              r.title, r.description, r.category, r.type, r.requires_document
+              r.title, r.description, r.category, r.type, r.requires_document,
+              et.body_html AS template_body, et.attachments AS template_attachments
        FROM candidate_requirement cr
        JOIN onboarding_requirement r ON r.id = cr.requirement_id
+       LEFT JOIN email_template et ON et.id = r.email_template_id AND et.active = 1
        WHERE cr.candidate_id = ?
        ORDER BY cr.completed, r.sort_order, r.title`, [candidate.id]
     );
+    // Parse the template attachments JSON for each requirement
+    for (const reqRow of requirements) {
+      reqRow.template_attachments = reqRow.template_attachments
+        ? (typeof reqRow.template_attachments === 'string' ? JSON.parse(reqRow.template_attachments) : reqRow.template_attachments)
+        : [];
+    }
 
     // Availability
     const [[availability]] = await pool.query('SELECT * FROM candidate_availability WHERE candidate_id = ?', [candidate.id]);

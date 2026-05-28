@@ -19,16 +19,25 @@ const TYPE_COLORS = {
 export default function OnboardingRequirementsPage() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [newReq, setNewReq] = useState({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '', needs_approval: false, due_basis: '', due_days: '' });
+  const blankReq = { title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '', needs_approval: false, due_basis: '', due_days: '', email_template_id: '' };
+  const [newReq, setNewReq] = useState(blankReq);
 
   const { data, isLoading } = useQuery({
     queryKey: ['onboarding-requirements'],
     queryFn: () => api.get('/onboarding/requirements').then(r => r.data),
   });
 
+  // Email templates available to attach to a requirement
+  const { data: tplData } = useQuery({
+    queryKey: ['email-templates'],
+    queryFn: () => api.get('/onboarding/email-templates').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const emailTemplates = tplData?.data || [];
+
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/onboarding/requirements', data),
-    onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setNewReq({ title: '', description: '', category: '', type: 'task', requires_document: false, assigned_role: '', needs_approval: false, due_basis: '', due_days: '' }); setShowAdd(false); },
+    onSuccess: () => { qc.invalidateQueries(['onboarding-requirements']); setNewReq(blankReq); setShowAdd(false); },
   });
 
   const updateMutation = useMutation({
@@ -74,6 +83,12 @@ export default function OnboardingRequirementsPage() {
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm">
                 <option value="">No role assigned</option>
                 {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              </select>
+              <select value={newReq.email_template_id} onChange={e => setNewReq({ ...newReq, email_template_id: e.target.value })}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm col-span-2"
+                title="Detailed instructions + attachments the candidate sees on this step">
+                <option value="">No email template attached</option>
+                {emailTemplates.map(t => <option key={t.id} value={t.id}>📎 {t.name}</option>)}
               </select>
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={newReq.requires_document} onChange={e => setNewReq({ ...newReq, requires_document: e.target.checked })} />
@@ -153,6 +168,12 @@ export default function OnboardingRequirementsPage() {
                           <input type="number" value={editData.due_days || ''} onChange={e => setEditData({ ...editData, due_days: e.target.value })}
                             placeholder="# days" className="rounded border border-gray-300 px-2 py-1 text-sm w-24" />
                         )}
+                        <select value={editData.email_template_id || ''} onChange={e => setEditData({ ...editData, email_template_id: e.target.value })}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm col-span-2"
+                          title="Detailed instructions + attachments the candidate sees on this step">
+                          <option value="">No email template attached</option>
+                          {emailTemplates.map(t => <option key={t.id} value={t.id}>📎 {t.name}</option>)}
+                        </select>
                       </div>
                       <div className="flex items-center gap-4 mb-2">
                         <label className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={!!editData.requires_document} onChange={e => setEditData({ ...editData, requires_document: e.target.checked })} /> Requires doc</label>
@@ -166,7 +187,7 @@ export default function OnboardingRequirementsPage() {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id} className="hover:bg-gray-50/50 cursor-pointer" onClick={() => { setEditingId(r.id); setEditData({ title: r.title, description: r.description, category: r.category, type: r.type, assigned_role: r.assigned_role, requires_document: r.requires_document, needs_approval: r.needs_approval, due_basis: r.due_basis, due_days: r.due_days }); }}>
+                  <tr key={r.id} className="hover:bg-gray-50/50 cursor-pointer" onClick={() => { setEditingId(r.id); setEditData({ title: r.title, description: r.description, category: r.category, type: r.type, assigned_role: r.assigned_role, requires_document: r.requires_document, needs_approval: r.needs_approval, due_basis: r.due_basis, due_days: r.due_days, email_template_id: r.email_template_id }); }}>
                     <td className="px-4 py-2.5">
                       <div className="font-medium text-gray-900">{r.title}</div>
                       {r.description && <div className="text-xs text-gray-400">{r.description}</div>}

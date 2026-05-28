@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import api from '../api/client';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
-import { formatDate, formatTime } from '../lib/utils';
+import { formatDate, formatTime, authUrl } from '../lib/utils';
 
 const STATUS_LABELS = { pending: 'Pending', in_progress: 'In Progress', complete: 'Complete', hired: 'Hired' };
 
@@ -285,6 +285,31 @@ function PortalRequirementRow({ r, isOverdue, isUpcoming, isPendingApproval, can
         <div className="flex-1 min-w-0">
           <div className={`text-base font-medium ${r.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{r.title}</div>
           {r.description && <div className="text-sm text-gray-500 mt-0.5">{r.description}</div>}
+
+          {/* Detailed step instructions + reference files (from the attached email template) */}
+          {!r.completed && (r.template_body || (r.template_attachments && r.template_attachments.length > 0)) && (
+            <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+              <div className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide mb-1">Step details</div>
+              {r.template_body && (
+                <div className="prose prose-sm max-w-none text-sm text-gray-700 [&_a]:text-[#1e3a5f] [&_a]:underline"
+                  // eslint-disable-next-line react/no-danger
+                  dangerouslySetInnerHTML={{ __html: r.template_body }} />
+              )}
+              {r.template_attachments && r.template_attachments.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {r.template_attachments.map((a, i) => (
+                    <a key={i} href={authUrl(`${api.defaults.baseURL}/onboarding/email-templates/attachment/${a.storageName}`)}
+                      target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs bg-white border border-blue-200 text-blue-700 px-2 py-1 rounded hover:bg-blue-100">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                      {a.filename}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {isPendingApproval && <div className="text-sm text-amber-700 font-medium mt-1">Submitted — awaiting review from your team</div>}
 
           {/* Actions */}
