@@ -116,7 +116,7 @@ router.get('/candidates/:id', async (req, res, next) => {
        LEFT JOIN user u ON u.id = cr.assigned_to_user_id
        LEFT JOIN user cb ON cb.id = cr.completed_by_user_id
        WHERE cr.candidate_id = ?
-       ORDER BY r.sort_order, r.title`, [id]
+       ORDER BY (cr.due_date IS NULL), cr.due_date, r.sort_order, r.title`, [id]
     );
 
     const [tasks] = await pool.query(
@@ -1296,7 +1296,7 @@ router.get('/my-portal', async (req, res, next) => {
        JOIN onboarding_requirement r ON r.id = cr.requirement_id
        LEFT JOIN email_template et ON et.id = r.email_template_id AND et.active = 1
        WHERE cr.candidate_id = ?
-       ORDER BY cr.completed, r.sort_order, r.title`, [candidate.id]
+       ORDER BY cr.completed, (cr.due_date IS NULL), cr.due_date, r.sort_order, r.title`, [candidate.id]
     );
     // Parse the template attachments JSON for each requirement
     for (const reqRow of requirements) {
