@@ -144,6 +144,26 @@ const MERGE_FIELDS_BY_CATEGORY = {
     { key: '{{registration_link}}', label: 'Registration Link' },
     { key: '{{class_cost}}', label: 'Class Cost' },
   ],
+  new_professor_email: [
+    { key: '{{school_name}}', label: 'School Name' },
+    { key: '{{class_name}}', label: 'Class Name' },
+    { key: '{{new_professor_name}}', label: 'New Professor' },
+    { key: '{{old_professor_name}}', label: 'Old Professor' },
+    { key: '{{through_egghead}}', label: 'Payment Through Egghead' },
+    { key: '{{vaccination_card_required}}', label: 'Vaccination Card Required' },
+    { key: '{{virtus_required}}', label: 'Virtus Required' },
+    { key: '{{tb_test_required}}', label: 'TB Test Required' },
+  ],
+  sub_email: [
+    { key: '{{school_name}}', label: 'School Name' },
+    { key: '{{class_name}}', label: 'Class Name' },
+    { key: '{{sub_name}}', label: 'Sub Professor' },
+    { key: '{{subbing_for}}', label: 'Subbing For (regular professor)' },
+    { key: '{{class_date}}', label: 'Class Date' },
+    { key: '{{vaccination_card_required}}', label: 'Vaccination Card Required' },
+    { key: '{{virtus_required}}', label: 'Virtus Required' },
+    { key: '{{tb_test_required}}', label: 'TB Test Required' },
+  ],
 };
 
 function TemplateEditor({ template, onSave, onDelete, onClose, isPending, error }) {
