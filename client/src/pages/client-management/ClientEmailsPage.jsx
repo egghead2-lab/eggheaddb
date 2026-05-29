@@ -58,9 +58,10 @@ function getToolConfig(key) {
     };
     case 'new_professor': return {
       title: 'New Professor Emails', category: 'new_professor_email', endpoint: '/client-management/new-professor', defaultRange: 'today',
-      columns: [linkCol(), throughEh, ...complianceCols],
+      idField: 'program_id', rowId: r => r.session_id,
+      columns: [linkCol(), { key: 'new_professor_name', label: 'New Professor' }, { key: 'session_date', label: 'Date', render: r => r.session_date ? formatDate(r.session_date) : '-' }, throughEh, ...complianceCols],
       getRecipient: defaultRecipient,
-      getMergeData: r => ({ school_name: r.school_name || '', class_name: r.class_name || r.program_nickname || '', new_professor_name: r.new_professor_name || '', through_egghead: r.payment_through_us ? 'Yes' : 'No', vaccination_card_required: r.livescan_required ? 'Yes' : 'No', virtus_required: r.virtus_required ? 'Yes' : 'No', tb_test_required: r.tb_required ? 'Yes' : 'No' }),
+      getMergeData: r => ({ school_name: r.school_name || '', class_name: r.class_name || r.program_nickname || '', new_professor_name: r.new_professor_name || '', class_date: r.session_date ? formatDate(r.session_date) : '', through_egghead: r.payment_through_us ? 'Yes' : 'No', vaccination_card_required: r.livescan_required ? 'Yes' : 'No', virtus_required: r.virtus_required ? 'Yes' : 'No', tb_test_required: r.tb_required ? 'Yes' : 'No' }),
     };
     case 'last_day': return {
       title: 'Last Day Emails', category: 'last_day', endpoint: '/client-management/last-day', defaultRange: 'today',
