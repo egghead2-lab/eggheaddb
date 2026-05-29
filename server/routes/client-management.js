@@ -295,8 +295,8 @@ router.get('/sub-emails', authenticate, async (req, res, next) => {
               loc.id AS location_id, loc.school_name, loc.poc_email, loc.site_coordinator_email,
               loc.tb_required, loc.livescan_required, loc.virtus_required,
               COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id,
-              CONCAT(sub.professor_nickname, ' ', sub.last_name) AS sub_name,
-              CONCAT(lead.professor_nickname, ' ', lead.last_name) AS regular_name,
+              CONCAT(subp.professor_nickname, ' ', subp.last_name) AS sub_name,
+              CONCAT(lp.professor_nickname, ' ', lp.last_name) AS regular_name,
               cl.formal_class_name AS class_name
        FROM session s
        JOIN program prog ON prog.id = s.program_id AND prog.active = 1
@@ -304,8 +304,8 @@ router.get('/sub-emails', authenticate, async (req, res, next) => {
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
-       LEFT JOIN professor sub ON sub.id = s.professor_id
-       LEFT JOIN professor lead ON lead.id = prog.lead_professor_id
+       LEFT JOIN professor subp ON subp.id = s.professor_id
+       LEFT JOIN professor lp ON lp.id = prog.lead_professor_id
        WHERE s.active = 1
          AND s.professor_id IS NOT NULL
          AND s.professor_id != prog.lead_professor_id
