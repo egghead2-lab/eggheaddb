@@ -322,45 +322,44 @@ router.get('/sub-emails', authenticate, async (req, res, next) => {
 // GET /api/client-management/new-professor?date_from=&date_to=&cm_id=
 router.get('/new-professor', authenticate, async (req, res, next) => {
   try {
-    const { date_from, date_to, cm_id } = req.query;
-    const sent = await getSentMap('new_professor_email', date_from, date_to);
+    const { cm_id } = req.query;
     const cmFilter = cm_id ? 'AND COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) = ?' : '';
-    const params = [date_from || '2000-01-01', date_to || '2099-12-31'];
-    if (cm_id) params.push(cm_id);
-    // Per-session: a professor teaching a session of a program they've never
-    // taught before (excluding the program's first session, where the teacher
-    // is "new" by definition and the Starting email covers it). The effective
-    // teacher of a session is its override (s.professor_id) or the program lead.
+    const params = cm_id ? [cm_id] : [];
+    // The program's lead professor has changed since the first class: the
+    // current lead differs from the professor recorded on the program's first
+    // session, the first class has already happened, and the program still has
+    // upcoming sessions. State-based (not date-bounded). Caveat: if the first
+    // class itself had a sub, this can read as a "new professor" even when the
+    // lead never actually changed.
     const [rows] = await pool.query(
-      `SELECT s.id AS session_id, s.session_date, s.program_id,
-              prog.program_nickname, prog.payment_through_us,
+      `SELECT prog.id, prog.id AS program_id, prog.program_nickname, prog.payment_through_us,
               loc.id AS location_id, loc.school_name, loc.poc_email, loc.site_coordinator_email,
               loc.tb_required, loc.livescan_required, loc.virtus_required,
               COALESCE(loc.client_manager_user_id, ga.client_manager_user_id) AS cm_user_id,
-              CONCAT(tp.professor_nickname, ' ', tp.last_name) AS new_professor_name,
-              cl.formal_class_name AS class_name
-       FROM session s
-       JOIN program prog ON prog.id = s.program_id AND prog.active = 1
+              CONCAT(cur.professor_nickname, ' ', cur.last_name) AS new_professor_name,
+              CONCAT(fp.professor_nickname, ' ', fp.last_name) AS old_professor_name,
+              fs.session_date AS first_session_date,
+              cl.formal_class_name AS class_name,
+              EXISTS(SELECT 1 FROM client_email_log cel WHERE cel.program_id = prog.id AND cel.tool_category = 'new_professor_email' AND cel.test_mode = 0) AS sent
+       FROM program prog
        JOIN class_status cs ON cs.id = prog.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
        LEFT JOIN location loc ON loc.id = prog.location_id
        LEFT JOIN geographic_area ga ON ga.id = loc.geographic_area_id_online
        LEFT JOIN class cl ON cl.id = prog.class_id
-       LEFT JOIN professor tp ON tp.id = COALESCE(s.professor_id, prog.lead_professor_id)
-       WHERE s.active = 1 AND prog.party_format_id IS NULL
-         AND COALESCE(s.professor_id, prog.lead_professor_id) IS NOT NULL
-         AND s.session_date BETWEEN ? AND ?
-         AND s.session_date > (SELECT MIN(s0.session_date) FROM session s0 WHERE s0.program_id = prog.id AND s0.active = 1)
-         AND NOT EXISTS (
-           SELECT 1 FROM session s2
-           WHERE s2.program_id = prog.id AND s2.active = 1
-             AND s2.session_date < s.session_date
-             AND COALESCE(s2.professor_id, prog.lead_professor_id) = COALESCE(s.professor_id, prog.lead_professor_id)
-         )
+       LEFT JOIN professor cur ON cur.id = prog.lead_professor_id
+       LEFT JOIN session fs ON fs.id = (SELECT s1.id FROM session s1 WHERE s1.program_id = prog.id AND s1.active = 1 ORDER BY s1.session_date ASC, s1.id ASC LIMIT 1)
+       LEFT JOIN professor fp ON fp.id = fs.professor_id
+       WHERE prog.active = 1 AND prog.party_format_id IS NULL
+         AND prog.lead_professor_id IS NOT NULL
+         AND fs.professor_id IS NOT NULL
+         AND fs.professor_id != prog.lead_professor_id
+         AND fs.session_date < CURDATE()
+         AND EXISTS (SELECT 1 FROM session s3 WHERE s3.program_id = prog.id AND s3.active = 1 AND s3.session_date >= CURDATE())
          ${cmFilter}
-       ORDER BY s.session_date ASC`,
+       ORDER BY fs.session_date DESC`,
       params
     );
-    const data = rows.map(r => ({ ...r, sent: sent.progSet.has(r.program_id) }));
+    const data = rows.map(r => ({ ...r, sent: !!r.sent }));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
@@ -638,22 +637,21 @@ router.get('/counts', authenticate, async (req, res, next) => {
 
     // Count unsent items per tool (simplified — counts programs in each endpoint's date range that haven't been emailed)
     const queries = await Promise.all([
-      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'starting_email' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
-      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'first_day_parent' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
-      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id JOIN session s2 ON s2.program_id = p.id AND s2.active = 1 AND s2.session_date BETWEEN ? AND ? LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'second_week_email' WHERE p.active = 1 AND cs.confirmed = 1 AND cel.id IS NULL AND (SELECT COUNT(*) FROM session sx WHERE sx.program_id = p.id AND sx.active = 1 AND sx.session_date <= ?) = 2`, [today, today, today]),
-      pool.query(`SELECT COUNT(DISTINCT s.id) as cnt FROM session s JOIN program p ON p.id = s.program_id AND p.active = 1 LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'sub_email' AND DATE(cel.created_at) = s.session_date WHERE s.active = 1 AND s.session_date BETWEEN ? AND ? AND s.professor_id IS NOT NULL AND s.professor_id != p.lead_professor_id AND cel.id IS NULL`, [today, today]),
-      pool.query(`SELECT COUNT(DISTINCT s.id) as cnt
-                  FROM session s
-                  JOIN program p ON p.id = s.program_id AND p.active = 1 AND p.party_format_id IS NULL
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.tool_category = 'starting_email' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.tool_category = 'first_day_parent' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id JOIN session s2 ON s2.program_id = p.id AND s2.active = 1 AND s2.session_date BETWEEN ? AND ? LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.tool_category = 'second_week_email' WHERE p.active = 1 AND cs.confirmed = 1 AND cel.id IS NULL AND (SELECT COUNT(*) FROM session sx WHERE sx.program_id = p.id AND sx.active = 1 AND sx.session_date <= ?) = 2`, [today, today, today]),
+      pool.query(`SELECT COUNT(DISTINCT s.id) as cnt FROM session s JOIN program p ON p.id = s.program_id AND p.active = 1 LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.tool_category = 'sub_email' AND DATE(cel.sent_at) = s.session_date WHERE s.active = 1 AND s.session_date BETWEEN ? AND ? AND s.professor_id IS NOT NULL AND s.professor_id != p.lead_professor_id AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt
+                  FROM program p
                   JOIN class_status cs ON cs.id = p.class_status_id AND cs.class_status_name NOT LIKE 'Cancelled%'
-                  LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'new_professor_email' AND DATE(cel.created_at) = s.session_date
-                  WHERE s.active = 1 AND s.session_date BETWEEN ? AND ?
-                    AND COALESCE(s.professor_id, p.lead_professor_id) IS NOT NULL
-                    AND s.session_date > (SELECT MIN(s0.session_date) FROM session s0 WHERE s0.program_id = p.id AND s0.active = 1)
-                    AND NOT EXISTS (SELECT 1 FROM session s2 WHERE s2.program_id = p.id AND s2.active = 1 AND s2.session_date < s.session_date AND COALESCE(s2.professor_id, p.lead_professor_id) = COALESCE(s.professor_id, p.lead_professor_id))
-                    AND cel.id IS NULL`, [today, today]),
-      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category LIKE 'last_day%' WHERE p.active = 1 AND cs.confirmed = 1 AND p.last_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
-      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.category = 'roster_email' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [ws, we]),
+                  LEFT JOIN session fs ON fs.id = (SELECT s1.id FROM session s1 WHERE s1.program_id = p.id AND s1.active = 1 ORDER BY s1.session_date ASC, s1.id ASC LIMIT 1)
+                  WHERE p.active = 1 AND p.party_format_id IS NULL AND p.lead_professor_id IS NOT NULL
+                    AND fs.professor_id IS NOT NULL AND fs.professor_id != p.lead_professor_id
+                    AND fs.session_date < CURDATE()
+                    AND EXISTS (SELECT 1 FROM session s3 WHERE s3.program_id = p.id AND s3.active = 1 AND s3.session_date >= CURDATE())
+                    AND NOT EXISTS (SELECT 1 FROM client_email_log cel WHERE cel.program_id = p.id AND cel.tool_category = 'new_professor_email' AND cel.test_mode = 0)`, []),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.tool_category LIKE 'last_day%' WHERE p.active = 1 AND cs.confirmed = 1 AND p.last_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [today, today]),
+      pool.query(`SELECT COUNT(*) as cnt FROM program p JOIN class_status cs ON cs.id = p.class_status_id LEFT JOIN client_email_log cel ON cel.program_id = p.id AND cel.tool_category = 'roster_email' WHERE p.active = 1 AND cs.confirmed = 1 AND p.first_session_date BETWEEN ? AND ? AND cel.id IS NULL`, [ws, we]),
     ]);
 
     res.json({

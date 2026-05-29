@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { ClientEmailTool } from '../../components/ClientEmailTool';
-import { formatDate } from '../../lib/utils';
 
 export default function NewProfessorPage() {
   return (
@@ -10,11 +9,10 @@ export default function NewProfessorPage() {
       endpoint="/client-management/new-professor"
       defaultRange="today"
       idField="program_id"
-      rowId={r => r.session_id}
       columns={[
-        { key: 'program_nickname', label: 'Class', render: r => <Link to={`/programs/${r.program_id}`} onClick={e => e.stopPropagation()} className="font-medium text-[#1e3a5f] hover:underline">{r.program_nickname}</Link> },
-        { key: 'new_professor_name', label: 'New Professor' },
-        { key: 'session_date', label: 'Date', render: r => r.session_date ? formatDate(r.session_date) : '-' },
+        { key: 'program_nickname', label: 'Class', render: r => <Link to={`/programs/${r.program_id || r.id}`} onClick={e => e.stopPropagation()} className="font-medium text-[#1e3a5f] hover:underline">{r.program_nickname}</Link> },
+        { key: 'new_professor_name', label: 'New Lead' },
+        { key: 'old_professor_name', label: 'Was', render: r => <span className="text-gray-400">{r.old_professor_name || '—'}</span> },
         { key: 'payment_through_us', label: 'Through EH', render: r => r.payment_through_us ? <span className="text-amber-600 font-medium">Yes</span> : <span className="text-gray-400">No</span> },
         { key: 'livescan_required', label: 'Vax Card', render: r => r.livescan_required ? <span className="text-amber-600">Yes</span> : <span className="text-gray-300">—</span> },
         { key: 'virtus_required', label: 'Virtus', render: r => r.virtus_required ? <span className="text-amber-600">Yes</span> : <span className="text-gray-300">—</span> },
@@ -25,7 +23,7 @@ export default function NewProfessorPage() {
         school_name: r.school_name || '',
         class_name: r.class_name || r.program_nickname || '',
         new_professor_name: r.new_professor_name || '',
-        class_date: r.session_date ? formatDate(r.session_date) : '',
+        old_professor_name: r.old_professor_name || '',
         through_egghead: r.payment_through_us ? 'Yes' : 'No',
         vaccination_card_required: r.livescan_required ? 'Yes' : 'No',
         virtus_required: r.virtus_required ? 'Yes' : 'No',
